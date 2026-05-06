@@ -15,8 +15,9 @@ export const applyLeave = async (req, res) => {
         // Handle document upload path
         let documentUrl = '';
         if (req.file) {
-            // Replace backslashes with forward slashes for URLs
-            documentUrl = req.file.path.replace(/\\/g, '/');
+            // Save path relative to the root (e.g., 'uploads/leaves/file.png')
+            // This ensures it matches the express.static configuration
+            documentUrl = req.file.path.replace(/\\/g, '/').replace(process.cwd() + '/', '');
         }
 
         if (extensionFor && leaveType !== 'Medical') {
