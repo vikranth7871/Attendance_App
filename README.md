@@ -51,7 +51,7 @@ The easiest way to run this is using **Docker**.
 
 1. **Get the code**:
    ```bash
-   git clone https://github.com/01iamysf/SMS.git iAttend
+   git clone https://github.com/01iamysf/iAttend.git
    cd iAttend
    ```
 2. **Setup your environment**:
