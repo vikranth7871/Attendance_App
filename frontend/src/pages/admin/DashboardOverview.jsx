@@ -79,45 +79,9 @@ const DashboardOverview = () => {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-            {/* Dashboard Header & Animated Button */}
+            {/* Dashboard Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
                 <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>System Overview</h2>
-                <motion.button
-                    whileHover={{ scale: 1.05, boxShadow: "0 0 20px rgba(236, 72, 153, 0.4)" }}
-                    whileTap={{ scale: 0.95 }}
-                    style={{
-                        position: 'relative',
-                        padding: '0.75rem 1.5rem',
-                        background: 'linear-gradient(135deg, var(--brand-primary), #ec4899)',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '12px',
-                        fontWeight: '600',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        overflow: 'hidden',
-                        boxShadow: '0 4px 15px rgba(99, 102, 241, 0.3)'
-                    }}
-                >
-                    <motion.div
-                        animate={{ x: ['-200%', '300%'] }}
-                        transition={{ repeat: Infinity, duration: 2.5, ease: "linear" }}
-                        style={{
-                            position: 'absolute',
-                            top: 0,
-                            left: 0,
-                            width: '40%',
-                            height: '100%',
-                            background: 'linear-gradient(to right, transparent, rgba(255, 255, 255, 0.5), transparent)',
-                            transform: 'skewX(-20deg)',
-                            zIndex: 1
-                        }}
-                    />
-                    <Activity size={18} style={{ zIndex: 2, position: 'relative' }} />
-                    <span style={{ zIndex: 2, position: 'relative' }}>Generate Report</span>
-                </motion.button>
             </div>
 
             {/* Top Stat Cards */}
@@ -332,7 +296,23 @@ const DashboardOverview = () => {
                         <h3 style={{ fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <Clock size={20} className="text-brand" /> Recent System Logs
                         </h3>
-                        <button className="text-brand" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.875rem' }}>View All</button>
+                        <button 
+                            className="text-brand" 
+                            style={{ 
+                                background: 'none', 
+                                border: 'none', 
+                                cursor: 'pointer', 
+                                fontSize: '0.875rem',
+                                fontWeight: '600',
+                                padding: '0.5rem',
+                                borderRadius: '8px',
+                                transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => e.target.style.background = 'var(--brand-primary)10'}
+                            onMouseLeave={(e) => e.target.style.background = 'none'}
+                        >
+                            View All
+                        </button>
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>

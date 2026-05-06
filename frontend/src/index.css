@@ -40,8 +40,13 @@
   --text-secondary: #a0a0a0;
   --text-light: #707070;
 
+  --brand-primary: #6366f1; /* Lighter for dark mode */
   --border-color: rgba(255, 255, 255, 0.1);
   --shadow-glass: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+}
+
+.text-brand {
+  color: var(--brand-primary);
 }
 
 * {
