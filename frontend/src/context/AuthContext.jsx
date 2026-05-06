@@ -4,7 +4,8 @@ import adminAvatar from '../assets/admin_avatar.png';
 import adminCover from '../assets/admin_cover.png';
 
 // Configure Axios defaults
-axios.defaults.baseURL = '/api';
+const API_URL = import.meta.env.VITE_API_URL || '';
+axios.defaults.baseURL = `${API_URL}/api`;
 
 const AuthContext = createContext();
 

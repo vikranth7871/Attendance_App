@@ -25,7 +25,7 @@ const app = express();
 // Middleware
 const corsOptions = {
     origin: process.env.NODE_ENV === 'production' 
-        ? 'https://your-frontend-domain.com' 
+        ? process.env.FRONTEND_URL 
         : 'http://localhost:5173',
     optionsSuccessStatus: 200
 };
