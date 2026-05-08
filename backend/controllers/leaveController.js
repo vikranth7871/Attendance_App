@@ -15,13 +15,58 @@ export const applyLeave = async (req, res) => {
         // Handle document upload path
         let documentUrl = '';
         if (req.file) {
-            // Save path relative to the root (e.g., 'uploads/leaves/file.png')
-            // This ensures it matches the express.static configuration
             documentUrl = req.file.path.replace(/\\/g, '/').replace(process.cwd() + '/', '');
         }
 
         if (extensionFor && leaveType !== 'Medical') {
             return res.status(400).json({ message: 'Only Medical leaves can be extended.' });
+        }
+
+        // Calculate duration
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        const diffTime = Math.abs(end - start);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+        // 1. Strict 3-day rule
+        const isSpecialCase = ['Medical', 'Emergency'].includes(leaveType);
+        if (diffDays > 3) {
+            if (!isSpecialCase) {
+                return res.status(400).json({ message: 'Standard leaves (Casual/Other) cannot exceed 3 days. Please contact your coordinator for special permission.' });
+            }
+            if (!req.file) {
+                return res.status(400).json({ message: `For ${leaveType} leave exceeding 3 days, uploading a supporting document (Medical Certificate/Proof) is mandatory.` });
+            }
+        }
+
+        // 2. 18-day semester limit (Jan-Jun / Jul-Dec)
+        const now = new Date(startDate);
+        let semStart, semEnd;
+        if (now.getMonth() < 6) { // Jan - Jun
+            semStart = new Date(now.getFullYear(), 0, 1);
+            semEnd = new Date(now.getFullYear(), 5, 30);
+        } else { // Jul - Dec
+            semStart = new Date(now.getFullYear(), 6, 1);
+            semEnd = new Date(now.getFullYear(), 11, 31);
+        }
+
+        const existingLeaves = await LeaveRequest.find({
+            userId: req.user._id,
+            status: 'approved',
+            startDate: { $gte: semStart, $lte: semEnd }
+        });
+
+        const totalApprovedDays = existingLeaves.reduce((total, leave) => {
+            const s = new Date(leave.startDate);
+            const e = new Date(leave.endDate);
+            const d = Math.ceil(Math.abs(e - s) / (1000 * 60 * 60 * 24)) + 1;
+            return total + d;
+        }, 0);
+
+        if (totalApprovedDays + diffDays > 18) {
+            return res.status(400).json({ 
+                message: `Semester leave limit exceeded. You have already taken ${totalApprovedDays} days this semester. Total allowed is 18 days.` 
+            });
         }
 
         const leave = await LeaveRequest.create({

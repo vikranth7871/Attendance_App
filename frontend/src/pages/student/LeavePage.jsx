@@ -27,11 +27,11 @@ const RulesModal = ({ onClose }) => (
                     <Info size={20} /> Leave Guidelines
                 </h3>
                 <ul style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', paddingLeft: '1.5rem', margin: 0 }}>
-                    <li><strong>Casual & Emergency Leave:</strong> Can be applied for personal or urgent reasons. Maximum 7 consecutive days allowed.</li>
-                    <li><strong>Medical Leave:</strong> Requires a valid medical certificate or prescription to be uploaded (PDF/JPG/PNG, max 5MB). Initially restricted to a maximum of 7 days.</li>
-                    <li><strong>Extending Medical Leave:</strong> If you need more than 7 days for a medical reason, you can request an extension. Once your initial Medical Leave is approved, an "Extend Leave" button will appear in your Leave History to submit further documentation.</li>
-                    <li><strong>Backdating:</strong> Leave applications cannot be submitted for past dates.</li>
-                    <li><strong>Approval:</strong> All leaves are subject to approval by your Class Coordinator. Submitting an application does not guarantee approval.</li>
+                    <li><strong>Standard Leave Limit:</strong> All casual and general leaves are restricted to a maximum of <strong>3 consecutive days</strong>.</li>
+                    <li><strong>Medical & Emergency Exception:</strong> Leaves can exceed 3 days <strong>only</strong> for medical emergencies or serious reasons, provided a legitimate proof (certificate/prescription) is uploaded.</li>
+                    <li><strong>Semester Quota:</strong> A student is allowed a maximum of <strong>18 days</strong> of approved leave per semester (Jan-Jun / Jul-Dec).</li>
+                    <li><strong>Medical Proof:</strong> Documentation is mandatory for all Medical leaves and any Emergency leave exceeding 3 days. (PDF/JPG/PNG, max 5MB).</li>
+                    <li><strong>Approval:</strong> All applications are subject to coordinator verification. Approval is not guaranteed.</li>
                 </ul>
             </motion.div>
         </motion.div>
@@ -86,8 +86,9 @@ const LeavePage = () => {
             const diffTime = Math.abs(end - start);
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
-            if (['Casual', 'Medical', 'Emergency'].includes(leaveData.leaveType) && diffDays > 7) {
-                setFormError(`Maximum 7 days allowed for ${leaveData.leaveType} Leave.`);
+            const isSpecial = ['Medical', 'Emergency'].includes(leaveData.leaveType);
+            if (diffDays > 3 && !isSpecial) {
+                setFormError(`Standard ${leaveData.leaveType} leave cannot exceed 3 days.`);
                 setTotalDays(diffDays);
                 return;
             }
@@ -108,8 +109,13 @@ const LeavePage = () => {
             return;
         }
 
-        if (['Casual', 'Medical', 'Emergency'].includes(leaveData.leaveType) && totalDays > 7) {
-            setFormError(`Maximum 7 days allowed for ${leaveData.leaveType} Leave.`);
+        if (['Casual', 'Other'].includes(leaveData.leaveType) && totalDays > 3) {
+            setFormError('Casual leaves cannot exceed 3 days. Use Medical/Emergency for longer durations with proof.');
+            return;
+        }
+
+        if (['Medical', 'Emergency'].includes(leaveData.leaveType) && totalDays > 3 && !leaveData.document) {
+            setFormError(`Supporting documentation is mandatory for ${leaveData.leaveType} leave exceeding 3 days.`);
             return;
         }
 
@@ -190,9 +196,9 @@ const LeavePage = () => {
 
     // Calculate max end date dynamically
     let maxDateStr = '';
-    if (leaveData.startDate && ['Casual', 'Medical', 'Emergency'].includes(leaveData.leaveType)) {
+    if (leaveData.startDate && !['Medical', 'Emergency'].includes(leaveData.leaveType)) {
         const startObj = new Date(leaveData.startDate);
-        startObj.setDate(startObj.getDate() + 6); // Max 7 days total
+        startObj.setDate(startObj.getDate() + 2); // Max 3 days total
         maxDateStr = startObj.toISOString().split('T')[0];
     }
 
@@ -250,13 +256,12 @@ const LeavePage = () => {
                             <input type="date" className="input-field" min={leaveData.startDate || todayStr} max={maxDateStr || undefined} value={leaveData.endDate} onChange={e => setLeaveData({ ...leaveData, endDate: e.target.value })} required />
                         </div>
                     </div>
-
-                    {totalDays > 0 && (
+                    <div>
                         <div style={{ background: 'rgba(99,102,241,0.05)', border: '1px dashed var(--brand-primary)', borderRadius: 'var(--radius-md)', padding: '0.75rem', textAlign: 'center', color: 'var(--brand-primary)', fontWeight: '600', fontSize: '0.9rem' }}>
                             Duration: {totalDays} {totalDays === 1 ? 'Day' : 'Days'} 
-                            {['Casual', 'Medical', 'Emergency'].includes(leaveData.leaveType) && <span style={{ opacity: 0.6, display: 'block', fontSize: '0.75rem', marginTop: '0.25rem' }}>(Max 7 days allowed)</span>}
+                            {totalDays > 3 && <span style={{ color: 'var(--danger)', display: 'block', fontSize: '0.75rem', marginTop: '0.25rem' }}>(Proof Mandatory for &gt; 3 days)</span>}
                         </div>
-                    )}
+                    </div>
 
                     <div>
                         <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Reason for Leave</label>
