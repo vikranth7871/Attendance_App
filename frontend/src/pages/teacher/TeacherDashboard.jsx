@@ -715,6 +715,91 @@ const TeacherTimetable = () => {
 };
 
 /* ──────────────────────────────────────────
+   Student Quick Info Dropdown
+────────────────────────────────────────── */
+const StudentQuickInfo = ({ student }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+    const ref = useRef(null);
+
+    useEffect(() => {
+        const handleResize = () => setIsMobile(window.innerWidth <= 768);
+        window.addEventListener('resize', handleResize);
+        const handleClick = (e) => {
+            if (ref.current && !ref.current.contains(e.target)) setIsOpen(false);
+        };
+        document.addEventListener('mousedown', handleClick);
+        return () => {
+            window.removeEventListener('resize', handleResize);
+            document.removeEventListener('mousedown', handleClick);
+        };
+    }, []);
+
+    if (!student) return null;
+
+    return (
+        <div ref={ref} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+            <button 
+                onClick={() => setIsOpen(!isOpen)}
+                style={{ 
+                    background: isOpen ? 'var(--brand-primary)' : 'rgba(99,102,241,0.1)', 
+                    border: '1px solid rgba(99,102,241,0.2)', 
+                    borderRadius: '50%', width: '22px', height: '22px', 
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer', color: isOpen ? 'white' : 'var(--brand-primary)', 
+                    marginLeft: '0.6rem', transition: 'all 0.2s',
+                    boxShadow: isOpen ? '0 0 10px rgba(99,102,241,0.4)' : 'none'
+                }}
+                title="Student Info"
+            >
+                <AlertCircle size={13} />
+            </button>
+
+            <AnimatePresence>
+                {isOpen && (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95, y: 10, x: isMobile ? '-40%' : '0' }}
+                        animate={{ opacity: 1, scale: 1, y: 0, x: isMobile ? '-40%' : '0' }}
+                        exit={{ opacity: 0, scale: 0.95, y: 10, x: isMobile ? '-40%' : '0' }}
+                        style={{ 
+                            position: 'absolute', top: 'calc(100% + 8px)', 
+                            left: isMobile ? '50%' : '0',
+                            zIndex: 100,
+                            width: 'min(260px, 85vw)', 
+                            background: 'var(--bg-secondary)',
+                            backdropFilter: 'blur(20px)',
+                            border: '1px solid var(--border-color)', borderRadius: '12px',
+                            padding: '1.2rem', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                            color: 'var(--text-primary)'
+                        }}
+                    >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                            <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '0.6rem', marginBottom: '0.2rem' }}>
+                                <p style={{ fontSize: '0.85rem', fontWeight: '800', color: 'var(--brand-primary)', marginBottom: '2px' }}>{student.name}</p>
+                                <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Roll: {student.rollNumber}</p>
+                            </div>
+                            {[
+                                { label: 'Email', value: student.email, icon: <Mail size={12} /> },
+                                { label: 'Department', value: student.departmentId?.departmentName || student.departmentId?.name || 'N/A', icon: <Building2 size={12} /> },
+                                { label: 'Section', value: student.section || 'N/A', icon: <Users size={12} /> }
+                            ].map((info, idx) => (
+                                <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem' }}>
+                                    <div style={{ color: 'var(--brand-primary)', marginTop: '2px' }}>{info.icon}</div>
+                                    <div>
+                                        <span style={{ color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', fontSize: '0.6rem', fontWeight: '800', letterSpacing: '0.05em' }}>{info.label}</span>
+                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-primary)', fontWeight: '500', wordBreak: 'break-all' }}>{info.value}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
+    );
+};
+
+/* ──────────────────────────────────────────
    Leave Approvals
 ────────────────────────────────────────── */
 const LeaveApprovals = () => {
@@ -769,8 +854,9 @@ const LeaveApprovals = () => {
                         <div key={leave._id} className="glass-panel" style={{ padding: '1.25rem', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
                                 <div>
-                                    <h4 style={{ fontWeight: '700', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                    <h4 style={{ fontWeight: '700', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.2rem', flexWrap: 'wrap' }}>
                                         {leave.userId?.name}
+                                        <StudentQuickInfo student={leave.userId} />
                                         {leave.leaveType && (
                                             <span style={{ fontSize: '0.65rem', padding: '0.15rem 0.5rem', borderRadius: '4px', background: 'rgba(99,102,241,0.15)', color: 'var(--brand-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                                                 {leave.leaveType}
@@ -789,7 +875,7 @@ const LeaveApprovals = () => {
                                 </div>
                             </div>
 
-                            <div style={{ margin: '1rem 0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', fontSize: '0.85rem' }}>
+                            <div style={{ margin: '1rem 0', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '1rem', fontSize: '0.85rem' }}>
                                 <div>
                                     <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Duration</label>
                                     <p>{new Date(leave.startDate).toLocaleDateString()} - {new Date(leave.endDate).toLocaleDateString()}</p>

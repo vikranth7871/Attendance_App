@@ -137,7 +137,11 @@ export const getCoordinatorLeaves = async (req, res) => {
         // Fetch leave requests for these students
         const leaves = await LeaveRequest.find({
             userId: { $in: studentIds }
-        }).populate('userId', 'name rollNumber').sort({ createdAt: -1 });
+        }).populate({
+            path: 'userId',
+            select: 'name rollNumber email departmentId section',
+            populate: { path: 'departmentId', select: 'departmentName name' }
+        }).sort({ createdAt: -1 });
 
         res.json(leaves);
     } catch (error) {
