@@ -367,9 +367,10 @@ const LeavePage = () => {
                                                             {(new Date() > new Date(item.endDate) && item.status === 'approved') ? 'Leave Ended' : item.status}
                                                         </div>
                                                         {item.documentUrl && (() => {
-                                                            const isAbsolute = item.documentUrl.startsWith('http');
-                                                            const apiBase = (import.meta.env.VITE_API_URL || axios.defaults.baseURL || '').replace('/api', '');
-                                                            const finalUrl = isAbsolute ? item.documentUrl : `${apiBase}/${item.documentUrl}`;
+                                                            const docUrl = item.documentUrl.trim();
+                                                            const isAbsolute = /^https?:\/\//i.test(docUrl);
+                                                            const apiBase = (import.meta.env.VITE_API_URL || axios.defaults.baseURL || '').replace('/api', '').replace(/\/$/, '');
+                                                            const finalUrl = isAbsolute ? docUrl : `${apiBase}/${docUrl.replace(/^\//, '')}`;
                                                             return (
                                                                 <a href={finalUrl} target="_blank" rel="noopener noreferrer" 
                                                                    title="View Uploaded Document"
