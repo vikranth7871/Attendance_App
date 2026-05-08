@@ -797,11 +797,14 @@ const LeaveApprovals = () => {
                                 <div>
                                     <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Reason</label>
                                     <p>{leave.reason}</p>
-                                    {leave.documentUrl && (
-                                        <a href={`http://localhost:5000/${leave.documentUrl}`} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--brand-primary)', textDecoration: 'none', background: 'rgba(99,102,241,0.1)', padding: '0.2rem 0.6rem', borderRadius: '4px' }}>
-                                            <FileBarChart2 size={12} /> View Attached Document
-                                        </a>
-                                    )}
+                                    {leave.documentUrl && (() => {
+                                        const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+                                        return (
+                                            <a href={`${apiBase}/${leave.documentUrl}`} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--brand-primary)', textDecoration: 'none', background: 'rgba(99,102,241,0.1)', padding: '0.2rem 0.6rem', borderRadius: '4px' }}>
+                                                <FileBarChart2 size={12} /> View Attached Document
+                                            </a>
+                                        );
+                                    })()}
                                 </div>
                             </div>
 

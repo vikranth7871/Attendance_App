@@ -380,6 +380,14 @@ const LeavePage = () => {
                                                 <div style={{ padding: '0.75rem', background: 'rgba(0,0,0,0.1)', borderRadius: 'var(--radius-md)', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
                                                     <span style={{ color: 'var(--text-light)', fontWeight: '600', display: 'block', fontSize: '0.7rem', textTransform: 'uppercase', marginBottom: '0.25rem', opacity: 0.6 }}>Reason</span>
                                                     {item.reason}
+                                                    {item.documentUrl && (() => {
+                                                        const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+                                                        return (
+                                                            <a href={`${apiBase}/${item.documentUrl}`} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.75rem', fontSize: '0.7rem', color: 'var(--brand-primary)', textDecoration: 'none', background: 'rgba(99,102,241,0.08)', padding: '0.2rem 0.6rem', borderRadius: '4px', border: '1px solid rgba(99,102,241,0.2)' }}>
+                                                                <UploadCloud size={12} /> View Attached Document
+                                                            </a>
+                                                        );
+                                                    })()}
                                                 </div>
 
                                                 {item.status === 'revoked' && (
