@@ -21,60 +21,53 @@
 - Keeps a full history so you can see attendance from weeks or months ago.
 
 ### 📝 Leave Management:
-- Students can upload a medical certificate (PDF/Image) when they are sick.
+- Students can upload medical certificates which are stored **permanently** in the cloud using Cloudinary.
 - Once the coordinator approves the leave, the system **automatically** marks the student as "On Leave" in the attendance records.
+
+### 📱 Mobile First:
+- The entire dashboard, especially the **Manual Attendance** and **Student Info** sections, is fully mobile-responsive for easy use on any device.
 
 ---
 
 ## 🛠️ Technology Used (The "Tech Stack")
 
 We use the **MERN Stack**, which is the gold standard for modern web apps:
-- **Frontend (The UI)**: React.js (Fast and interactive)
-- **Backend (The Brain)**: Node.js & Express (Handles all requests)
-- **Database (The Memory)**: MongoDB (Stores all user and attendance data)
-- **Deployment**: Docker (Ensures the app runs exactly the same on any computer)
+- **Frontend**: React.js (with Framer Motion for smooth animations)
+- **Backend**: Node.js & Express
+- **Database**: MongoDB Atlas
+- **File Storage**: Cloudinary (Permanent cloud storage for documents)
+- **Deployment**: Docker & Render
 
 ---
 
 ## 📁 Project Structure
 
 - `frontend/`: All the code for the website you see and click on.
-- `backend/`: The server code that handles data, emails, and security.
+- `backend/`: The server code that handles data, cloud uploads, and security.
 - `assets/`: Images and branding for the project.
-- `docker-compose.yml`: The magic file that starts everything at once.
 
 ---
 
 ## 🚀 How to Run it (Quick Start)
 
-The easiest way to run this is using **Docker**.
-
-1. **Get the code**:
+1. **Setup your environment**:
+   Edit `backend/.env` to include your credentials:
    ```bash
-   git clone https://github.com/01iamysf/iAttend.git
-   cd iAttend
+   CLOUDINARY_CLOUD_NAME=your_name
+   CLOUDINARY_API_KEY=your_key
+   CLOUDINARY_API_SECRET=your_secret
+   MONGO_URI=your_mongodb_url
    ```
-2. **Setup your environment**:
-   Copy the example settings to make them active:
-   ```bash
-   cp backend/.env.example backend/.env
-   ```
-   *(Optional: Edit `backend/.env` to add your Gmail password for email alerts).*
 
-3. **Start the system**:
+2. **Start the system**:
    ```bash
    docker-compose up -d --build
    ```
-4. **Create the first Admin**:
-   Since the database is empty, run this to create an admin account:
+
+3. **Create the first Admin**:
    ```bash
    docker exec backend node seedAdmin.js
    ```
-   - **User**: `admin@example.com`
-   - **Pass**: `admin123`
-
-5. **Open the App**:
-   Go to **http://localhost:5173** in your browser.
 
 ---
 
