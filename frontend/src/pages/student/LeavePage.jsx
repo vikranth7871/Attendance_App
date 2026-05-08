@@ -367,7 +367,7 @@ const LeavePage = () => {
                                                             {(new Date() > new Date(item.endDate) && item.status === 'approved') ? 'Leave Ended' : item.status}
                                                         </div>
                                                         {item.documentUrl && (() => {
-                                                            const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+                                                            const apiBase = (import.meta.env.VITE_API_URL || axios.defaults.baseURL || '').replace('/api', '');
                                                             return (
                                                                 <a href={`${apiBase}/${item.documentUrl}`} target="_blank" rel="noopener noreferrer" 
                                                                    title="View Uploaded Document"
