@@ -75,6 +75,9 @@ function App() {
           <Route element={<ProtectedRoute allowedRoles={['parent']} />}>
             <Route path="/parent/*" element={<ParentDashboard />} />
           </Route>
+
+          {/* Catch-all route for any undefined paths */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
     </AuthProvider>
