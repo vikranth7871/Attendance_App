@@ -8,15 +8,8 @@ if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-// Storage configuration
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, uploadDir);
-    },
-    filename: function (req, file, cb) {
-        cb(null, `${Date.now()}-${file.originalname}`);
-    }
-});
+// Use memory storage for Cloudinary uploads
+const storage = multer.memoryStorage();
 
 // File filter (PDF, JPG, PNG)
 const fileFilter = (req, file, cb) => {

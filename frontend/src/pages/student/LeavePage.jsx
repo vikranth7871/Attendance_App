@@ -367,9 +367,11 @@ const LeavePage = () => {
                                                             {(new Date() > new Date(item.endDate) && item.status === 'approved') ? 'Leave Ended' : item.status}
                                                         </div>
                                                         {item.documentUrl && (() => {
+                                                            const isAbsolute = item.documentUrl.startsWith('http');
                                                             const apiBase = (import.meta.env.VITE_API_URL || axios.defaults.baseURL || '').replace('/api', '');
+                                                            const finalUrl = isAbsolute ? item.documentUrl : `${apiBase}/${item.documentUrl}`;
                                                             return (
-                                                                <a href={`${apiBase}/${item.documentUrl}`} target="_blank" rel="noopener noreferrer" 
+                                                                <a href={finalUrl} target="_blank" rel="noopener noreferrer" 
                                                                    title="View Uploaded Document"
                                                                    style={{ 
                                                                        display: 'flex', alignItems: 'center', justifyContent: 'center', 

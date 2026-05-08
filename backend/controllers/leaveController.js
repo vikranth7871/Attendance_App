@@ -2,6 +2,7 @@ import LeaveRequest from '../models/LeaveRequest.js';
 import Attendance from '../models/Attendance.js';
 import User from '../models/User.js';
 import Notification from '../models/Notification.js';
+import cloudinary from '../config/cloudinary.js';
 
 /**
  * @desc    Apply for a new leave
@@ -12,10 +13,16 @@ export const applyLeave = async (req, res) => {
     try {
         const { leaveType, startDate, endDate, reason, extensionFor } = req.body;
         
-        // Handle document upload path
+        // Handle Cloudinary upload
         let documentUrl = '';
         if (req.file) {
-            documentUrl = req.file.path.replace(/\\/g, '/').replace(process.cwd() + '/', '');
+            const fileBase64 = req.file.buffer.toString('base64');
+            const fileUri = `data:${req.file.mimetype};base64,${fileBase64}`;
+            const uploadRes = await cloudinary.uploader.upload(fileUri, {
+                folder: 'iattend/leaves',
+                resource_type: 'auto'
+            });
+            documentUrl = uploadRes.secure_url;
         }
 
         if (extensionFor && leaveType !== 'Medical') {
