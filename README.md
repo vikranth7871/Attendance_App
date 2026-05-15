@@ -1,4 +1,4 @@
-# 🏫 iAttend — Student Attendance Management System
+#  iAttend — Student Attendance Management System
 
 ![iAttend Banner](./assets/iAttend-Banner.jpeg)
 
@@ -8,7 +8,7 @@
 
 ---
 
-## 🌐 Live Demo
+##  Live Demo
 
 > The application is fully deployed and accessible at:
 
@@ -16,45 +16,45 @@
 
 > **Hosted on Render** — Frontend (Static Site) + Backend (Web Service) + MongoDB Atlas
 
-### 🧪 Try it Out — Demo Credentials
+###  Try it Out — Demo Credentials
 
 You can explore the app instantly using the following test account. No sign-up needed.
 
 | Field       | Value              |
 |-------------|--------------------|
-| 👤 **Role**     | Student            |
-| 📧 **Email**    | `stud1@gmail.com`  |
-| 🔑 **Password** | `stud123`          |
+|  **Role**     | Student            |
+|  **Email**    | `stud1@gmail.com`  |
+|  **Password** | `stud123`          |
 
 > [!NOTE]
 > This is a **read-only demo account** for exploration purposes. Please do not change the password or submit fake leave requests.
 
 ---
 
-## 🌟 What can it do? (Features)
+##  What can it do? (Features)
 
-### 👨‍👩‍👧‍👦 For Different Users:
+###  For Different Users:
 - **Admin**: The "Super Boss." Can create departments, classes, subjects, and manage all users.
 - **Teacher**: Can mark attendance for their subjects and approve or reject student leave requests.
 - **Student**: Can see their attendance percentage, view their timetable, and apply for leaves (with document uploads).
 - **Parent**: Can log in to see the attendance and performance of their kids.
 - **Coordinator**: A special teacher who manages leave requests for a specific class.
 
-### 📅 Smart Attendance:
+###  Smart Attendance:
 - Teachers mark attendance with a few clicks.
 - If a student is absent, parents can get an automated email notification.
 - Keeps a full history so you can see attendance from weeks or months ago.
 
-### 📝 Leave Management:
+###  Leave Management:
 - Students can upload medical certificates which are stored **permanently** in the cloud using Cloudinary.
 - Once the coordinator approves the leave, the system **automatically** marks the student as "On Leave" in the attendance records.
 
-### 📱 Mobile First:
+###  Mobile First:
 - The entire dashboard, especially the **Manual Attendance** and **Student Info** sections, is fully mobile-responsive for easy use on any device.
 
 ---
 
-## 🛠️ Technology Used (The "Tech Stack")
+##  Technology Used (The "Tech Stack")
 
 We use the **MERN Stack**, which is the gold standard for modern web apps:
 - **Frontend**: React.js (with Framer Motion for smooth animations)
@@ -65,7 +65,7 @@ We use the **MERN Stack**, which is the gold standard for modern web apps:
 
 ---
 
-## 📁 Project Structure
+##  Project Structure
 
 - `frontend/`: All the code for the website you see and click on.
 - `backend/`: The server code that handles data, cloud uploads, and security.
@@ -73,7 +73,7 @@ We use the **MERN Stack**, which is the gold standard for modern web apps:
 
 ---
 
-## 🚀 How to Run it (Quick Start)
+##  How to Run it (Quick Start)
 
 1. **Setup your environment**:
    Edit `backend/.env` to include your credentials:
@@ -96,7 +96,7 @@ We use the **MERN Stack**, which is the gold standard for modern web apps:
 
 ---
 
-## 🛡️ Security & Fixes
+##  Security & Fixes
 - **Auto-Fixing Permissions**: We have a special script that automatically fixes folder locks, so you never have to worry about "Permission Denied" errors when uploading documents.
 - **Safe Data**: All passwords are encrypted, and we use secure tokens (JWT) to keep user accounts safe.
 
