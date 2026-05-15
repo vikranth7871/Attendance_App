@@ -1,6 +1,6 @@
 # 🏫 iAttend — Student Attendance Management System
 
-![iAttend Banner](./assets/banner.png)
+![iAttend Banner](./assets/iAttend-Banner.jpeg)
 
 **iAttend** is a complete, easy-to-use school/college management system. It helps teachers take attendance, students apply for leaves, and parents track their children's progress. It's built with modern technology (MERN stack) and is designed to look premium and run fast.
 
