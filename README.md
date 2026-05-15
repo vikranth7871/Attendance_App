@@ -6,6 +6,29 @@
 
 ---
 
+## 🌐 Live Demo
+
+> The application is fully deployed and accessible at:
+
+### 🔗 [https://iattend.online](https://iattend.online)
+
+> **Hosted on Render** — Frontend (Static Site) + Backend (Web Service) + MongoDB Atlas
+
+### 🧪 Try it Out — Demo Credentials
+
+You can explore the app instantly using the following test account. No sign-up needed.
+
+| Field       | Value              |
+|-------------|--------------------|
+| 👤 **Role**     | Student            |
+| 📧 **Email**    | `stud1@gmail.com`  |
+| 🔑 **Password** | `stud123`          |
+
+> [!NOTE]
+> This is a **read-only demo account** for exploration purposes. Please do not change the password or submit fake leave requests.
+
+---
+
 ## 🌟 What can it do? (Features)
 
 ### 👨‍👩‍👧‍👦 For Different Users:
