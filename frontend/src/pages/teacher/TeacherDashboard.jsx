@@ -1,5 +1,6 @@
 import { Routes, Route } from 'react-router-dom';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -719,34 +720,101 @@ const TeacherTimetable = () => {
 ────────────────────────────────────────── */
 const StudentQuickInfo = ({ student }) => {
     const [isOpen, setIsOpen] = useState(false);
-    const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-    const ref = useRef(null);
+    const [popupPos, setPopupPos] = useState({ top: 0, left: 0 });
+    const btnRef = useRef(null);
+    const popupRef = useRef(null);
 
     useEffect(() => {
-        const handleResize = () => setIsMobile(window.innerWidth <= 768);
-        window.addEventListener('resize', handleResize);
         const handleClick = (e) => {
-            if (ref.current && !ref.current.contains(e.target)) setIsOpen(false);
+            if (
+                btnRef.current && !btnRef.current.contains(e.target) &&
+                popupRef.current && !popupRef.current.contains(e.target)
+            ) {
+                setIsOpen(false);
+            }
         };
         document.addEventListener('mousedown', handleClick);
-        return () => {
-            window.removeEventListener('resize', handleResize);
-            document.removeEventListener('mousedown', handleClick);
-        };
+        return () => document.removeEventListener('mousedown', handleClick);
     }, []);
+
+    const handleToggle = () => {
+        if (!isOpen && btnRef.current) {
+            const rect = btnRef.current.getBoundingClientRect();
+            const popupWidth = 260;
+            // Flip left if too close to right edge
+            const left = rect.right + popupWidth > window.innerWidth
+                ? rect.right - popupWidth
+                : rect.left;
+            setPopupPos({
+                top: rect.bottom + window.scrollY + 8,
+                left: Math.max(8, left + window.scrollX)
+            });
+        }
+        setIsOpen(prev => !prev);
+    };
 
     if (!student) return null;
 
+    const popup = (
+        <AnimatePresence>
+            {isOpen && (
+                <motion.div
+                    ref={popupRef}
+                    initial={{ opacity: 0, scale: 0.95, y: 6 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: 6 }}
+                    transition={{ duration: 0.15 }}
+                    style={{
+                        position: 'absolute',
+                        top: popupPos.top,
+                        left: popupPos.left,
+                        zIndex: 9999,
+                        width: 'min(260px, calc(100vw - 16px))',
+                        background: 'var(--bg-secondary)',
+                        backdropFilter: 'blur(20px)',
+                        WebkitBackdropFilter: 'blur(20px)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '12px',
+                        padding: '1.2rem',
+                        boxShadow: '0 20px 40px -8px rgba(0,0,0,0.25), 0 8px 16px -4px rgba(0,0,0,0.1)',
+                        color: 'var(--text-primary)'
+                    }}
+                >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                        <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '0.6rem', marginBottom: '0.2rem' }}>
+                            <p style={{ fontSize: '0.85rem', fontWeight: '800', color: 'var(--brand-primary)', marginBottom: '2px' }}>{student.name}</p>
+                            <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Roll: {student.rollNumber}</p>
+                        </div>
+                        {[
+                            { label: 'Email', value: student.email, icon: <Mail size={12} /> },
+                            { label: 'Department', value: student.departmentId?.departmentName || student.departmentId?.name || 'N/A', icon: <Building2 size={12} /> },
+                            { label: 'Section', value: student.section || 'N/A', icon: <Users size={12} /> }
+                        ].map((info, idx) => (
+                            <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem' }}>
+                                <div style={{ color: 'var(--brand-primary)', marginTop: '2px' }}>{info.icon}</div>
+                                <div>
+                                    <span style={{ color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', fontSize: '0.6rem', fontWeight: '800', letterSpacing: '0.05em' }}>{info.label}</span>
+                                    <p style={{ fontSize: '0.75rem', color: 'var(--text-primary)', fontWeight: '500', wordBreak: 'break-all' }}>{info.value}</p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </motion.div>
+            )}
+        </AnimatePresence>
+    );
+
     return (
-        <div ref={ref} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-            <button 
-                onClick={() => setIsOpen(!isOpen)}
-                style={{ 
-                    background: isOpen ? 'var(--brand-primary)' : 'rgba(99,102,241,0.1)', 
-                    border: '1px solid rgba(99,102,241,0.2)', 
-                    borderRadius: '50%', width: '22px', height: '22px', 
+        <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+            <button
+                ref={btnRef}
+                onClick={handleToggle}
+                style={{
+                    background: isOpen ? 'var(--brand-primary)' : 'rgba(99,102,241,0.1)',
+                    border: '1px solid rgba(99,102,241,0.2)',
+                    borderRadius: '50%', width: '22px', height: '22px',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    cursor: 'pointer', color: isOpen ? 'white' : 'var(--brand-primary)', 
+                    cursor: 'pointer', color: isOpen ? 'white' : 'var(--brand-primary)',
                     marginLeft: '0.6rem', transition: 'all 0.2s',
                     boxShadow: isOpen ? '0 0 10px rgba(99,102,241,0.4)' : 'none'
                 }}
@@ -754,47 +822,7 @@ const StudentQuickInfo = ({ student }) => {
             >
                 <AlertCircle size={13} />
             </button>
-
-            <AnimatePresence>
-                {isOpen && (
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.95, y: 10, x: isMobile ? '-40%' : '0' }}
-                        animate={{ opacity: 1, scale: 1, y: 0, x: isMobile ? '-40%' : '0' }}
-                        exit={{ opacity: 0, scale: 0.95, y: 10, x: isMobile ? '-40%' : '0' }}
-                        style={{ 
-                            position: 'absolute', top: 'calc(100% + 8px)', 
-                            left: isMobile ? '50%' : '0',
-                            zIndex: 100,
-                            width: 'min(260px, 85vw)', 
-                            background: 'var(--bg-secondary)',
-                            backdropFilter: 'blur(20px)',
-                            border: '1px solid var(--border-color)', borderRadius: '12px',
-                            padding: '1.2rem', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
-                            color: 'var(--text-primary)'
-                        }}
-                    >
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-                            <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '0.6rem', marginBottom: '0.2rem' }}>
-                                <p style={{ fontSize: '0.85rem', fontWeight: '800', color: 'var(--brand-primary)', marginBottom: '2px' }}>{student.name}</p>
-                                <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Roll: {student.rollNumber}</p>
-                            </div>
-                            {[
-                                { label: 'Email', value: student.email, icon: <Mail size={12} /> },
-                                { label: 'Department', value: student.departmentId?.departmentName || student.departmentId?.name || 'N/A', icon: <Building2 size={12} /> },
-                                { label: 'Section', value: student.section || 'N/A', icon: <Users size={12} /> }
-                            ].map((info, idx) => (
-                                <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem' }}>
-                                    <div style={{ color: 'var(--brand-primary)', marginTop: '2px' }}>{info.icon}</div>
-                                    <div>
-                                        <span style={{ color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', fontSize: '0.6rem', fontWeight: '800', letterSpacing: '0.05em' }}>{info.label}</span>
-                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-primary)', fontWeight: '500', wordBreak: 'break-all' }}>{info.value}</p>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+            {ReactDOM.createPortal(popup, document.body)}
         </div>
     );
 };
