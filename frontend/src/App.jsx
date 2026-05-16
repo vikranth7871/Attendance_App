@@ -61,7 +61,8 @@ class ErrorBoundary extends Component {
   }
 }
 
-// BUG-24 Fix: Respect user's saved theme preference even on login page
+// Login page is always light — it's a public gateway
+// Dark mode only applies after successful login
 const ThemeEnforcer = () => {
   const { user } = useAuth();
 
@@ -70,9 +71,8 @@ const ThemeEnforcer = () => {
       const savedTheme = localStorage.getItem('theme') || 'dark';
       document.documentElement.setAttribute('data-theme', savedTheme);
     } else {
-      // BUG-24: Apply saved preference on login too, not always 'light'
-      const savedTheme = localStorage.getItem('theme') || 'light';
-      document.documentElement.setAttribute('data-theme', savedTheme);
+      // Always force light on login page
+      document.documentElement.setAttribute('data-theme', 'light');
     }
   }, [user]);
 
