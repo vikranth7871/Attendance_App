@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://iattend.online/sitemap.xml
+
+# Block backend API from being indexed
+Disallow: /api/
