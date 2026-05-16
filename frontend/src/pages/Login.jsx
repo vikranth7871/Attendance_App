@@ -95,7 +95,9 @@ const Login = () => {
             setIsLoading(false);
 
             if (res.success) {
-                if (res.role === 'student' && res.user) {
+                // BUG-05/BUG-20 Fix: res.user was always undefined; user state is set by AuthContext
+                // Streak popup only makes sense for students
+                if (res.role === 'student') {
                     setShowStreakPopup(true);
                 } else {
                     redirectUser(res.role);
@@ -201,9 +203,7 @@ const Login = () => {
                                 </div>
                             </div>
 
-                            <div className="forgot-password">
-                                <a href="#" onClick={(e) => e.preventDefault()}>Forgot Password?</a>
-                            </div>
+                            {/* BUG-23 Fix: Removed dead 'Forgot Password' link that called e.preventDefault() and did nothing */}
 
                             <button type="submit" className="login-btn" disabled={isLoading}>
                                 {isLoading ? 'Signing in...' : 'Login'}

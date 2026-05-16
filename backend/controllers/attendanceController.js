@@ -37,28 +37,42 @@ export const markManualAttendance = async (req, res) => {
             }
         }
 
+        // BUG-01 Fix: Check for duplicate attendance (same student/subject/day)
+        const today = new Date();
+        const startOfDay = new Date(today); startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(today); endOfDay.setHours(23, 59, 59, 999);
+        const existing = await Attendance.findOne({
+            studentId, subjectId, classId,
+            date: { $gte: startOfDay, $lte: endOfDay }
+        });
+        if (existing) {
+            return res.status(409).json({ message: 'Attendance already marked for this student in this session today.' });
+        }
+
         const attendance = await Attendance.create({
             studentId,
             teacherId: req.user._id,
             classId,
             subjectId,
-            date: new Date(),
-            time: new Date().toLocaleTimeString(),
+            date: today,
+            time: today.toLocaleTimeString(),
             method: 'manual',
             status: status || 'present'
         });
 
-        if (status === 'present') {
-            const student = await User.findById(studentId);
-            student.streakCount = (student.streakCount || 0) + 1;
-            if (student.streakCount > (student.bestStreak || 0)) {
-                student.bestStreak = student.streakCount;
+        const student = await User.findById(studentId);
+        if (student) {
+            if (status === 'present') {
+                // BUG-04 Fix: Only increment streak on present
+                student.streakCount = (student.streakCount || 0) + 1;
+                if (student.streakCount > (student.bestStreak || 0)) {
+                    student.bestStreak = student.streakCount;
+                }
+                student.lastAttendanceDate = today;
+            } else if (status === 'absent') {
+                // BUG-04 Fix: Only reset streak on absent — approved leave does NOT break streak
+                student.streakCount = 0;
             }
-            student.lastAttendanceDate = new Date();
-            await student.save();
-        } else {
-            const student = await User.findById(studentId);
-            student.streakCount = 0;
             await student.save();
 
             // Notify parent if absent or on leave
@@ -144,8 +158,18 @@ export const bulkMarkManualAttendance = async (req, res) => {
         const nowTime = today.toLocaleTimeString();
 
         const results = [];
+        const startOfDay = new Date(today); startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(today); endOfDay.setHours(23, 59, 59, 999);
+
         for (const record of attendanceData) {
             const { studentId, status } = record;
+
+            // BUG-01 Fix: Skip if attendance already marked for this student/subject today
+            const existing = await Attendance.findOne({
+                studentId, subjectId, classId,
+                date: { $gte: startOfDay, $lte: endOfDay }
+            });
+            if (existing) continue;
 
             const attendance = await Attendance.create({
                 studentId,
@@ -161,12 +185,14 @@ export const bulkMarkManualAttendance = async (req, res) => {
             const student = await User.findById(studentId);
             if (student) {
                 if (status === 'present') {
+                    // BUG-04 Fix: Increment streak only on present
                     student.streakCount = (student.streakCount || 0) + 1;
                     if (student.streakCount > (student.bestStreak || 0)) {
                         student.bestStreak = student.streakCount;
                     }
                     student.lastAttendanceDate = today;
-                } else {
+                } else if (status === 'absent') {
+                    // BUG-04 Fix: Only reset on absent — leave does NOT break streak
                     student.streakCount = 0;
                 }
                 await student.save();

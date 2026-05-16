@@ -7,7 +7,7 @@ import { protect, authorizeRoles } from '../middleware/authMiddleware.js';
 const router = express.Router();
 
 router.use(protect);
-router.use(authorizeRoles('teacher'));
+router.use(authorizeRoles('teacher', 'admin')); // BUG-13 Fix: Admin should also access coordinator routes
 
 router.get('/students', getCoordinatorStudents);
 router.get('/attendance', getCoordinatorAttendance);

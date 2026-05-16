@@ -8,7 +8,9 @@ export const globalSearch = async (req, res) => {
         const { q, type } = req.query;
         if (!q) return res.status(400).json({ message: 'Search query is required' });
 
-        const regex = new RegExp(q, 'i');
+        // BUG-27 Fix: Escape special regex characters to prevent injection / server crash
+        const escapedQ = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(escapedQ, 'i');
         let results = {};
 
         // Find matching departments first to enable linked searches

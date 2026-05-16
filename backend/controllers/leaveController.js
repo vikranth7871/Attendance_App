@@ -187,6 +187,9 @@ export const approveLeave = async (req, res) => {
 
                 // For each subject the student is enrolled in, create a leave record
                 for (const enrollment of student.enrolledSubjects) {
+                    // BUG-10 Fix: Skip if subject was deleted after enrollment
+                    if (!enrollment.subject?._id) continue;
+
                     await Attendance.findOneAndUpdate(
                         {
                             studentId: student._id,

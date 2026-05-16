@@ -93,6 +93,9 @@ export const deleteDepartment = async (req, res) => {
         await Subject.deleteMany({ departmentId: id });
         await SubjectAllocation.deleteMany({ subjectId: { $in: subjectIds } });
 
+        // BUG-19 Fix: Also delete orphaned Attendance records tied to deleted subjects
+        await Attendance.deleteMany({ subjectId: { $in: subjectIds } });
+
         res.json({ message: 'Department and related data cleared successfully' });
     } catch (error) {
         res.status(400).json({ message: error.message });
@@ -473,8 +476,11 @@ export const deleteUser = async (req, res) => {
             await SubjectAllocation.deleteMany({ teacherId: user._id });
         }
 
-        // Additional cleanup: if student, maybe handle parent relationship if needed
-        // but for now, simple deletion is requested.
+        // BUG-18 Fix: Cascade delete Attendance + LeaveRequest records for deleted student
+        if (user.role === 'student') {
+            await Attendance.deleteMany({ studentId: user._id });
+            await LeaveRequest.deleteMany({ userId: user._id });
+        }
 
         await User.findByIdAndDelete(req.params.id);
         res.json({ message: 'User removed successfully' });
@@ -825,8 +831,8 @@ export const getSystemActivity = async (req, res) => {
     try {
         const { departmentId, startDate, endDate, search } = req.query;
 
-        // Base filter for general counts
-        const countFilter = departmentId ? { department: departmentId } : {};
+        // BUG-08 Fix: Was 'department' — correct field name is 'departmentId'
+        const countFilter = departmentId ? { departmentId } : {};
 
         const studentCount = await User.countDocuments({ role: 'student', ...countFilter });
         const teacherCount = await User.countDocuments({ role: 'teacher', ...countFilter });

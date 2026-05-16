@@ -7,6 +7,9 @@
  * @returns {boolean}
  */
 export const isCurrentTimeInSlot = (startTimeStr, endTimeStr, dayOfWeek, bufferMinutes = 10) => {
+    // BUG-15 Fix: If no time is configured on this allocation, allow marking
+    if (!startTimeStr || !endTimeStr) return true;
+
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const now = new Date();
 

@@ -56,5 +56,8 @@ const attendanceSchema = new mongoose.Schema({
     timestamps: true,
 });
 
+// BUG-02 Fix: Prevent duplicate attendance for same student/subject/day
+attendanceSchema.index({ studentId: 1, subjectId: 1, date: 1 }, { unique: true });
+
 const Attendance = mongoose.model('Attendance', attendanceSchema);
 export default Attendance;

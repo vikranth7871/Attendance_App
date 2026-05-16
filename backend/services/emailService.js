@@ -10,7 +10,7 @@ const sendEmail = async (options) => {
         secure: process.env.SMTP_PORT == 465,
         auth: {
             user: process.env.SMTP_EMAIL || 'user',
-            pass: process.env.SMTP_PASSWORD || 'pass',
+            pass: process.env.SMTP_PASS || process.env.SMTP_PASSWORD || 'pass',
         },
     });
 
