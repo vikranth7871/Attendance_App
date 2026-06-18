@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { LogOut, LayoutDashboard, ClipboardList, Flame, CalendarOff, BookOpen, X } from 'lucide-react';
+import { LogOut, LayoutDashboard, ClipboardList, Flame, CalendarOff, BookOpen, X, Brain } from 'lucide-react';
 import ThemeToggle from '../shared/ThemeToggle';
 
 const StudentSidebar = ({ isOpen, setIsOpen }) => {
@@ -14,6 +14,7 @@ const StudentSidebar = ({ isOpen, setIsOpen }) => {
         ] : []),
         { name: 'My Streaks', path: '/student/streaks', icon: <Flame size={20} /> },
         { name: 'Leave Application', path: '/student/leaves', icon: <CalendarOff size={20} /> },
+        { name: 'Quiz Arena', path: '/student/quiz', icon: <Brain size={20} />, badge: 'NEW' },
     ];
 
     return (
@@ -56,7 +57,14 @@ const StudentSidebar = ({ isOpen, setIsOpen }) => {
                             }}
                         >
                             {link.icon}
-                            {link.name}
+                            <span style={{ flex: 1 }}>{link.name}</span>
+                            {link.badge && !isActive && (
+                                <span style={{
+                                    fontSize: '0.55rem', fontWeight: '800', padding: '0.15rem 0.4rem',
+                                    borderRadius: '999px', background: 'linear-gradient(135deg, #f59e0b, #f97316)',
+                                    color: 'white', textTransform: 'uppercase', letterSpacing: '0.05em'
+                                }}>{link.badge}</span>
+                            )}
                         </Link>
                     );
                 })}
