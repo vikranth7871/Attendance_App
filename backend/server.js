@@ -13,6 +13,7 @@ import searchRoutes from './routes/searchRoutes.js';
 import studentRoutes from './routes/studentRoutes.js';
 import teacherRoutes from './routes/teacherRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
+import quizRoutes from './routes/quizRoutes.js';
 import runWeeklyJob from './jobs/weeklyReportJob.js';
 
 dotenv.config();
@@ -57,6 +58,7 @@ app.use('/api/search', searchRoutes);
 app.use('/api/student', studentRoutes);
 app.use('/api/teacher', teacherRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/quiz', quizRoutes);
 
 // Start Cron Jobs
 runWeeklyJob();

@@ -6,6 +6,7 @@ import HistoryPage from './HistoryPage';
 import StreaksPage from './StreaksPage';
 import LeavePage from './LeavePage';
 import SubjectsPage from './SubjectsPage';
+import QuizHub from '../quiz/QuizHub';
 
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
@@ -622,6 +623,7 @@ const StudentDashboard = () => {
                         <Route path="/streaks" element={<StreaksPage />} />
                         <Route path="/leaves" element={<LeavePage />} />
                         <Route path="/subjects" element={<SubjectsPage />} />
+                        <Route path="/quiz/*" element={<QuizHub />} />
                     </Routes>
                 </div>
             </main>
