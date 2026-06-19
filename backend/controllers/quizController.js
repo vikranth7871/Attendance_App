@@ -22,7 +22,7 @@ const generateCertificateId = () => {
 /* ─────────────────────────────────────────────────────────────
    AI Quiz Generation via Google Gemini
 ───────────────────────────────────────────────────────────── */
-const generateQuestionsWithAI = async ({ subject, syllabus, count = 10, difficulty = 'mixed' }) => {
+const generateQuestionsWithAI = async ({ subject, syllabus, count = 10, difficulty = 'mixed', promptBox, tags, imageBuffer, mimeType }) => {
     if (!process.env.GEMINI_API_KEY) {
         throw new Error('GEMINI_API_KEY is not set in environment variables. Please add it to your .env file.');
     }
@@ -38,6 +38,8 @@ const generateQuestionsWithAI = async ({ subject, syllabus, count = 10, difficul
 
 Generate exactly ${count} multiple-choice questions about "${subject}".
 ${syllabus ? `Base the questions on this syllabus/topics:\n${syllabus}` : ''}
+${promptBox ? `\nAdditional Instructions from User:\n${promptBox}` : ''}
+${tags && tags.length > 0 ? `\nTags / Focus Areas:\n${tags.join(', ')}` : ''}
 
 Requirements:
 - Each question must have exactly 4 answer options
@@ -63,7 +65,19 @@ Return ONLY a valid JSON array. No markdown, no code blocks, just the raw JSON a
   }
 ]`;
 
-    const result = await model.generateContent(prompt);
+    const parts = [prompt];
+    
+    // If an image was uploaded, attach it to the prompt parts for Gemini Vision
+    if (imageBuffer && mimeType) {
+        parts.push({
+            inlineData: {
+                data: imageBuffer.toString('base64'),
+                mimeType
+            }
+        });
+    }
+
+    const result = await model.generateContent(parts);
     const text = result.response.text();
 
     // Extract JSON array from response (handle cases where Gemini wraps in markdown)
@@ -92,13 +106,28 @@ Return ONLY a valid JSON array. No markdown, no code blocks, just the raw JSON a
 ───────────────────────────────────────────────────────────── */
 export const generateAIQuestions = async (req, res) => {
     try {
-        const { subject, syllabus, count = 10, difficulty = 'mixed' } = req.body;
+        const { subject, syllabus, count = 10, difficulty = 'mixed', promptBox } = req.body;
+        
+        // Tags might be sent as a stringified array if FormData is used
+        let tags = [];
+        if (req.body.tags) {
+            try {
+                tags = JSON.parse(req.body.tags);
+            } catch (e) {
+                tags = Array.isArray(req.body.tags) ? req.body.tags : [req.body.tags];
+            }
+        }
 
         if (!subject) {
             return res.status(400).json({ message: 'Subject name is required for AI generation.' });
         }
 
-        const questions = await generateQuestionsWithAI({ subject, syllabus, count: Math.min(count, 20), difficulty });
+        const imageBuffer = req.file ? req.file.buffer : null;
+        const mimeType = req.file ? req.file.mimetype : null;
+
+        const questions = await generateQuestionsWithAI({ 
+            subject, syllabus, count: Math.min(count, 20), difficulty, promptBox, tags, imageBuffer, mimeType 
+        });
         res.json({ questions, count: questions.length });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -549,6 +578,24 @@ export const deleteQuiz = async (req, res) => {
         // Note: certificates are kept even after quiz deletion (evidence of achievement)
 
         res.json({ message: 'Quiz deleted successfully' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+/* ─────────────────────────────────────────────────────────────
+   @desc   Get certificates for a specific quiz (Admin/Teacher)
+   @route  GET /api/quiz/:id/certificates
+   @access Admin, Teacher
+───────────────────────────────────────────────────────────── */
+export const getQuizCertificates = async (req, res) => {
+    try {
+        const quizId = req.params.id;
+        const certificates = await Certificate.find({ quizId })
+            .populate('studentId', 'name rollNumber email')
+            .sort({ percentage: -1, issuedAt: -1 });
+
+        res.json(certificates);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
