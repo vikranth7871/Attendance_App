@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { LogOut, LayoutDashboard, Users, BookOpen, UserPlus, Settings, Activity, GraduationCap, X } from 'lucide-react';
+import { LogOut, LayoutDashboard, Users, BookOpen, UserPlus, Settings, Activity, GraduationCap, X, Globe } from 'lucide-react';
 import ThemeToggle from '../shared/ThemeToggle';
 
 const AdminSidebar = ({ isOpen, setIsOpen }) => {
@@ -11,6 +11,7 @@ const AdminSidebar = ({ isOpen, setIsOpen }) => {
         { name: 'Dashboard', path: '/admin', icon: <LayoutDashboard size={20} /> },
         { name: 'Departments & Classes', path: '/admin/academic', icon: <BookOpen size={20} /> },
         { name: 'Manage Subjects', path: '/admin/subjects', icon: <GraduationCap size={20} /> },
+        { name: 'External Quizzes', path: '/admin/quizzes', icon: <Globe size={20} /> },
         { name: 'Manage Users', path: '/admin/users', icon: <Users size={20} /> },
         { name: 'Assignments', path: '/admin/assignments', icon: <UserPlus size={20} /> },
         { name: 'Permissions', path: '/admin/permissions', icon: <Settings size={20} /> },

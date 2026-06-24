@@ -17,6 +17,7 @@ import NotificationDropdown from '../../components/shared/NotificationDropdown';
 import ThemeToggle from '../../components/shared/ThemeToggle';
 import TimetableGrid from '../../components/shared/TimetableGrid';
 import ClassRoster from './ClassRoster';
+import TeacherQuizManage from './TeacherQuizManage';
 
 /* ──────────────────────────────────────────
    Teacher Profile Dropdown
@@ -1062,6 +1063,7 @@ const TeacherDashboard = () => {
                         <Route path="/manual" element={<ManualAttendance />} />
                         <Route path="/leaves" element={<LeaveApprovals />} />
                         <Route path="/roster" element={<ClassRoster />} />
+                        <Route path="/quizzes" element={<TeacherQuizManage />} />
                     </Routes>
                 </div>
             </main>

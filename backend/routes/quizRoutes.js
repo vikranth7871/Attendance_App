@@ -11,8 +11,10 @@ import {
     getLeaderboard,
     getMyAttempts,
     getMyCertificates,
-    deleteQuiz
+    deleteQuiz,
+    getQuizCertificates
 } from '../controllers/quizController.js';
+import upload from '../middleware/uploadMiddleware.js';
 
 const router = express.Router();
 
@@ -21,7 +23,7 @@ router.use(protect);
 
 // ── Admin + Teacher Routes (must come before /:id to avoid conflict) ───
 router.get('/admin/manage', authorizeRoles('admin', 'teacher'), getManageQuizzes);   // Manage all quizzes
-router.post('/generate-ai', authorizeRoles('admin', 'teacher'), generateAIQuestions); // AI question generation
+router.post('/generate-ai', authorizeRoles('admin', 'teacher'), upload.single('image'), generateAIQuestions); // AI question generation
 router.post('/create', authorizeRoles('admin', 'teacher'), createQuiz);              // Create quiz
 
 // ── Student-only fixed routes ──────────────────────────────────────────
@@ -35,5 +37,6 @@ router.post('/:id/attempt', authorizeRoles('student'), submitAttempt);          
 router.get('/:id/leaderboard', getLeaderboard);                                      // Quiz leaderboard
 router.put('/:id/publish', authorizeRoles('admin', 'teacher'), togglePublishQuiz);   // Publish / unpublish
 router.delete('/:id', authorizeRoles('admin', 'teacher'), deleteQuiz);               // Delete quiz
+router.get('/:id/certificates', authorizeRoles('admin', 'teacher'), getQuizCertificates); // Get certificates for a quiz
 
 export default router;

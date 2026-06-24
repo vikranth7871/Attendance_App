@@ -13,6 +13,7 @@ import ThemeToggle from '../../components/shared/ThemeToggle';
 import SystemActivity from './SystemActivity';
 import DashboardOverview from './DashboardOverview';
 import AdminProfile from './AdminProfile';
+import AdminQuizManage from './AdminQuizManage';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
@@ -71,6 +72,7 @@ const AdminDashboard = () => {
                         <Route path="/permissions" element={<Permissions />} />
                         <Route path="/activity" element={<SystemActivity />} />
                         <Route path="/profile" element={<AdminProfile />} />
+                        <Route path="/quizzes" element={<AdminQuizManage />} />
                     </Routes>
                 </div>
             </main>
