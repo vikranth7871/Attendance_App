@@ -890,158 +890,123 @@ export const getSystemActivity = async (req, res) => {
  */
 export const getDashboardStats = async (req, res) => {
     try {
+        const { pool } = await import('../config/db.js');
+
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const tomorrow = new Date(today);
         tomorrow.setDate(today.getDate() + 1);
+        const sevenDaysAgo = new Date(today);
+        sevenDaysAgo.setDate(today.getDate() - 6);
 
         // 1. Basic Counts
-        const studentCount = await User.countDocuments({ role: 'student' });
-        const teacherCount = await User.countDocuments({ role: 'teacher' });
-        const parentCount = await User.countDocuments({ role: 'parent' });
-        const departmentCount = await Department.countDocuments({});
-        const classCount = await Class.countDocuments({});
-        const subjectCount = await Subject.countDocuments({});
+        const counts = await pool.query(`
+            SELECT
+                COUNT(*) FILTER (WHERE role = 'student') AS students,
+                COUNT(*) FILTER (WHERE role = 'teacher') AS teachers,
+                COUNT(*) FILTER (WHERE role = 'parent') AS parents
+            FROM users
+        `);
+        const deptCount = await pool.query(`SELECT COUNT(*) FROM departments`);
+        const classCount = await pool.query(`SELECT COUNT(*) FROM classes`);
+        const subjCount = await pool.query(`SELECT COUNT(*) FROM subjects`);
 
         // 2. Today's Attendance Summary (Students)
-        const todayAttendance = await Attendance.find({
-            date: { $gte: today, $lt: tomorrow }
-        });
+        const todayAtt = await pool.query(`
+            SELECT
+                COUNT(*) FILTER (WHERE status = 'present') AS present,
+                COUNT(*) FILTER (WHERE status = 'absent') AS absent,
+                COUNT(*) FILTER (WHERE status = 'leave') AS leave,
+                COUNT(*) AS total
+            FROM attendance
+            WHERE date >= $1 AND date < $2
+        `, [today, tomorrow]);
 
-        const attendanceSummary = {
-            present: todayAttendance.filter(a => a.status === 'present').length,
-            absent: todayAttendance.filter(a => a.status === 'absent').length,
-            leave: todayAttendance.filter(a => a.status === 'leave').length,
-            total: todayAttendance.length
-        };
+        // 2b. Teacher attendance summary
+        const teacherCount = parseInt(counts.rows[0].teachers) || 0;
+        const teacherLeave = await pool.query(`
+            SELECT COUNT(*) AS cnt FROM leave_requests
+            WHERE role = 'teacher' AND status = 'approved'
+              AND start_date <= $1 AND end_date >= $2
+        `, [tomorrow, today]);
+        const teacherPresent = await pool.query(`
+            SELECT COUNT(DISTINCT marked_by) AS cnt FROM attendance
+            WHERE date >= $1 AND date < $2
+        `, [today, tomorrow]);
 
-        // 2b. Today's Attendance Summary (Teachers)
-        const teacherOnLeaveCount = await LeaveRequest.countDocuments({
-            role: 'teacher',
-            status: 'approved',
-            startDate: { $lte: tomorrow },
-            endDate: { $gte: today }
-        });
-
-        const performingTeachers = await Attendance.distinct('teacherId', {
-            date: { $gte: today, $lt: tomorrow }
-        });
+        const teacherOnLeaveCount = parseInt(teacherLeave.rows[0].cnt) || 0;
+        const performingTeachers = parseInt(teacherPresent.rows[0].cnt) || 0;
 
         const teacherSummary = {
-            present: performingTeachers.length,
+            present: performingTeachers,
             leave: teacherOnLeaveCount,
-            absent: Math.max(0, teacherCount - performingTeachers.length - teacherOnLeaveCount),
+            absent: Math.max(0, teacherCount - performingTeachers - teacherOnLeaveCount),
             total: teacherCount
         };
 
         // 3. 7-Day Attendance Trend (Students)
-        const sevenDaysAgo = new Date(today);
-        sevenDaysAgo.setDate(today.getDate() - 6);
+        const trendRaw = await pool.query(`
+            SELECT
+                TO_CHAR(date, 'YYYY-MM-DD') AS "_id",
+                COUNT(*) FILTER (WHERE status = 'present') AS present,
+                COUNT(*) FILTER (WHERE status = 'absent') AS absent,
+                COUNT(*) FILTER (WHERE status = 'leave') AS leave
+            FROM attendance
+            WHERE date >= $1 AND date < $2
+            GROUP BY date ORDER BY date ASC
+        `, [sevenDaysAgo, tomorrow]);
 
-        const trendData = await Attendance.aggregate([
-            {
-                $match: {
-                    date: { $gte: sevenDaysAgo, $lt: tomorrow }
-                }
-            },
-            {
-                $group: {
-                    _id: { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
-                    present: { $sum: { $cond: [{ $eq: ["$status", "present"] }, 1, 0] } },
-                    absent: { $sum: { $cond: [{ $eq: ["$status", "absent"] }, 1, 0] } },
-                    leave: { $sum: { $cond: [{ $eq: ["$status", "leave"] }, 1, 0] } }
-                }
-            },
-            { $sort: { "_id": 1 } }
-        ]);
+        // 3b. Teacher 7-day trend
+        const teacherTrendRaw = await pool.query(`
+            SELECT
+                TO_CHAR(date, 'YYYY-MM-DD') AS "_id",
+                COUNT(DISTINCT marked_by) AS present
+            FROM attendance
+            WHERE date >= $1 AND date < $2
+            GROUP BY date ORDER BY date ASC
+        `, [sevenDaysAgo, tomorrow]);
 
-        // 3b. 7-Day Teacher Attendance Trend
-        const teacherTrendData = await Attendance.aggregate([
-            {
-                $match: {
-                    date: { $gte: sevenDaysAgo, $lt: tomorrow }
-                }
-            },
-            {
-                $group: {
-                    _id: { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
-                    presentTeachers: { $addToSet: "$teacherId" }
-                }
-            },
-            {
-                $project: {
-                    _id: 1,
-                    present: { $size: "$presentTeachers" },
-                    // Mocking total based on current count for trend visualization
-                    total: { $literal: teacherCount }
-                }
-            },
-            { $sort: { "_id": 1 } }
-        ]);
+        // 4. Recent Activities (last 5 attendance records)
+        const recentRaw = await pool.query(`
+            SELECT a.*, u.name AS student_name, s.name AS subject_name
+            FROM attendance a
+            LEFT JOIN users u ON u.id = a.student_id
+            LEFT JOIN subjects s ON s.id = a.subject_id
+            ORDER BY a.created_at DESC LIMIT 5
+        `);
 
-        // 4. Recent Activities
-        const recentActivities = await Attendance.find({})
-            .sort({ createdAt: -1 })
-            .limit(5)
-            .populate({ path: 'studentId', select: 'name departmentId', populate: { path: 'departmentId', select: 'departmentName' } })
-            .populate('subjectId', 'subjectName')
-            .populate('classId', 'className');
-
-        // 5. Teacher Performance (Top 5 Active Teachers by Marks)
-        const teacherPerformance = await Attendance.aggregate([
-            {
-                $group: {
-                    _id: "$teacherId",
-                    markingCount: { $sum: 1 }
-                }
-            },
-            { $sort: { markingCount: -1 } },
-            { $limit: 5 },
-            {
-                $lookup: {
-                    from: 'users',
-                    localField: '_id',
-                    foreignField: '_id',
-                    as: 'teacherInfo'
-                }
-            },
-            { $unwind: "$teacherInfo" },
-            {
-                $lookup: {
-                    from: 'departments',
-                    localField: 'teacherInfo.departmentId',
-                    foreignField: '_id',
-                    as: 'deptInfo'
-                }
-            },
-            { $unwind: { path: "$deptInfo", preserveNullAndEmptyArrays: true } },
-            {
-                $project: {
-                    _id: 1,
-                    markingCount: 1,
-                    name: "$teacherInfo.name",
-                    email: "$teacherInfo.email",
-                    avatar: "$teacherInfo.avatar",
-                    department: "$deptInfo.departmentName"
-                }
-            }
-        ]);
+        // 5. Teacher Performance (Top 5)
+        const teacherPerf = await pool.query(`
+            SELECT u.id AS _id, u.name, u.email, u.avatar,
+                   d.name AS department,
+                   COUNT(a.id) AS "markingCount"
+            FROM attendance a
+            JOIN users u ON u.id = a.marked_by
+            LEFT JOIN departments d ON d.id = u.department_id
+            GROUP BY u.id, u.name, u.email, u.avatar, d.name
+            ORDER BY "markingCount" DESC LIMIT 5
+        `);
 
         res.json({
             counts: {
-                students: studentCount,
+                students: parseInt(counts.rows[0].students) || 0,
                 teachers: teacherCount,
-                parents: parentCount,
-                departments: departmentCount,
-                classes: classCount,
-                subjects: subjectCount
+                parents: parseInt(counts.rows[0].parents) || 0,
+                departments: parseInt(deptCount.rows[0].count) || 0,
+                classes: parseInt(classCount.rows[0].count) || 0,
+                subjects: parseInt(subjCount.rows[0].count) || 0,
             },
-            todayAttendance: attendanceSummary,
+            todayAttendance: {
+                present: parseInt(todayAtt.rows[0].present) || 0,
+                absent: parseInt(todayAtt.rows[0].absent) || 0,
+                leave: parseInt(todayAtt.rows[0].leave) || 0,
+                total: parseInt(todayAtt.rows[0].total) || 0,
+            },
             teacherAttendance: teacherSummary,
-            trend: trendData,
-            teacherTrend: teacherTrendData,
-            recentActivities,
-            teacherPerformance
+            trend: trendRaw.rows,
+            teacherTrend: teacherTrendRaw.rows.map(r => ({ ...r, total: teacherCount })),
+            recentActivities: recentRaw.rows,
+            teacherPerformance: teacherPerf.rows,
         });
     } catch (error) {
         res.status(500).json({ message: error.message });

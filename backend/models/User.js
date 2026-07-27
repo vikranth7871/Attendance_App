@@ -1,133 +1,79 @@
-import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
+import { pool } from '../config/db.js';
 
-/**
- * User Schema
- * @typedef {Object} User
- * @property {String} name - User's full name
- * @property {String} email - Unique email for login
- * @property {String} password - Hashed password
- * @property {String} role - Role enum: 'admin', 'teacher', 'student', 'parent'
- * @property {ObjectId} departmentId - Ref to Department model
- * @property {ObjectId} classId - Ref to Class model
- * @property {String} section - Class section (e.g., 'A')
- * @property {String} rollNumber - Student's roll number
- * @property {ObjectId} parentId - Ref to Parent User (for students)
- * @property {String} parentEmail - Parent's contact email
- * @property {Array<String>} permissions - List of granular access permissions
- * @property {ObjectId} classCoordinatorFor - Ref to Class this teacher coordinates
- * @property {Array<Object>} enrolledSubjects - List of subjects the student is taking
- * @property {Number} streakCount - Current consecutive days present
- * @property {Number} bestStreak - Record best streak count
- * @property {Date} lastAttendanceDate - Date of last marked attendance
- * @property {String} avatar - URL or base64 for profile image
- * @property {String} coverImage - URL or base64 for profile cover image
- */
-const userSchema = new mongoose.Schema({
-    name: {
-        type: String,
-        required: true,
-    },
-    email: {
-        type: String,
-        required: true,
-        unique: true,
-    },
-    password: {
-        type: String,
-        required: true,
-    },
-    role: {
-        type: String,
-        enum: ['admin', 'teacher', 'student', 'parent'],
-        required: true,
-    },
-    departmentId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Department',
-    },
-    classId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Class',
-    },
-    section: {
-        type: String,
-    },
-    rollNumber: {
-        type: String,
-    },
-    parentId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-    },
-    parentEmail: {
-        type: String,
-    },
-    permissions: [{
-        type: String,
-        enum: [
-            'markAttendance',
-            'manualAttendance',
-            'viewAttendance',
-            'editAttendance',
-            'deleteAttendance',
-            'exportAttendance',
-            'bypassTimeRestraint',
-            // Keeping older ones just in case 
-            'applyLeave', 'viewReports', 'manageStudents', 'manageSystem'
-        ],
-    }],
-    classCoordinatorFor: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Class',
-    },
-    enrolledSubjects: [{
-        subject: { type: mongoose.Schema.Types.ObjectId, ref: 'Subject' },
-        semester: { type: String },
-        year: { type: String }
-    }],
-    streakCount: {
-        type: Number,
-        default: 0,
-    },
-    bestStreak: {
-        type: Number,
-        default: 0,
-    },
-    lastAttendanceDate: {
-        type: Date,
-    },
-    avatar: {
-        type: String,
-        default: '',
-    },
-    coverImage: {
-        type: String,
-        default: '',
+class User {
+    constructor(data) {
+        if (!data) return;
+        this._id = data.id;
+        this.id = data.id;
+        this.name = data.name;
+        this.email = data.email;
+        this.password = data.password;
+        this.role = data.role;
+        this.departmentId = data.department_id;
+        this.classId = data.class_id;
+        this.section = data.section;
+        this.rollNumber = data.roll_number;
+        this.parentId = data.parent_id;
+        this.parentEmail = data.parent_email;
+        this.permissions = data.permissions || [];
+        this.classCoordinatorFor = data.class_coordinator_for;
+        this.enrolledSubjects = data.enrolled_subjects || [];
+        this.streakCount = data.streak_count || 0;
+        this.bestStreak = data.best_streak || 0;
+        this.lastAttendanceDate = data.last_attendance_date;
+        this.avatar = data.avatar || '';
+        this.coverImage = data.cover_image || '';
+        this.createdAt = data.created_at;
+        this.updatedAt = data.updated_at;
     }
-}, {
-    timestamps: true,
-});
 
-/**
- * Compare entered password with hashed password in database
- * @param {String} enteredPassword 
- * @returns {Promise<Boolean>}
- */
-userSchema.methods.matchPassword = async function (enteredPassword) {
-    return await bcrypt.compare(enteredPassword, this.password);
-};
-
-/**
- * Pre-save middleware to hash password before saving to database
- */
-userSchema.pre('save', async function () {
-    if (!this.isModified('password')) {
-        return;
+    async matchPassword(enteredPassword) {
+        return await bcrypt.compare(enteredPassword, this.password);
     }
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
-});
 
-const User = mongoose.model('User', userSchema);
+    static async findOne(query) {
+        let sql = 'SELECT * FROM users WHERE ';
+        const keys = Object.keys(query);
+        const params = [];
+
+        sql += keys.map((key, idx) => {
+            const col = key === 'parentEmail' ? 'parent_email' : key;
+            params.push(query[key]);
+            return `${col} = $${idx + 1}`;
+        }).join(' AND ');
+
+        sql += ' LIMIT 1';
+        const res = await pool.query(sql, params);
+        if (res.rows.length === 0) return null;
+        return new User(res.rows[0]);
+    }
+
+    static async findById(id) {
+        const res = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+        if (res.rows.length === 0) return null;
+        const user = new User(res.rows[0]);
+        user.select = function() { return this; };
+        user.populate = function() { return this; };
+        return user;
+    }
+
+    static async create(userData) {
+        const hashedPassword = await bcrypt.hash(userData.password, 10);
+        const res = await pool.query(
+            `INSERT INTO users (name, email, password, role, permissions, roll_number) 
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+            [
+                userData.name,
+                userData.email,
+                hashedPassword,
+                userData.role,
+                userData.permissions || [],
+                userData.rollNumber || null
+            ]
+        );
+        return new User(res.rows[0]);
+    }
+}
+
 export default User;

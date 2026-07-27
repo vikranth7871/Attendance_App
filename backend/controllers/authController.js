@@ -66,8 +66,9 @@ export const logoutUser = (req, res) => {
  */
 export const getUserProfile = async (req, res) => {
     try {
-        const user = await User.findById(req.user._id).select('-password').populate('departmentId').populate('classId');
+        const user = await User.findById(req.user._id || req.user.id);
         if (user) {
+            delete user.password;
             res.json(user);
         } else {
             res.status(404).json({ message: 'User not found' });
