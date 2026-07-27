@@ -1,0 +1,21 @@
+{
+  "name": "iAttend – Smart Attendance Management",
+  "short_name": "iAttend",
+  "description": "Smart student attendance management system for admins, teachers, students, and parents.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#6366f1",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
