@@ -233,6 +233,18 @@ export const initSchema = async () => {
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             CONSTRAINT unique_teacher_date UNIQUE(teacher_id, date)
         );
+
+        CREATE TABLE IF NOT EXISTS notifications (
+            id SERIAL PRIMARY KEY,
+            recipient_id INTEGER NOT NULL,
+            title VARCHAR(255),
+            message TEXT,
+            type VARCHAR(50) DEFAULT 'info',
+            is_read BOOLEAN DEFAULT false,
+            link TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
     `;
     try {
         await pool.query(createTablesSQL);
@@ -242,7 +254,7 @@ export const initSchema = async () => {
         if (checkCoord.rows.length === 0) {
             await pool.query('INSERT INTO class_coordinators (teacher_id, class_id) VALUES (2, 1)');
         }
-        await pool.query('UPDATE users SET class_coordinator_for = 1 WHERE id = 2');
+        await pool.query('UPDATE users SET class_coordinator_for = 1, department_id = 1 WHERE id = 2');
 
         console.log('Neon DB tables schema initialized successfully');
     } catch (err) {

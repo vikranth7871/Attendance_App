@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
-import { Users, GraduationCap, Search, Mail, User, BookOpen, Lock, X, Activity, Award, Calendar, BarChart2 } from 'lucide-react';
+import { Users, GraduationCap, Search, Mail, User, BookOpen, Lock, X, Activity, Award, Calendar, BarChart2, Flame } from 'lucide-react';
 
 const StudentProfileModal = ({ studentId, onClose }) => {
     const [data, setData] = useState(null);
@@ -246,8 +246,8 @@ const ClassRoster = () => {
                                         {session.class?.className} - {session.subject?.subjectName}
                                     </div>
                                     {session.scheduleBadge && (
-                                        <div style={{ fontSize: '0.75rem', opacity: isSelected ? 0.9 : 0.6, fontWeight: '500' }}>
-                                            🗓️ {session.scheduleBadge}
+                                        <div style={{ fontSize: '0.75rem', opacity: isSelected ? 0.9 : 0.6, fontWeight: '500', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                            <Calendar size={13} /> {session.scheduleBadge}
                                         </div>
                                     )}
                                 </div>
@@ -270,7 +270,7 @@ const ClassRoster = () => {
                         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
                             {activeTab === 'coordinated'
                                 ? 'Complete roster for your coordinated class.'
-                                : selectedSession?.scheduleBadge ? `🗓️ ${selectedSession.scheduleBadge} • ${currentStudents.length} Students Enrolled` : `List updated for the current ${selectedSession?.subject?.subjectName} schedule.`
+                                : selectedSession?.scheduleBadge ? `${selectedSession.scheduleBadge} • ${currentStudents.length} Students Enrolled` : `List updated for the current ${selectedSession?.subject?.subjectName} schedule.`
                             }
                         </p>
                     </div>
@@ -313,7 +313,7 @@ const ClassRoster = () => {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '1.25rem', borderTop: '1px solid var(--border-color)' }}>
                                 <div style={{ display: 'flex', gap: '1rem' }}>
                                     <span style={{ fontSize: '0.75rem', fontWeight: '800', color: 'var(--warning)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                                        🔥 {student.streakCount || 0}
+                                        <Flame size={13} color="#f59e0b" /> {student.streakCount || 0}
                                     </span>
                                 </div>
                                 {(activeTab === 'coordinated' || user?.role === 'admin') && (

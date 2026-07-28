@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import TeacherSidebar from '../../components/teacher/TeacherSidebar';
+import DocumentModal from '../../components/shared/DocumentModal';
 
 import ManualAttendance from './ManualAttendance';
 import NotificationDropdown from '../../components/shared/NotificationDropdown';
@@ -645,7 +646,8 @@ const ReportModal = ({ onClose }) => {
 const TeacherTimetable = () => {
     const [subjects, setSubjects] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [showReport, setShowReport] = useState(false);
+    const [downloading, setDownloading] = useState(false);
+    const timetableRef = useRef(null);
 
     useEffect(() => {
         const fetchSubjects = async () => {
@@ -661,6 +663,28 @@ const TeacherTimetable = () => {
         fetchSubjects();
     }, []);
 
+    const handleDownloadTimetable = async () => {
+        if (!timetableRef.current || downloading) return;
+        setDownloading(true);
+        try {
+            const html2canvas = (await import('html2canvas')).default;
+            const canvas = await html2canvas(timetableRef.current, {
+                backgroundColor: '#1a1a2e',
+                scale: 2,
+                useCORS: true,
+                logging: false
+            });
+            const link = document.createElement('a');
+            link.download = `timetable_${new Date().toISOString().split('T')[0]}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        } catch (err) {
+            console.error('Failed to download timetable:', err);
+        } finally {
+            setDownloading(false);
+        }
+    };
+
     if (loading) return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading your schedule...</div>;
 
     return (
@@ -669,24 +693,26 @@ const TeacherTimetable = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
                 <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>Teacher Schedule</h2>
                 <motion.button
-                    id="generate-report-btn"
-                    whileHover={{ scale: 1.05, boxShadow: "0 0 20px rgba(236, 72, 153, 0.4)" }}
+                    id="download-timetable-btn"
+                    whileHover={{ scale: 1.05, boxShadow: "0 0 20px rgba(91, 80, 230, 0.4)" }}
                     whileTap={{ scale: 0.95 }}
-                    onClick={() => setShowReport(true)}
+                    onClick={handleDownloadTimetable}
+                    disabled={downloading}
                     style={{
                         position: 'relative',
                         padding: '0.75rem 1.5rem',
-                        background: 'linear-gradient(135deg, var(--brand-primary), #ec4899)',
+                        background: 'linear-gradient(135deg, var(--brand-primary), var(--brand-secondary))',
                         color: 'white',
                         border: 'none',
                         borderRadius: '12px',
                         fontWeight: '600',
-                        cursor: 'pointer',
+                        cursor: downloading ? 'wait' : 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '0.5rem',
                         overflow: 'hidden',
-                        boxShadow: '0 4px 15px rgba(99, 102, 241, 0.3)'
+                        boxShadow: '0 4px 15px rgba(91, 80, 230, 0.3)',
+                        opacity: downloading ? 0.7 : 1
                     }}
                 >
                     <motion.div
@@ -698,8 +724,8 @@ const TeacherTimetable = () => {
                             transform: 'skewX(-20deg)', zIndex: 1
                         }}
                     />
-                    <FileBarChart2 size={18} style={{ zIndex: 2, position: 'relative' }} />
-                    <span style={{ zIndex: 2, position: 'relative' }}>Generate Report</span>
+                    <Download size={18} style={{ zIndex: 2, position: 'relative' }} />
+                    <span style={{ zIndex: 2, position: 'relative' }}>{downloading ? 'Downloading...' : 'Download Timetable'}</span>
                 </motion.button>
             </div>
 
@@ -709,10 +735,10 @@ const TeacherTimetable = () => {
                     <p style={{ color: 'var(--text-secondary)' }}>You haven't been assigned any subjects yet.</p>
                 </div>
             ) : (
-                <TimetableGrid subjects={subjects} hideTeacher={true} />
+                <div ref={timetableRef}>
+                    <TimetableGrid subjects={subjects} hideTeacher={true} />
+                </div>
             )}
-
-            {showReport && <ReportModal onClose={() => setShowReport(false)} />}
         </div>
     );
 };
@@ -836,6 +862,7 @@ const LeaveApprovals = () => {
     const [leaves, setLeaves] = useState([]);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(null);
+    const [previewDoc, setPreviewDoc] = useState(null);
 
     const fetchLeaves = async () => {
         try {
@@ -869,6 +896,7 @@ const LeaveApprovals = () => {
 
     return (
         <div className="glass-panel animate-fade-in" style={{ padding: '2rem' }}>
+            <DocumentModal url={previewDoc} onClose={() => setPreviewDoc(null)} />
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
                 <h2 style={{ fontSize: '1.25rem', fontWeight: '600' }}>Leave Approvals</h2>
                 <span className="badge badge-primary">{leaves.length} Total Requests</span>
@@ -915,13 +943,17 @@ const LeaveApprovals = () => {
                                     <p>{leave.reason}</p>
                                     {leave.documentUrl && (() => {
                                         const docUrl = leave.documentUrl.trim();
-                                        const isAbsolute = /^https?:\/\//i.test(docUrl);
+                                        const isAbsolute = /^https?:\/\//i.test(docUrl) || docUrl.startsWith('data:');
                                         const apiBase = (import.meta.env.VITE_API_URL || axios.defaults.baseURL || '').replace('/api', '').replace(/\/$/, '');
                                         const finalUrl = isAbsolute ? docUrl : `${apiBase}/${docUrl.replace(/^\//, '')}`;
                                         return (
-                                            <a href={finalUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--brand-primary)', textDecoration: 'none', background: 'rgba(99,102,241,0.1)', padding: '0.2rem 0.6rem', borderRadius: '4px' }}>
+                                            <button
+                                                type="button"
+                                                onClick={() => setPreviewDoc(finalUrl)}
+                                                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--brand-primary)', textDecoration: 'none', background: 'rgba(99,102,241,0.1)', padding: '0.35rem 0.75rem', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: '600' }}
+                                            >
                                                 <FileBarChart2 size={12} /> View Attached Document
-                                            </a>
+                                            </button>
                                         );
                                     })()}
                                 </div>

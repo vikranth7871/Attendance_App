@@ -2,13 +2,11 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { motion } from 'framer-motion';
 import { BookOpen, User, Calendar } from 'lucide-react';
-import TimetableGrid from '../../components/shared/TimetableGrid';
 
 const SubjectsPage = () => {
     const [subjects, setSubjects] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    const [view, setView] = useState('grid'); // 'grid' or 'timetable'
 
     useEffect(() => {
         const fetchSubjects = async () => {
@@ -57,37 +55,9 @@ const SubjectsPage = () => {
 
     return (
         <div className="animate-fade-in" style={{ padding: '1rem', maxWidth: '1000px', margin: '0 auto' }}>
-            <div style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '1.5rem' }}>
-                <div style={{ flex: '1 1 250px' }}>
-                    <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--text-primary)', marginBottom: '0.5rem' }}>My Academic Schedule</h1>
-                    <p style={{ color: 'var(--text-secondary)' }}>View your weekly subjects and timetable.</p>
-                </div>
-                <div style={{ display: 'flex', background: 'var(--bg-secondary)', padding: '0.25rem', borderRadius: '0.75rem', border: '1px solid var(--border-color)' }}>
-                    <button
-                        onClick={() => setView('timetable')}
-                        style={{
-                            padding: '0.5rem 1rem', borderRadius: '0.5rem', border: 'none',
-                            background: view === 'timetable' ? 'var(--brand-primary)' : 'transparent',
-                            color: view === 'timetable' ? 'white' : 'var(--text-secondary)',
-                            fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s',
-                            display: 'flex', alignItems: 'center', gap: '0.5rem'
-                        }}
-                    >
-                        <Calendar size={18} /> Timetable
-                    </button>
-                    <button
-                        onClick={() => setView('grid')}
-                        style={{
-                            padding: '0.5rem 1rem', borderRadius: '0.5rem', border: 'none',
-                            background: view === 'grid' ? 'var(--brand-primary)' : 'transparent',
-                            color: view === 'grid' ? 'white' : 'var(--text-secondary)',
-                            fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s',
-                            display: 'flex', alignItems: 'center', gap: '0.5rem'
-                        }}
-                    >
-                        <BookOpen size={18} /> Subjects
-                    </button>
-                </div>
+            <div style={{ marginBottom: '2rem' }}>
+                <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--text-primary)', marginBottom: '0.5rem' }}>My Subjects</h1>
+                <p style={{ color: 'var(--text-secondary)' }}>All subjects assigned to your class.</p>
             </div>
 
             {subjects.length === 0 ? (
@@ -95,8 +65,6 @@ const SubjectsPage = () => {
                     <BookOpen size={48} style={{ opacity: 0.2, margin: '0 auto 1rem' }} />
                     <p>No subjects have been assigned to your class yet.</p>
                 </div>
-            ) : view === 'timetable' ? (
-                <TimetableGrid subjects={subjects} />
             ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: '1.5rem' }}>
                     {uniqueSubjectCards.map((subject, index) => (
@@ -138,8 +106,8 @@ const SubjectsPage = () => {
                                         {subject.subjectId?.subjectName || 'Unknown Subject'}
                                     </h3>
                                     {subject.scheduleBadge && (
-                                        <div style={{ fontSize: '0.8rem', color: 'var(--brand-primary)', fontWeight: '600', marginTop: '0.35rem' }}>
-                                            🗓️ {subject.scheduleBadge}
+                                        <div style={{ fontSize: '0.8rem', color: 'var(--brand-primary)', fontWeight: '600', marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                            <Calendar size={13} /> {subject.scheduleBadge}
                                         </div>
                                     )}
                                 </div>

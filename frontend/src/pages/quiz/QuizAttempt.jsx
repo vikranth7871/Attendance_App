@@ -509,8 +509,8 @@ const QuizAttempt = () => {
                             }}
                         >
                             <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-                                <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>
-                                    {answeredCount === totalQ ? '✅' : '⚠️'}
+                                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '0.75rem' }}>
+                                    {answeredCount === totalQ ? <CheckCircle size={48} color="#10b981" /> : <AlertTriangle size={48} color="#f59e0b" />}
                                 </div>
                                 <h3 style={{ fontWeight: '800', fontSize: '1.2rem', color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
                                     Submit Quiz?
@@ -519,8 +519,8 @@ const QuizAttempt = () => {
                                     You've answered <strong style={{ color: 'var(--brand-primary)' }}>{answeredCount}</strong> of{' '}
                                     <strong>{totalQ}</strong> questions.
                                     {answeredCount < totalQ && (
-                                        <span style={{ color: '#d97706', display: 'block', marginTop: '0.25rem' }}>
-                                            ⚠️ {totalQ - answeredCount} question{totalQ - answeredCount !== 1 ? 's' : ''} unanswered.
+                                        <span style={{ color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem', marginTop: '0.25rem' }}>
+                                            <AlertTriangle size={14} /> {totalQ - answeredCount} question{totalQ - answeredCount !== 1 ? 's' : ''} unanswered.
                                         </span>
                                     )}
                                 </p>

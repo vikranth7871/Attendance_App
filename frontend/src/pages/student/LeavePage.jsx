@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { Clock, Calendar, AlertCircle, Info, UploadCloud, X, ArrowRightCircle } from 'lucide-react';
+import { Clock, Calendar, AlertCircle, Info, UploadCloud, X, ArrowRightCircle, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import LeaveCalendarPicker from '../../components/shared/LeaveCalendarPicker';
+import DocumentModal from '../../components/shared/DocumentModal';
 
 const RulesModal = ({ onClose }) => (
     <AnimatePresence>
@@ -45,6 +46,7 @@ const LeavePage = () => {
     const [history, setHistory] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showRules, setShowRules] = useState(false);
+    const [previewDoc, setPreviewDoc] = useState(null);
     const [totalDays, setTotalDays] = useState(0);
     const [formError, setFormError] = useState('');
     const formRef = useRef(null);
@@ -361,23 +363,26 @@ const LeavePage = () => {
                                                         </div>
                                                         {item.documentUrl && (() => {
                                                             const docUrl = item.documentUrl.trim();
-                                                            const isAbsolute = /^https?:\/\//i.test(docUrl);
+                                                            const isAbsolute = /^https?:\/\//i.test(docUrl) || docUrl.startsWith('data:');
                                                             const apiBase = (import.meta.env.VITE_API_URL || axios.defaults.baseURL || '').replace('/api', '').replace(/\/$/, '');
                                                             const finalUrl = isAbsolute ? docUrl : `${apiBase}/${docUrl.replace(/^\//, '')}`;
                                                             return (
-                                                                <a href={finalUrl} target="_blank" rel="noopener noreferrer" 
-                                                                   title="View Uploaded Document"
-                                                                   style={{ 
-                                                                       display: 'flex', alignItems: 'center', justifyContent: 'center', 
-                                                                       width: '32px', height: '32px', borderRadius: '8px', 
-                                                                       background: 'rgba(99,102,241,0.1)', color: 'var(--brand-primary)', 
-                                                                       border: '1px solid rgba(99,102,241,0.2)', transition: 'all 0.2s' 
-                                                                   }}
-                                                                   onMouseOver={e => { e.currentTarget.style.background = 'var(--brand-primary)'; e.currentTarget.style.color = 'white'; }}
-                                                                   onMouseOut={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.1)'; e.currentTarget.style.color = 'var(--brand-primary)'; }}
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setPreviewDoc(finalUrl)}
+                                                                    title="View Uploaded Document"
+                                                                    style={{ 
+                                                                        display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                                                        width: '32px', height: '32px', borderRadius: '8px', 
+                                                                        background: 'rgba(99,102,241,0.1)', color: 'var(--brand-primary)', 
+                                                                        border: '1px solid rgba(99,102,241,0.2)', transition: 'all 0.2s',
+                                                                        cursor: 'pointer'
+                                                                    }}
+                                                                    onMouseOver={e => { e.currentTarget.style.background = 'var(--brand-primary)'; e.currentTarget.style.color = 'white'; }}
+                                                                    onMouseOut={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.1)'; e.currentTarget.style.color = 'var(--brand-primary)'; }}
                                                                 >
-                                                                    <UploadCloud size={16} />
-                                                                </a>
+                                                                    <FileText size={16} />
+                                                                </button>
                                                             );
                                                         })()}
                                                         {isApprovedMedical && (
@@ -415,6 +420,7 @@ const LeavePage = () => {
                 )}
             </div>
             <style>{`.history-card { transition: all 0.3s ease; } .history-card:hover { transform: translateX(8px); background: rgba(255,255,255,0.05) !important; border-color: var(--brand-primary) !important; }`}</style>
+            <DocumentModal url={previewDoc} onClose={() => setPreviewDoc(null)} />
         </div>
     );
 };

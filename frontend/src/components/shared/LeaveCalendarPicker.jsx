@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Check, RotateCcw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Check, RotateCcw, CalendarRange, MousePointerClick } from 'lucide-react';
 
 const LeaveCalendarPicker = ({ startDate, endDate, onChange }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
@@ -144,10 +144,11 @@ const LeaveCalendarPicker = ({ startDate, endDate, onChange }) => {
                         flex: 1, padding: '0.5rem', borderRadius: '8px', border: 'none',
                         background: mode === 'single' ? 'var(--brand-primary)' : 'transparent',
                         color: mode === 'single' ? 'white' : 'var(--text-secondary)',
-                        fontWeight: '600', fontSize: '0.85rem', cursor: 'pointer', transition: 'all 0.2s'
+                        fontWeight: '600', fontSize: '0.85rem', cursor: 'pointer', transition: 'all 0.2s',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem'
                     }}
                 >
-                    🗓️ Single Day Leave
+                    <CalendarIcon size={14} /> Single Day Leave
                 </button>
                 <button
                     type="button"
@@ -156,10 +157,11 @@ const LeaveCalendarPicker = ({ startDate, endDate, onChange }) => {
                         flex: 1, padding: '0.5rem', borderRadius: '8px', border: 'none',
                         background: mode === 'range' ? 'var(--brand-primary)' : 'transparent',
                         color: mode === 'range' ? 'white' : 'var(--text-secondary)',
-                        fontWeight: '600', fontSize: '0.85rem', cursor: 'pointer', transition: 'all 0.2s'
+                        fontWeight: '600', fontSize: '0.85rem', cursor: 'pointer', transition: 'all 0.2s',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem'
                     }}
                 >
-                    📅 Multi-Day Range
+                    <CalendarRange size={14} /> Multi-Day Range
                 </button>
             </div>
 
@@ -186,8 +188,8 @@ const LeaveCalendarPicker = ({ startDate, endDate, onChange }) => {
                     </button>
                 </div>
                 {mode === 'range' && (
-                    <span style={{ fontSize: '0.75rem', color: 'var(--brand-primary)', fontWeight: '600' }}>
-                        {rangeStep === 0 ? '👇 Step 1: Click Start Date' : '👇 Step 2: Click End Date'}
+                    <span style={{ fontSize: '0.75rem', color: 'var(--brand-primary)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <MousePointerClick size={13} /> {rangeStep === 0 ? 'Step 1: Click Start Date' : 'Step 2: Click End Date'}
                     </span>
                 )}
             </div>

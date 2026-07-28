@@ -16,11 +16,22 @@ export const applyLeave = async (req, res) => {
         if (req.file) {
             const fileBase64 = req.file.buffer.toString('base64');
             const fileUri = `data:${req.file.mimetype};base64,${fileBase64}`;
-            const uploadRes = await cloudinary.uploader.upload(fileUri, {
-                folder: 'iattend/leaves',
-                resource_type: 'auto'
-            });
-            documentUrl = uploadRes.secure_url;
+            
+            if (process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_CLOUD_NAME) {
+                try {
+                    const uploadRes = await cloudinary.uploader.upload(fileUri, {
+                        folder: 'iattend/leaves',
+                        resource_type: 'auto'
+                    });
+                    documentUrl = uploadRes.secure_url;
+                } catch (cloudErr) {
+                    console.warn('Cloudinary upload failed, falling back to inline data URL:', cloudErr.message);
+                    documentUrl = fileUri;
+                }
+            } else {
+                // Cloudinary credentials not configured in .env, use data URI fallback
+                documentUrl = fileUri;
+            }
         }
 
         const start = new Date(startDate);

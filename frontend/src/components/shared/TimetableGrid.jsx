@@ -25,19 +25,20 @@ const TimetableGrid = ({ subjects = [], hideTeacher = false }) => {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-            <div style={{ overflowX: 'auto', background: 'var(--bg-secondary)', borderRadius: '1rem', border: '1px solid var(--border-color)', padding: '1.5rem' }}>
+            <div style={{ overflowX: 'auto', background: 'var(--bg-secondary)', borderRadius: '1rem', border: '1px solid var(--border-color)', padding: '0.75rem' }}>
                 <div style={{
                     display: 'grid',
-                    gridTemplateColumns: `120px repeat(${DAYS.length}, 1fr)`,
-                    minWidth: '1000px',
+                    gridTemplateColumns: `80px repeat(${DAYS.length}, minmax(0, 1fr))`,
+                    width: '100%',
+                    minWidth: '750px',
                     borderRadius: '0.75rem',
                     overflow: 'hidden',
                     border: '1px solid var(--border-color)'
                 }}>
                     {/* Header Row */}
-                    <div style={{ background: 'var(--bg-primary)', padding: '1.25rem', fontWeight: '800', textAlign: 'center', borderBottom: '2px solid var(--border-color)', borderRight: '1px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Time</div>
+                    <div style={{ background: 'var(--bg-primary)', padding: '0.75rem 0.25rem', fontWeight: '800', textAlign: 'center', borderBottom: '2px solid var(--border-color)', borderRight: '1px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Time</div>
                     {DAYS.map(day => (
-                        <div key={day} style={{ background: 'var(--bg-primary)', padding: '1.25rem', fontWeight: '800', color: 'var(--brand-primary)', textAlign: 'center', borderBottom: '2px solid var(--border-color)', borderRight: day !== 'Saturday' ? '1px solid var(--border-color)' : 'none', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        <div key={day} style={{ background: 'var(--bg-primary)', padding: '0.75rem 0.25rem', fontWeight: '800', color: 'var(--brand-primary)', textAlign: 'center', borderBottom: '2px solid var(--border-color)', borderRight: day !== 'Saturday' ? '1px solid var(--border-color)' : 'none', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {day}
                         </div>
                     ))}
@@ -48,7 +49,7 @@ const TimetableGrid = ({ subjects = [], hideTeacher = false }) => {
                             {/* Time Label Cell */}
                             <div style={{
                                 background: 'var(--bg-primary)',
-                                padding: '1rem',
+                                padding: '0.5rem 0.15rem',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
@@ -56,12 +57,12 @@ const TimetableGrid = ({ subjects = [], hideTeacher = false }) => {
                                 borderRight: '1px solid var(--border-color)',
                                 color: 'var(--text-secondary)',
                                 fontWeight: '600',
-                                fontSize: '0.75rem'
+                                fontSize: '0.7rem'
                             }}>
-                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
-                                    <Clock size={14} opacity={0.6} />
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.15rem', textAlign: 'center' }}>
+                                    <Clock size={12} opacity={0.6} />
                                     <span>{slot.split(' - ')[0]}</span>
-                                    <span style={{ opacity: 0.5, fontSize: '0.65rem' }}>to</span>
+                                    <span style={{ opacity: 0.5, fontSize: '0.6rem' }}>to</span>
                                     <span>{slot.split(' - ')[1]}</span>
                                 </div>
                             </div>
@@ -72,41 +73,43 @@ const TimetableGrid = ({ subjects = [], hideTeacher = false }) => {
                                 return (
                                     <div key={`${day}-${slot}`} style={{
                                         background: 'var(--bg-primary)',
-                                        padding: '0.75rem',
-                                        minHeight: '120px',
+                                        padding: '0.35rem',
+                                        minHeight: '110px',
                                         borderBottom: rowIndex !== TIME_SLOTS.length - 1 ? '1px solid var(--border-color)' : 'none',
                                         borderRight: colIndex !== DAYS.length - 1 ? '1px solid var(--border-color)' : 'none',
                                         display: 'flex',
                                         flexDirection: 'column',
                                         transition: 'all 0.2s ease',
-                                        position: 'relative'
+                                        position: 'relative',
+                                        minWidth: 0
                                     }}>
                                         {sub ? (
                                             <div
                                                 style={{
-                                                    padding: '1rem',
+                                                    padding: '0.5rem 0.4rem',
                                                     background: 'var(--bg-secondary)',
-                                                    borderRadius: '0.75rem',
+                                                    borderRadius: '0.5rem',
                                                     border: '1px solid var(--border-color)',
-                                                    borderLeft: `4px solid var(--brand-primary)`,
-                                                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                                                    borderLeft: `3px solid var(--brand-primary)`,
+                                                    boxShadow: '0 2px 4px -1px rgba(0, 0, 0, 0.1)',
                                                     height: '100%',
                                                     display: 'flex',
                                                     flexDirection: 'column',
-                                                    gap: '0.5rem'
+                                                    gap: '0.25rem',
+                                                    overflow: 'hidden'
                                                 }}
                                             >
-                                                <div style={{ fontWeight: '800', fontSize: '0.9rem', color: 'var(--text-primary)', lineHeight: '1.2' }}>
+                                                <div style={{ fontWeight: '800', fontSize: '0.8rem', color: 'var(--text-primary)', lineHeight: '1.15', wordBreak: 'break-word' }}>
                                                     {sub.subjectId?.subjectName || sub.subjectName || 'Unknown Subject'}
                                                 </div>
 
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                                                        <MapPin size={12} style={{ opacity: 0.7 }} /> {sub.roomNumber || 'Room TBD'}
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                                                    <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.25rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                        <MapPin size={10} style={{ opacity: 0.7, flexShrink: 0 }} /> <span>{sub.roomNumber || 'Room TBD'}</span>
                                                     </div>
                                                     {!hideTeacher && sub.teacherId?.name && (
-                                                        <div style={{ fontSize: '0.7rem', color: 'var(--brand-primary)', display: 'flex', alignItems: 'center', gap: '0.35rem', fontWeight: '600' }}>
-                                                            <User size={12} style={{ opacity: 0.8 }} /> {sub.teacherId.name}
+                                                        <div style={{ fontSize: '0.65rem', color: 'var(--brand-primary)', display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                            <User size={10} style={{ opacity: 0.8, flexShrink: 0 }} /> <span>{sub.teacherId.name}</span>
                                                         </div>
                                                     )}
                                                 </div>
@@ -114,11 +117,11 @@ const TimetableGrid = ({ subjects = [], hideTeacher = false }) => {
                                                 {sub.classId?.className && (
                                                     <div style={{
                                                         marginTop: 'auto',
-                                                        fontSize: '0.65rem',
+                                                        fontSize: '0.6rem',
                                                         color: 'var(--text-light)',
-                                                        padding: '0.25rem 0.5rem',
+                                                        padding: '0.15rem 0.35rem',
                                                         background: 'var(--bg-primary)',
-                                                        borderRadius: '0.4rem',
+                                                        borderRadius: '0.3rem',
                                                         width: 'fit-content',
                                                         fontWeight: '500'
                                                     }}>

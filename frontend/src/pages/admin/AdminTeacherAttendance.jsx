@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { motion } from 'framer-motion';
-import { UserCheck, CheckCircle, XCircle, Calendar, Clock, Save, RefreshCw, AlertCircle, ShieldCheck } from 'lucide-react';
+import { UserCheck, CheckCircle, XCircle, Calendar, Clock, Save, RefreshCw, AlertCircle, ShieldCheck, CalendarOff } from 'lucide-react';
 import { format } from 'date-fns';
 
 const AdminTeacherAttendance = () => {
-    const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    const [date, setDate] = useState(todayStr);
     const [teachers, setTeachers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -25,6 +26,16 @@ const AdminTeacherAttendance = () => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleDateChange = (newDate) => {
+        if (newDate !== todayStr) {
+            setToast('Faculty attendance is restricted to the current day alone.');
+            setTimeout(() => setToast(''), 3000);
+            setDate(todayStr);
+            return;
+        }
+        setDate(newDate);
     };
 
     const handleStatusChange = (teacherId, newStatus) => {
@@ -53,6 +64,12 @@ const AdminTeacherAttendance = () => {
     };
 
     const handleSave = async () => {
+        if (date !== todayStr) {
+            setToast('Faculty attendance can only be marked for today (current day alone).');
+            setTimeout(() => setToast(''), 3000);
+            return;
+        }
+
         setSaving(true);
         try {
             const records = teachers.map(t => ({
@@ -68,7 +85,8 @@ const AdminTeacherAttendance = () => {
             setTimeout(() => setToast(''), 3000);
         } catch (err) {
             console.error('Failed to save teacher attendance:', err);
-            setToast('Failed to save attendance.');
+            const msg = err.response?.data?.message || 'Failed to save attendance.';
+            setToast(msg);
             setTimeout(() => setToast(''), 3000);
         } finally {
             setSaving(false);
@@ -89,7 +107,7 @@ const AdminTeacherAttendance = () => {
                     style={{
                         padding: '0.85rem 1.25rem',
                         borderRadius: '12px',
-                        background: toast.includes('failed') ? '#dc2626' : '#16a34a',
+                        background: toast.includes('failed') || toast.includes('restricted') || toast.includes('only') ? '#dc2626' : '#16a34a',
                         color: 'white',
                         fontWeight: '600',
                         fontSize: '0.9rem',
@@ -120,12 +138,29 @@ const AdminTeacherAttendance = () => {
 
                 {/* Date Picker & Controls */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        padding: '0.25rem 0.65rem',
+                        borderRadius: '999px',
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        color: '#ef4444',
+                        fontWeight: '700',
+                        fontSize: '0.75rem',
+                        border: '1px solid rgba(239, 68, 68, 0.2)'
+                    }}>
+                        <ShieldCheck size={14} /> Same Day Only
+                    </div>
+
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--bg-secondary)', padding: '0.4rem 0.8rem', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
                         <Calendar size={16} style={{ color: 'var(--brand-primary)' }} />
                         <input
                             type="date"
+                            min={todayStr}
+                            max={todayStr}
                             value={date}
-                            onChange={e => setDate(e.target.value)}
+                            onChange={e => handleDateChange(e.target.value)}
                             style={{
                                 background: 'transparent',
                                 border: 'none',
@@ -138,14 +173,14 @@ const AdminTeacherAttendance = () => {
                     </div>
 
                     <button
-                        onClick={() => setDate(format(new Date(), 'yyyy-MM-dd'))}
+                        onClick={() => handleDateChange(todayStr)}
                         style={{
                             padding: '0.45rem 0.85rem',
                             borderRadius: '8px',
-                            border: '1px solid var(--border-color)',
-                            background: 'var(--bg-secondary)',
-                            color: 'var(--text-secondary)',
-                            fontWeight: '600',
+                            border: '1px solid var(--brand-primary)',
+                            background: 'rgba(79, 70, 229, 0.1)',
+                            color: 'var(--brand-primary)',
+                            fontWeight: '700',
                             fontSize: '0.8rem',
                             cursor: 'pointer'
                         }}
@@ -270,8 +305,8 @@ const AdminTeacherAttendance = () => {
                                 <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
                                     {t.email}
                                     {t.onLeave && (
-                                        <span style={{ marginLeft: '0.5rem', color: '#d97706', fontWeight: '700' }}>
-                                            🌴 Approved Leave ({t.leaveReason})
+                                        <span style={{ marginLeft: '0.5rem', color: '#d97706', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                                            <CalendarOff size={14} /> Approved Leave ({t.leaveReason})
                                         </span>
                                     )}
                                 </div>

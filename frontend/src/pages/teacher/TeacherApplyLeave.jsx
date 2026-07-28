@@ -3,6 +3,7 @@ import axios from 'axios';
 import { Calendar, Clock, Upload, CheckCircle2, XCircle, AlertCircle, FileText, Send } from 'lucide-react';
 import { motion } from 'framer-motion';
 import LeaveCalendarPicker from '../../components/shared/LeaveCalendarPicker';
+import DocumentModal from '../../components/shared/DocumentModal';
 
 const TeacherApplyLeave = () => {
     const [leaves, setLeaves] = useState([]);
@@ -10,6 +11,7 @@ const TeacherApplyLeave = () => {
     const [submitting, setSubmitting] = useState(false);
     const [formError, setFormError] = useState('');
     const [formSuccess, setFormSuccess] = useState('');
+    const [previewDoc, setPreviewDoc] = useState(null);
 
     const [formData, setFormData] = useState({
         leaveType: 'Casual',
@@ -236,9 +238,27 @@ const TeacherApplyLeave = () => {
                                     </div>
                                     <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{l.reason}</p>
                                     {l.documentUrl && (
-                                        <a href={l.documentUrl} target="_blank" rel="noreferrer" style={{ fontSize: '0.75rem', color: 'var(--brand-secondary)', textDecoration: 'none', fontWeight: '600', marginTop: '0.25rem' }}>
-                                            📄 View Attached Document
-                                        </a>
+                                        <button
+                                            type="button"
+                                            onClick={() => setPreviewDoc(l.documentUrl)}
+                                            style={{
+                                                fontSize: '0.75rem',
+                                                color: 'var(--brand-primary)',
+                                                background: 'rgba(91, 80, 230, 0.08)',
+                                                border: '1px solid rgba(91, 80, 230, 0.2)',
+                                                padding: '0.3rem 0.6rem',
+                                                borderRadius: '6px',
+                                                fontWeight: '600',
+                                                marginTop: '0.35rem',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '0.25rem',
+                                                cursor: 'pointer',
+                                                width: 'fit-content'
+                                            }}
+                                        >
+                                            <FileText size={13} /> View Attached Document
+                                        </button>
                                     )}
                                 </div>
                             ))}
@@ -246,6 +266,11 @@ const TeacherApplyLeave = () => {
                     )}
                 </motion.div>
             </div>
+            
+            <DocumentModal 
+                url={previewDoc} 
+                onClose={() => setPreviewDoc(null)} 
+            />
         </div>
     );
 };

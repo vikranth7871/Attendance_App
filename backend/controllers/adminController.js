@@ -339,10 +339,45 @@ export const getStudents = async (req, res) => {
 export const getTeachers = async (req, res) => {
     try {
         const { departmentId } = req.query;
-        let filter = { role: 'teacher' };
-        if (departmentId) filter.departmentId = departmentId;
 
-        const teachers = await User.find(filter).select('-password').populate('departmentId');
+        if (!departmentId) {
+            // No department filter — return all teachers
+            const teachers = await User.find({ role: 'teacher' }).select('-password').populate('departmentId');
+            return res.json(teachers);
+        }
+
+        // Find teachers who belong to this department OR teach in classes of this department
+        const result = await pool.query(`
+            SELECT DISTINCT u.*, d.name as department_name, d.code as department_code, c.name as class_name
+            FROM users u
+            LEFT JOIN departments d ON u.department_id = d.id
+            LEFT JOIN classes c ON u.class_id = c.id
+            WHERE u.role = 'teacher'
+              AND (
+                u.department_id = $1
+                OR u.id IN (
+                  SELECT DISTINCT sa.teacher_id 
+                  FROM subject_allocations sa
+                  JOIN classes cls ON sa.class_id = cls.id
+                  WHERE cls.department_id = $1
+                )
+              )
+            ORDER BY u.id DESC
+        `, [departmentId]);
+
+        const teachers = result.rows.map(row => {
+            const user = new User(row);
+            if (row.department_id) {
+                user.departmentId = {
+                    _id: String(row.department_id),
+                    id: row.department_id,
+                    name: row.department_name,
+                    departmentName: row.department_name,
+                    code: row.department_code
+                };
+            }
+            return user;
+        });
         res.json(teachers);
     } catch (error) {
         res.status(400).json({ message: error.message });
@@ -1364,6 +1399,11 @@ export const markTeacherAttendance = async (req, res) => {
     try {
         const adminId = req.user.id || req.user._id;
         const { date = new Date().toISOString().split('T')[0], records } = req.body;
+
+        const todayStr = new Date().toISOString().split('T')[0];
+        if (date !== todayStr) {
+            return res.status(400).json({ message: 'Faculty attendance can only be marked for today (current day alone).' });
+        }
 
         if (!Array.isArray(records) || records.length === 0) {
             return res.status(400).json({ message: 'No attendance records provided' });

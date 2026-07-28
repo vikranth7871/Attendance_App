@@ -6,12 +6,13 @@ import HistoryPage from './HistoryPage';
 import StreaksPage from './StreaksPage';
 import LeavePage from './LeavePage';
 import SubjectsPage from './SubjectsPage';
+import StudentTimetable from './StudentTimetable';
 import QuizHub from '../quiz/QuizHub';
 
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { format } from 'date-fns';
-import { Activity, Calendar as CalendarIcon, Shield, Check, Menu, X, User, Mail, BookOpen, Building2, GraduationCap, Hash, ChevronDown } from 'lucide-react';
+import { Activity, Calendar as CalendarIcon, Shield, Check, Menu, X, User, Mail, BookOpen, Building2, GraduationCap, Hash, ChevronDown, Flame, Trophy, Sparkles, Target, CheckCircle2, TrendingUp, AlertTriangle, TrendingDown, Sun, PlayCircle, CheckCircle, Clock } from 'lucide-react';
 import NotificationDropdown from '../../components/shared/NotificationDropdown';
 import ThemeToggle from '../../components/shared/ThemeToggle';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -40,7 +41,7 @@ const AttendanceRing = ({ present, total }) => {
             bg:     'rgba(22,163,74,0.1)',
             border: 'rgba(22,163,74,0.3)',
             text:   '#16a34a',
-            label:  '✦ Excellent',
+            label:  'Excellent',
         },
         good: {
             color:  '#f59e0b',
@@ -48,7 +49,7 @@ const AttendanceRing = ({ present, total }) => {
             bg:     'rgba(245,158,11,0.1)',
             border: 'rgba(245,158,11,0.3)',
             text:   '#d97706',
-            label:  '◈ Good',
+            label:  'Good',
         },
         warning: {
             color:  '#ef4444',
@@ -56,7 +57,7 @@ const AttendanceRing = ({ present, total }) => {
             bg:     'rgba(239,68,68,0.1)',
             border: 'rgba(239,68,68,0.3)',
             text:   '#ef4444',
-            label:  '⚠ Warning',
+            label:  'Warning',
         }
     };
 
@@ -73,17 +74,17 @@ const AttendanceRing = ({ present, total }) => {
 
     const insights = (() => {
         if (tier === 'excellent') return [
-            { icon: '🌟', text: 'You are in Excellent Standing!', sub: 'Top-tier performance. Stay consistent.' },
-            { icon: '🎯', text: `${present} of ${total} classes attended`, sub: `${100 - percentage}% buffer before dropping below 90%.` },
+            { icon: <Sparkles size={16} color="#16a34a" />, text: 'You are in Excellent Standing!', sub: 'Top-tier performance. Stay consistent.' },
+            { icon: <Target size={16} color="#16a34a" />, text: `${present} of ${total} classes attended`, sub: `${100 - percentage}% buffer before dropping below 90%.` },
         ];
         if (tier === 'good') return [
-            { icon: '✅', text: 'You are in Good Standing', sub: 'Above the 75% minimum requirement.' },
-            { icon: '📈', text: `${classesTo90} more class${classesTo90 !== 1 ? 'es' : ''} to reach 90%`, sub: 'Aim higher for Excellent standing.' },
+            { icon: <CheckCircle2 size={16} color="#f59e0b" />, text: 'You are in Good Standing', sub: 'Above the 75% minimum requirement.' },
+            { icon: <TrendingUp size={16} color="#f59e0b" />, text: `${classesTo90} more class${classesTo90 !== 1 ? 'es' : ''} to reach 90%`, sub: 'Aim higher for Excellent standing.' },
         ];
         // warning
         return [
-            { icon: '⚠️', text: `Need ${classesTo75} more class${classesTo75 !== 1 ? 'es' : ''} to reach 75%`, sub: 'Attend all upcoming sessions urgently.' },
-            { icon: '📉', text: 'Attendance below safe threshold', sub: 'Risk of shortage — contact your coordinator.' },
+            { icon: <AlertTriangle size={16} color="#ef4444" />, text: `Need ${classesTo75} more class${classesTo75 !== 1 ? 'es' : ''} to reach 75%`, sub: 'Attend all upcoming sessions urgently.' },
+            { icon: <TrendingDown size={16} color="#ef4444" />, text: 'Attendance below safe threshold', sub: 'Risk of shortage — contact your coordinator.' },
         ];
     })();
     // ──────────────────────────────────────────────────────────
@@ -389,8 +390,8 @@ const ProfileDropdown = ({ user }) => {
                                 <BookOpen size={14} style={{ color: 'var(--brand-primary)', flexShrink: 0 }} />
                                 <div>
                                     <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Streak</div>
-                                    <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', fontWeight: '500', marginTop: '1px' }}>
-                                        🔥 {user?.streakCount || 0} day{user?.streakCount !== 1 ? 's' : ''} current &nbsp;·&nbsp; 🏆 {user?.bestStreak || 0} best
+                                    <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', fontWeight: '500', marginTop: '1px', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                        <Flame size={14} color="#f59e0b" /> {user?.streakCount || 0} day{user?.streakCount !== 1 ? 's' : ''} current &nbsp;·&nbsp; <Trophy size={14} color="#10b981" /> {user?.bestStreak || 0} best
                                     </div>
                                 </div>
                             </div>
@@ -466,14 +467,18 @@ const StudentOverview = () => {
                                 {/* Streak Highlight */}
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
                                     <div className="glass-panel" style={{ padding: '1.25rem', background: 'linear-gradient(135deg, #fff 0%, #fff7ed 100%)', border: '1px solid #ffedd5', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                        <div style={{ fontSize: '2rem' }}>🔥</div>
+                                        <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(245, 158, 11, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                            <Flame size={24} color="#f59e0b" />
+                                        </div>
                                         <div style={{ textAlign: 'left' }}>
                                             <div style={{ fontSize: '1.5rem', fontWeight: '800', color: '#ea580c' }}>{stats?.streakCount || 0}</div>
                                             <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#9a3412', textTransform: 'uppercase' }}>Current Streak</div>
                                         </div>
                                     </div>
                                     <div className="glass-panel" style={{ padding: '1.25rem', background: 'linear-gradient(135deg, #fff 0%, #f0fdf4 100%)', border: '1px solid #dcfce7', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                        <div style={{ fontSize: '2rem' }}>🏆</div>
+                                        <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                            <Trophy size={24} color="#10b981" />
+                                        </div>
                                         <div style={{ textAlign: 'left' }}>
                                             <div style={{ fontSize: '1.5rem', fontWeight: '800', color: '#16a34a' }}>{stats?.bestStreak || 0}</div>
                                             <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#166534', textTransform: 'uppercase' }}>Best Streak</div>
@@ -538,7 +543,7 @@ const StudentOverview = () => {
                                 gap: '0.4rem'
                             }}
                         >
-                            📅 Today
+                            <CalendarIcon size={14} /> Today
                         </button>
                         <button
                             onClick={() => setScheduleTab('tomorrow')}
@@ -557,7 +562,7 @@ const StudentOverview = () => {
                                 gap: '0.4rem'
                             }}
                         >
-                            🌅 Tomorrow
+                            <Sun size={14} /> Tomorrow
                         </button>
                     </div>
                 </div>
@@ -608,7 +613,7 @@ const StudentOverview = () => {
                                 return hh * 60 + mm;
                             };
 
-                            let statusBadge = { label: '🚀 Tomorrow', bg: 'rgba(79, 70, 229, 0.1)', color: 'var(--brand-primary)' };
+                            let statusBadge = { label: 'Tomorrow', bg: 'rgba(79, 70, 229, 0.1)', color: 'var(--brand-primary)', icon: <Clock size={12} /> };
 
                             if (scheduleTab === 'today') {
                                 const now = new Date();
@@ -616,12 +621,12 @@ const StudentOverview = () => {
                                 const startMins = parseTime(s.startTime);
                                 const endMins = parseTime(s.endTime);
 
-                                statusBadge = { label: 'Upcoming', bg: 'rgba(79, 70, 229, 0.1)', color: 'var(--brand-primary)' };
+                                statusBadge = { label: 'Upcoming', bg: 'rgba(79, 70, 229, 0.1)', color: 'var(--brand-primary)', icon: <Clock size={12} /> };
                                 if (startMins > 0 && endMins > 0) {
                                     if (curMins >= startMins && curMins < endMins) {
-                                        statusBadge = { label: '🟢 Live Now', bg: 'rgba(16, 185, 129, 0.15)', color: 'var(--success)' };
+                                        statusBadge = { label: 'Live Now', bg: 'rgba(16, 185, 129, 0.15)', color: 'var(--success)', icon: <PlayCircle size={12} /> };
                                     } else if (curMins >= endMins) {
-                                        statusBadge = { label: '✓ Completed', bg: 'rgba(156, 163, 175, 0.15)', color: 'var(--text-secondary)' };
+                                        statusBadge = { label: 'Completed', bg: 'rgba(156, 163, 175, 0.15)', color: 'var(--text-secondary)', icon: <CheckCircle size={12} /> };
                                     }
                                 }
                             }
@@ -638,14 +643,14 @@ const StudentOverview = () => {
                                     gap: '0.5rem',
                                     position: 'relative'
                                 }}>
-                                    <div style={{ position: 'absolute', top: '1rem', right: '1rem', fontSize: '0.7rem', fontWeight: '700', padding: '0.2rem 0.6rem', borderRadius: '1rem', background: statusBadge.bg, color: statusBadge.color }}>
-                                        {statusBadge.label}
+                                    <div style={{ position: 'absolute', top: '1rem', right: '1rem', fontSize: '0.7rem', fontWeight: '700', padding: '0.2rem 0.6rem', borderRadius: '1rem', background: statusBadge.bg, color: statusBadge.color, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                        {statusBadge.icon} {statusBadge.label}
                                     </div>
                                     <div style={{ fontWeight: '700', color: 'var(--text-primary)', fontSize: '0.95rem', paddingRight: '5rem' }}>
                                         {s.subjectId?.subjectName || s.subjectId?.name || s.subjectName || 'Assigned Subject'}
                                     </div>
                                     <div style={{ fontSize: '0.8rem', color: 'var(--brand-primary)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                        ⏰ {s.startTime ? `${s.startTime} - ${s.endTime}` : s.timeSlot} {s.roomNumber ? `(${s.roomNumber})` : ''}
+                                        <Clock size={13} /> {s.startTime ? `${s.startTime} - ${s.endTime}` : s.timeSlot} {s.roomNumber ? `(${s.roomNumber})` : ''}
                                     </div>
                                     {(s.teacherId?.name || s.teacherName) && (
                                         <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -736,6 +741,7 @@ const StudentDashboard = () => {
                         <Route path="/streaks" element={<StreaksPage />} />
                         <Route path="/leaves" element={<LeavePage />} />
                         <Route path="/subjects" element={<SubjectsPage />} />
+                        <Route path="/timetable" element={<StudentTimetable />} />
                         <Route path="/quiz/*" element={<QuizHub />} />
                     </Routes>
                 </div>

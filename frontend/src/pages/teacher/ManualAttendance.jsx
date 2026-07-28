@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, CheckCircle, XCircle, ChevronRight, BookOpen, Search, User, Lock, Clock, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Users, CheckCircle, XCircle, ChevronRight, BookOpen, Search, User, Lock, Clock, ShieldCheck, AlertCircle, Flame } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 const ManualAttendance = () => {
@@ -278,9 +278,9 @@ const ManualAttendance = () => {
                             </div>
                             <div style={{ fontSize: '0.85rem', color: isSelectedSlotActive ? 'var(--success)' : 'var(--danger)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem' }}>
                                 {isSelectedSlotActive ? (
-                                    <span>🟢 Active Slot Session: <strong>{currentSlot?.dayOfWeek} @ {currentSlot?.timeSlot || `${currentSlot?.startTime} - ${currentSlot?.endTime}`}</strong></span>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}><Clock size={14} /> Active Slot Session: <strong>{currentSlot?.dayOfWeek} @ {currentSlot?.timeSlot || `${currentSlot?.startTime} - ${currentSlot?.endTime}`}</strong></span>
                                 ) : (
-                                    <span>🔒 Restricted: Outside Slot Time ({currentSlot?.dayOfWeek || 'Scheduled Slot'} {currentSlot?.timeSlot || `${currentSlot?.startTime} - ${currentSlot?.endTime}`})</span>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}><Lock size={14} /> Restricted: Outside Slot Time ({currentSlot?.dayOfWeek || 'Scheduled Slot'} {currentSlot?.timeSlot || `${currentSlot?.startTime} - ${currentSlot?.endTime}`})</span>
                                 )}
                             </div>
                         </div>
@@ -411,7 +411,7 @@ const ManualAttendance = () => {
                                                     alignItems: 'center',
                                                     gap: '0.25rem'
                                                 }}>
-                                                    🔥 {student.streakCount || 0}
+                                                    <Flame size={13} color="#f59e0b" /> {student.streakCount || 0}
                                                 </span>
                                             </td>
                                         )}

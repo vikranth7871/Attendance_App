@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Calendar, CheckCircle2, XCircle, AlertCircle, Clock, Search, Filter, User, Mail, Building, Check, X, ShieldAlert } from 'lucide-react';
+import { Calendar, CheckCircle2, XCircle, AlertCircle, Clock, Search, Filter, User, Mail, Building, Check, X, ShieldAlert, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import DocumentModal from '../../components/shared/DocumentModal';
 
 const AdminTeacherLeaves = () => {
     const [leaves, setLeaves] = useState([]);
@@ -13,6 +14,7 @@ const AdminTeacherLeaves = () => {
     // Reject Modal state
     const [rejectingLeaveId, setRejectingLeaveId] = useState(null);
     const [rejectionReason, setRejectionReason] = useState('');
+    const [previewDoc, setPreviewDoc] = useState(null);
 
     useEffect(() => {
         fetchTeacherLeaves();
@@ -97,6 +99,7 @@ const AdminTeacherLeaves = () => {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', maxWidth: '1200px', margin: '0 auto', paddingBottom: '3rem' }}>
+            <DocumentModal url={previewDoc} onClose={() => setPreviewDoc(null)} />
             {/* Page Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
                 <div>
@@ -198,12 +201,26 @@ const AdminTeacherLeaves = () => {
                             </div>
 
                             {leave.documentUrl && (
-                                <a
-                                    href={leave.documentUrl} target="_blank" rel="noreferrer"
-                                    style={{ fontSize: '0.8rem', color: 'var(--brand-primary)', textDecoration: 'none', fontWeight: '600' }}
+                                <button
+                                    type="button"
+                                    onClick={() => setPreviewDoc(leave.documentUrl)}
+                                    style={{
+                                        fontSize: '0.8rem',
+                                        color: 'var(--brand-primary)',
+                                        background: 'rgba(91, 80, 230, 0.08)',
+                                        border: '1px solid rgba(91, 80, 230, 0.2)',
+                                        padding: '0.35rem 0.75rem',
+                                        borderRadius: '8px',
+                                        fontWeight: '600',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.3rem',
+                                        cursor: 'pointer',
+                                        width: 'fit-content'
+                                    }}
                                 >
-                                    📄 View Supporting Document
-                                </a>
+                                    <FileText size={14} /> View Supporting Document
+                                </button>
                             )}
 
                             {/* Action Buttons */}

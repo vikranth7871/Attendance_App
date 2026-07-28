@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { LogOut, LayoutDashboard, ClipboardList, Flame, CalendarOff, BookOpen, X, Brain } from 'lucide-react';
+import { LogOut, LayoutDashboard, ClipboardList, Flame, CalendarOff, BookOpen, X, Brain, Calendar } from 'lucide-react';
 import ThemeToggle from '../shared/ThemeToggle';
 
 const StudentSidebar = ({ isOpen, setIsOpen }) => {
@@ -8,6 +8,7 @@ const StudentSidebar = ({ isOpen, setIsOpen }) => {
     const location = useLocation();
     const links = [
         { name: 'Dashboard', path: '/student', icon: <LayoutDashboard size={20} /> },
+        { name: 'My Timetable', path: '/student/timetable', icon: <Calendar size={20} /> },
         { name: 'My Subjects', path: '/student/subjects', icon: <BookOpen size={20} /> },
         ...(user?.permissions?.includes('viewAttendance') ? [
             { name: 'Attendance History', path: '/student/history', icon: <ClipboardList size={20} /> }
@@ -28,7 +29,7 @@ const StudentSidebar = ({ isOpen, setIsOpen }) => {
                             Student Hub
                         </h2>
                         <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>{user?.name}</p>
-                        <span style={{ fontSize: '0.875rem', fontWeight: '600', color: 'var(--warning)', display: 'block', marginTop: '0.25rem' }}>🔥 Streak: {user?.streakCount || 0}</span>
+                        <span style={{ fontSize: '0.875rem', fontWeight: '600', color: 'var(--warning)', display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.25rem' }}><Flame size={16} color="#f59e0b" /> Streak: {user?.streakCount || 0}</span>
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                         <ThemeToggle />
@@ -38,7 +39,7 @@ const StudentSidebar = ({ isOpen, setIsOpen }) => {
                     </div>
                 </div>
 
-            <nav style={{ flex: 1, padding: '1.5rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <nav style={{ flex: 1, padding: '1.5rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', overflowY: 'auto', minHeight: 0 }}>
                 {links.map((link) => {
                     const isActive = location.pathname === link.path;
                     return (
@@ -53,7 +54,8 @@ const StudentSidebar = ({ isOpen, setIsOpen }) => {
                                 color: isActive ? 'white' : 'var(--text-secondary)',
                                 background: isActive ? 'linear-gradient(135deg, var(--brand-primary), var(--brand-secondary))' : 'transparent',
                                 fontWeight: isActive ? '500' : '400',
-                                transition: 'all 0.2s ease'
+                                transition: 'all 0.2s ease',
+                                flexShrink: 0
                             }}
                         >
                             {link.icon}
@@ -70,7 +72,7 @@ const StudentSidebar = ({ isOpen, setIsOpen }) => {
                 })}
             </nav>
 
-            <div style={{ padding: '1.5rem', borderTop: '1px solid var(--border-color)' }}>
+            <div style={{ padding: '1.5rem', borderTop: '1px solid var(--border-color)', flexShrink: 0 }}>
                 <button
                     onClick={logout}
                     style={{

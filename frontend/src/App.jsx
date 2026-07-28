@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { useEffect, Component } from 'react';
+import { ShieldAlert, AlertTriangle } from 'lucide-react';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 
@@ -16,7 +17,7 @@ const Unauthorized = () => (
     justifyContent: 'center', height: '100vh', gap: '1rem',
     fontFamily: 'Outfit, sans-serif', background: 'var(--bg-primary)', color: 'var(--text-primary)'
   }}>
-    <div style={{ fontSize: '4rem' }}>🚫</div>
+    <ShieldAlert size={56} color="var(--danger)" />
     <h1 style={{ fontSize: '1.75rem', fontWeight: '700' }}>Access Denied</h1>
     <p style={{ color: 'var(--text-secondary)' }}>You don't have permission to view this page.</p>
     <a href="/" style={{
@@ -44,7 +45,7 @@ class ErrorBoundary extends Component {
           justifyContent: 'center', height: '100vh', gap: '1rem',
           fontFamily: 'Outfit, sans-serif', background: 'var(--bg-primary)', color: 'var(--text-primary)'
         }}>
-          <div style={{ fontSize: '3rem' }}>⚠️</div>
+          <AlertTriangle size={48} color="var(--warning)" />
           <h2 style={{ fontSize: '1.5rem', fontWeight: '700' }}>Something went wrong</h2>
           <p style={{ color: 'var(--text-secondary)', maxWidth: '400px', textAlign: 'center' }}>
             {this.state.error?.message || 'An unexpected error occurred.'}

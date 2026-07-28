@@ -3,16 +3,16 @@
 :root {
   --bg-primary: #f4f7fe;
   --bg-secondary: #ffffff;
-  --bg-glass: rgba(255, 255, 255, 0.7);
-  --bg-glass-hover: rgba(255, 255, 255, 0.9);
+  --bg-glass: rgba(255, 255, 255, 0.85);
+  --bg-glass-hover: rgba(255, 255, 255, 0.95);
 
   --text-primary: #1e293b;
   --text-secondary: #64748b;
   --text-light: #94a3b8;
 
-  --brand-primary: #4338ca;
+  --brand-primary: #5b50e6;
   --brand-secondary: #6366f1;
-  --accent: #ec4899;
+  --accent: #5b50e6;
 
   --success: #10b981;
   --warning: #f59e0b;
@@ -22,7 +22,7 @@
 
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-  --shadow-glass: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+  --shadow-glass: 0 8px 32px 0 rgba(31, 38, 135, 0.05);
 
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
@@ -62,8 +62,8 @@ body {
   line-height: 1.5;
   transition: background-color 0.3s ease, color 0.3s ease;
   min-height: 100vh;
-  background-image: radial-gradient(circle at top right, rgba(99, 102, 241, 0.15), transparent 40%),
-    radial-gradient(circle at bottom left, rgba(236, 72, 153, 0.1), transparent 40%);
+  background-image: radial-gradient(circle at top right, rgba(91, 80, 230, 0.08), transparent 45%),
+    radial-gradient(circle at bottom left, rgba(16, 185, 129, 0.05), transparent 45%);
   background-attachment: fixed;
 }
 

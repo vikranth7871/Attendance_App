@@ -4,7 +4,7 @@ import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Trophy, CheckCircle, XCircle, Award, Download, ArrowLeft,
-    ChevronDown, ChevronUp, Clock, BarChart2, Star, Repeat, Medal
+    ChevronDown, ChevronUp, Clock, BarChart2, Star, Repeat, Medal, Lightbulb, BookOpen, Sparkles
 } from 'lucide-react';
 import { downloadCertificate } from './QuizHub';
 
@@ -49,8 +49,6 @@ const LeaderboardView = ({ quizId }) => {
     if (loading) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Loading leaderboard...</div>;
     if (!lb || lb.leaderboard.length === 0) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>No leaderboard data yet.</div>;
 
-    const rankEmoji = ['🥇', '🥈', '🥉'];
-
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '320px', overflowY: 'auto' }}>
             {lb.leaderboard.map((entry, idx) => {
@@ -72,8 +70,8 @@ const LeaderboardView = ({ quizId }) => {
                             border: `1px solid ${isMe ? 'rgba(99,102,241,0.35)' : 'var(--border-color)'}`
                         }}
                     >
-                        <div style={{ fontSize: '1.25rem', width: '28px', textAlign: 'center', flexShrink: 0 }}>
-                            {idx < 3 ? rankEmoji[idx] : <span style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-secondary)' }}>#{idx + 1}</span>}
+                        <div style={{ width: '28px', textAlign: 'center', flexShrink: 0, fontWeight: '800', color: idx === 0 ? '#f59e0b' : idx === 1 ? '#94a3b8' : idx === 2 ? '#d97706' : 'var(--text-light)', display: 'flex', justifyContent: 'center' }}>
+                            {idx === 0 ? <Trophy size={18} color="#f59e0b" /> : idx === 1 ? <Medal size={18} color="#94a3b8" /> : idx === 2 ? <Medal size={18} color="#d97706" /> : `#${idx + 1}`}
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontWeight: isMe ? '700' : '500', fontSize: '0.875rem', color: 'var(--text-primary)', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -166,9 +164,9 @@ const QuizResults = () => {
                     initial={{ scale: 0, rotate: -180 }}
                     animate={{ scale: 1, rotate: 0 }}
                     transition={{ delay: 0.2, type: 'spring', bounce: 0.4 }}
-                    style={{ fontSize: '4rem', marginBottom: '1rem' }}
+                    style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}
                 >
-                    {passed ? '🎉' : percentage >= 50 ? '📚' : '😔'}
+                    {passed ? <Trophy size={60} color="#10b981" /> : percentage >= 50 ? <BookOpen size={60} color="#f59e0b" /> : <XCircle size={60} color="#ef4444" />}
                 </motion.div>
 
                 {/* Score Circle */}
@@ -194,11 +192,11 @@ const QuizResults = () => {
                     transition={{ delay: 0.6 }}
                 >
                     <div style={{
-                        display: 'inline-block', padding: '0.5rem 1.5rem', borderRadius: '999px',
+                        display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1.5rem', borderRadius: '999px',
                         background: `${scoreColor}18`, border: `1px solid ${scoreColor}40`,
                         fontSize: '1rem', fontWeight: '800', color: scoreColor, marginBottom: '0.5rem'
                     }}>
-                        {passed ? '✅ Passed!' : '❌ Not Passed'}
+                        {passed ? <CheckCircle size={18} /> : <XCircle size={18} />} {passed ? 'Passed!' : 'Not Passed'}
                     </div>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', margin: '0.5rem 0 0' }}>
                         {quiz?.title}
@@ -255,11 +253,11 @@ const QuizResults = () => {
                             <motion.div
                                 animate={{ rotate: [0, -5, 5, -5, 0] }}
                                 transition={{ delay: 0.6, duration: 0.5 }}
-                                style={{ fontSize: '3rem' }}
-                            >🏅</motion.div>
+                                style={{ display: 'flex', alignItems: 'center' }}
+                            ><Medal size={48} color="#f59e0b" /></motion.div>
                             <div>
                                 <div style={{ fontWeight: '800', fontSize: '1.1rem', color: '#f59e0b', marginBottom: '0.25rem' }}>
-                                    Certificate Earned! 🎊
+                                    Certificate Earned!
                                 </div>
                                 <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
                                     You scored {percentage}% — above the {passingScore}% passing threshold
@@ -409,7 +407,7 @@ const QuizResults = () => {
                                                     border: '1px solid rgba(99,102,241,0.15)',
                                                     fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5
                                                 }}>
-                                                    <strong style={{ color: 'var(--brand-primary)' }}>💡 Explanation: </strong>
+                                                    <strong style={{ color: 'var(--brand-primary)', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}><Lightbulb size={13} /> Explanation: </strong>
                                                     {item.explanation}
                                                 </div>
                                             )}

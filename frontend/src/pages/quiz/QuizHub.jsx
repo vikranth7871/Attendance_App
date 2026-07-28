@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     Brain, Trophy, BookOpen, Clock, Star, Zap, Award, ChevronRight,
     Play, BarChart2, Medal, CheckCircle, XCircle, Download, Eye,
-    Filter, Search, Sparkles, Target, TrendingUp, RefreshCw, Lock, Users
+    Filter, Search, Sparkles, Target, TrendingUp, RefreshCw, Lock, Users, Building
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import QuizAttempt from './QuizAttempt';
@@ -67,8 +67,9 @@ const QuizCard = ({ quiz, onStart, idx }) => {
                     background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
                     color: 'white', fontSize: '0.6rem', fontWeight: '800',
                     textTransform: 'uppercase', letterSpacing: '0.08em',
-                    padding: '0.25rem 0.75rem', borderRadius: '0 16px 0 12px'
-                }}>🏛 University</div>
+                    padding: '0.25rem 0.75rem', borderRadius: '0 16px 0 12px',
+                    display: 'flex', alignItems: 'center', gap: '3px'
+                }}><Building size={11} /> University</div>
             )}
 
             {/* Passed badge */}
@@ -224,10 +225,9 @@ const AttemptRow = ({ attempt, idx }) => {
             <div style={{
                 width: '42px', height: '42px', borderRadius: '12px', flexShrink: 0,
                 background: passed ? 'rgba(22,163,74,0.12)' : 'rgba(220,38,38,0.12)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '1.4rem'
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
             }}>
-                {passed ? '🎉' : '❌'}
+                {passed ? <CheckCircle size={22} color="#16a34a" /> : <XCircle size={22} color="#dc2626" />}
             </div>
 
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -237,7 +237,7 @@ const AttemptRow = ({ attempt, idx }) => {
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                     <span>{date}</span>
                     <span>•</span>
-                    <span>⏱️ {durationStr}</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}><Clock size={12} /> {durationStr}</span>
                     {passed && (
                         <>
                             <span>•</span>
@@ -310,9 +310,10 @@ const CertificateCard = ({ cert, idx, onDownload }) => {
                 background: 'rgba(0,0,0,0.1)', borderRadius: '8px',
                 padding: '0.5rem 0.75rem', fontSize: '0.65rem',
                 color: 'var(--text-secondary)', fontFamily: 'monospace',
-                marginBottom: '1rem', letterSpacing: '0.05em'
+                marginBottom: '1rem', letterSpacing: '0.05em',
+                display: 'flex', alignItems: 'center', gap: '0.35rem'
             }}>
-                🏅 {cert.certificateId}
+                <Award size={12} /> {cert.certificateId}
             </div>
 
             <button
@@ -382,7 +383,7 @@ export const downloadCertificate = (cert) => {
 
     // Trophy emoji text
     ctx.font = '52px Arial';
-    ctx.fillText('🏆', 600, 175);
+    ctx.fillText('★', 600, 175);
 
     // Certificate of Achievement
     ctx.font = 'bold 48px Arial';

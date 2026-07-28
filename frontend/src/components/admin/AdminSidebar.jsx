@@ -40,7 +40,7 @@ const AdminSidebar = ({ isOpen, setIsOpen }) => {
                     </div>
                 </div>
 
-            <nav style={{ flex: 1, padding: '1.5rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <nav style={{ flex: 1, padding: '1.5rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', overflowY: 'auto', minHeight: 0 }}>
                 {links.map((link) => {
                     const isActive = location.pathname === link.path || (link.path !== '/admin' && location.pathname.startsWith(link.path));
                     return (
@@ -55,7 +55,8 @@ const AdminSidebar = ({ isOpen, setIsOpen }) => {
                                 color: isActive ? 'white' : 'var(--text-secondary)',
                                 background: isActive ? 'linear-gradient(135deg, var(--brand-primary), var(--brand-secondary))' : 'transparent',
                                 fontWeight: isActive ? '500' : '400',
-                                transition: 'all 0.2s ease'
+                                transition: 'all 0.2s ease',
+                                flexShrink: 0
                             }}
                         >
                             {link.icon}
@@ -65,7 +66,7 @@ const AdminSidebar = ({ isOpen, setIsOpen }) => {
                 })}
             </nav>
 
-            <div style={{ padding: '1.5rem', borderTop: '1px solid var(--border-color)' }}>
+            <div style={{ padding: '1.5rem', borderTop: '1px solid var(--border-color)', flexShrink: 0 }}>
                 <button
                     onClick={logout}
                     style={{

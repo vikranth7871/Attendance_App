@@ -2,16 +2,16 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertCircle, Eye, EyeOff, Mail, Lock } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff, Mail, Lock, Flame, Smile, Frown } from 'lucide-react';
 import './Login.css';
 import illustration from '../assets/login-illustration.png';
 import shieldIcon from '../assets/shield-check.png';
 
 const StreakPopup = ({ streak, bestStreak, onClose }) => {
-    let icon = '😞';
+    let icon = <Frown size={64} color="#64748b" />;
     let message = 'Keep trying! Your streak is low.';
-    if (streak >= 5) { icon = '🔥'; message = 'You are on fire! Amazing streak!'; }
-    else if (streak >= 2) { icon = '🙂'; message = 'Good job! Keep it up!'; }
+    if (streak >= 5) { icon = <Flame size={64} color="#f59e0b" />; message = 'You are on fire! Amazing streak!'; }
+    else if (streak >= 2) { icon = <Smile size={64} color="#10b981" />; message = 'Good job! Keep it up!'; }
 
     return (
         <motion.div
@@ -35,7 +35,7 @@ const StreakPopup = ({ streak, bestStreak, onClose }) => {
                 className="glass-panel"
                 style={{ padding: '2.5rem', textAlign: 'center', maxWidth: '420px', width: '100%', border: '1px solid rgba(255, 255, 255, 0.2)' }}
             >
-                <div style={{ fontSize: '4.5rem', marginBottom: '1.5rem' }}>{icon}</div>
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>{icon}</div>
                 <h2 style={{ fontSize: '1.75rem', fontWeight: 'bold', marginBottom: '0.75rem', color: 'var(--text-primary)' }}>Welcome Back!</h2>
                 <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem', fontSize: '1.1rem' }}>{message}</p>
 
