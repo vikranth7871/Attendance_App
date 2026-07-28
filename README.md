@@ -1,105 +1,101 @@
-#  iAttend — Student Attendance Management System
+# 🎓 iAttend — Smart Student Attendance & Academic Management System
 
 ![iAttend Banner](./assets/iAttend-Banner.jpeg)
 
-**iAttend** is a complete, easy-to-use school/college management system. It helps teachers take attendance, students apply for leaves, and parents track their children's progress. It's built with modern technology (MERN stack) and is designed to look premium and run fast.
+**iAttend** is an advanced, high-performance Academic & Attendance Management System designed for modern educational institutions. It empowers administrators, educators, students, and parents with real-time timetable tracking, interactive leave applications, quiz generation, automated certificates, and strict slot-based attendance marking.
 
-# A Final Year Project 
-
----   
-
-##  Live Demo
-
-> The application is fully deployed and accessible at:
-
-### 🔗 [https://iattend.online](https://iattend.online)
-
-> **Hosted on Render** — Frontend (Static Site) + Backend (Web Service) + MongoDB Atlas
-
-###  Try it Out — Demo Credentials
-
-You can explore the app instantly using the following test account. No sign-up needed.
-
-| Field       | Value              |
-|-------------|--------------------|
-|  **Role**     | Student            |
-|  **Email**    | `stud1@gmail.com`  |
-|  **Password** | `stud123`          |
-
-> [!NOTE]
-> This is a **read-only demo account** for exploration purposes. Please do not change the password or submit fake leave requests.
+Built using **React (Vite)**, **Node.js/Express**, **Neon DB (PostgreSQL)**, and **Cloudinary**.
 
 ---
 
-##  What can it do? (Features)
+## 🚀 Quick Credentials
 
-###  For Different Users:
-- **Admin**: The "Super Boss." Can create departments, classes, subjects, and manage all users.
-- **Teacher**: Can mark attendance for their subjects and approve or reject student leave requests.
-- **Student**: Can see their attendance percentage, view their timetable, and apply for leaves (with document uploads).
-- **Parent**: Can log in to see the attendance and performance of their kids.
-- **Coordinator**: A special teacher who manages leave requests for a specific class.
+Explore the platform with pre-configured role accounts:
 
-###  Smart Attendance:
-- Teachers mark attendance with a few clicks.
-- If a student is absent, parents can get an automated email notification.
-- Keeps a full history so you can see attendance from weeks or months ago.
-
-###  Leave Management:
-- Students can upload medical certificates which are stored **permanently** in the cloud using Cloudinary.
-- Once the coordinator approves the leave, the system **automatically** marks the student as "On Leave" in the attendance records.
-
-###  Mobile First:
-- The entire dashboard, especially the **Manual Attendance** and **Student Info** sections, is fully mobile-responsive for easy use on any device.
+| Role | Email | Password | Access Level |
+|------|-------|----------|--------------|
+| **System Admin** | `admin@example.com` | `admin123` | Full Administrative & System Management |
+| **Educator / Teacher** | `teacher@example.com` | `teacher123` | Timetable, Mark Attendance, Class Roster, Leave Requests |
+| **Student** | `student@example.com` | `student123` | Academic Schedule, Leave Applications, Quizzes, Streaks |
 
 ---
 
-##  Technology Used (The "Tech Stack")
+## 🌟 Key Features
 
-We use the **MERN Stack**, which is the gold standard for modern web apps:
-- **Frontend**: React.js (with Framer Motion for smooth animations)
-- **Backend**: Node.js & Express
-- **Database**: MongoDB Atlas
-- **File Storage**: Cloudinary (Permanent cloud storage for documents)
-- **Deployment**: Docker & Render
+### 📅 Embedded Interactive Visual Calendar Picker
+- **Single-Day & Multi-Day Range Selection**: 1-click single-day leave pick or 2-click multi-day range highlighting.
+- **Preset Quick Chips**: `[ Today ]`, `[ Tomorrow ]`, and `[ Reset ]` instant presets.
+- **Live Duration Badges**: Automatic day count calculations (e.g. `3 Days Range (Jul 28 — Jul 30, 2026)`).
 
----
+### 🛡️ Teacher Leave Management & Admin Workflow
+- **Teacher Leave Applications**: Teachers can submit leave applications with supporting proof documents.
+- **Admin Approval Hub**: Admins review, approve, reject (with mandatory rejection reasons), or revoke teacher leave requests.
+- **Class Coordinator Approvals**: Class Coordinators review and process student leave requests for their assigned classes.
 
-##  Project Structure
+### ⏰ Strict Slot-Based Attendance Marking
+- **Live Active Session Detection**: Automatically detects in-progress class slots for the current day and time.
+- **Strict Time Restrictions**: Restricts attendance marking strictly to scheduled class windows while providing admin override capabilities.
+- **Streak & Performance Sync**: Real-time streak count increments for attendance consistency.
 
-- `frontend/`: All the code for the website you see and click on.
-- `backend/`: The server code that handles data, cloud uploads, and security.
-- `assets/`: Images and branding for the project.
+### 📚 Deduplicated Academic Schedule & Roster
+- **Unique Subject Card Grouping**: Combines recurring weekly slots into clean single-subject cards with schedule badges (`🗓️ 6 Weekly Slots`).
+- **Interactive Timetable Grid**: Complete weekly grid layout (Monday – Saturday) mapping every period, room number, and assigned teacher.
 
----
-
-##  How to Run it (Quick Start)
-
-1. **Setup your environment**:
-   Edit `backend/.env` to include your credentials:
-   ```bash
-   CLOUDINARY_CLOUD_NAME=your_name
-   CLOUDINARY_API_KEY=your_key
-   CLOUDINARY_API_SECRET=your_secret
-   MONGO_URI=your_mongodb_url
-   ```
-
-2. **Start the system**:
-   ```bash
-   docker-compose up -d --build
-   ```
-
-3. **Create the first Admin**:
-   ```bash
-   docker exec backend node seedAdmin.js
-   ```
+### 🧠 Quiz Arena & Certificate Engine
+- **Quiz Creator & AI Generator**: Create manual quizzes or generate AI quizzes on any academic topic.
+- **Leaderboards & Certificates**: Live student leaderboards and downloadable certificates upon passing quizzes.
 
 ---
 
-##  Security & Fixes
-- **Auto-Fixing Permissions**: We have a special script that automatically fixes folder locks, so you never have to worry about "Permission Denied" errors when uploading documents.
-- **Safe Data**: All passwords are encrypted, and we use secure tokens (JWT) to keep user accounts safe.
+## 🛠️ Tech Stack
+
+- **Frontend**: React.js, Vite, Framer Motion, Lucide Icons, Vanilla CSS
+- **Backend**: Node.js, Express.js, PostgreSQL (`pg` pool)
+- **Database**: Neon DB (Cloud PostgreSQL)
+- **Cloud Storage**: Cloudinary (Secure document & asset storage)
 
 ---
-**Developed with ❤️ for Academic Excellence.**
-*Maintained by [01iamysf](https://github.com/01iamysf)*
+
+## ⚙️ Setup & Local Execution
+
+### 1. Clone & Install Dependencies
+```bash
+git clone https://github.com/vikranth7871/iAttend.git
+cd iAttend
+
+# Install Backend dependencies
+cd backend && npm install
+
+# Install Frontend dependencies
+cd ../frontend && npm install
+```
+
+### 2. Configure Environment Variables
+Create a `.env` file in the `backend/` directory:
+```env
+PORT=5005
+DATABASE_URL=your_neon_postgresql_url
+JWT_SECRET=your_jwt_secret
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
+```
+
+### 3. Run Development Servers
+```bash
+# Start Backend (from backend directory)
+npm run dev
+
+# Start Frontend (from frontend directory)
+npm run dev
+```
+
+Open **[http://localhost:3000](http://localhost:3000)** in your browser!
+
+---
+
+## 👤 Author & Maintainer
+
+Developed & Maintained by **[Vikranth](https://github.com/vikranth7871)**.
+
+*Developed with ❤️ for Academic Excellence.*
