@@ -1,0 +1,8 @@
+role,name,email,password,department,className,section,rollNumber,parentEmail
+student,David Clark,david.clark@example.com,pass1234,Computer Science,CS101-A,A,1005,parent.clark@example.com
+student,Emma Watson,emma.watson@example.com,pass1234,Computer Science,CS101-A,A,1006,parent.watson@example.com
+student,Liam Miller,liam.miller@example.com,pass1234,Information Technology,IT201-B,B,1007,parent.miller@example.com
+student,Sophia Taylor,sophia.taylor@example.com,pass1234,Information Technology,IT201-B,B,1008,parent.taylor@example.com
+teacher,James Anderson,james.anderson@example.com,teacher123,Computer Science,,,,
+teacher,Olivia Thomas,olivia.thomas@example.com,teacher123,Information Technology,,,,
+parent,Daniel Clark,daniel.clark@example.com,parent123,,,,,

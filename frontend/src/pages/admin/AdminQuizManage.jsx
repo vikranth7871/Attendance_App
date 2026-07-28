@@ -4,6 +4,7 @@ import { BookOpen, Plus, Sparkles, Trash2, Award, Globe, Loader2 } from 'lucide-
 import axios from 'axios';
 import AIQuizGeneratorModal from '../../components/shared/AIQuizGeneratorModal';
 import QuizResultsModal from '../../components/shared/QuizResultsModal';
+import QuizFormModal from '../../components/shared/QuizFormModal';
 import { useAuth } from '../../context/AuthContext';
 
 const AdminQuizManage = () => {
@@ -33,7 +34,6 @@ const AdminQuizManage = () => {
     const fetchQuizzes = async () => {
         try {
             const { data } = await axios.get('/quiz/admin/manage');
-            // Filter to show university quizzes primarily, or all since admin can see all
             setQuizzes(data);
         } catch (error) {
             console.error('Failed to fetch quizzes:', error);
@@ -52,11 +52,10 @@ const AdminQuizManage = () => {
         setIsCreateModalOpen(true);
     };
 
-    const handleSaveQuiz = async (e) => {
-        e.preventDefault();
+    const handleSaveQuiz = async (quizPayload) => {
         setSubmitting(true);
         try {
-            await axios.post('/quiz/create', formData);
+            await axios.post('/quiz/create', quizPayload);
             setIsCreateModalOpen(false);
             setFormData({ title: '', description: '', type: 'university', timeLimit: 60, passingScore: 80, difficulty: 'mixed', maxAttempts: 1, questions: [] });
             fetchQuizzes();
@@ -198,61 +197,14 @@ const AdminQuizManage = () => {
                 quiz={resultsQuiz}
             />
 
-            {/* Manual Create Modal */}
-            <AnimatePresence>
-                {isCreateModalOpen && (
-                    <motion.div
-                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                        style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
-                    >
-                        <motion.div
-                            initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
-                            style={{ background: 'var(--bg-primary)', padding: '2rem', borderRadius: '16px', width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }}
-                        >
-                            <h3 style={{ marginTop: 0, marginBottom: '1.5rem' }}>Save External Quiz</h3>
-                            <form onSubmit={handleSaveQuiz} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                                <div>
-                                    <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.5rem' }}>Title *</label>
-                                    <input required type="text" value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }} />
-                                </div>
-                                <div style={{ display: 'flex', gap: '1rem' }}>
-                                    <div style={{ flex: 1 }}>
-                                        <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.5rem' }}>Type</label>
-                                        <select value={formData.type} onChange={e => setFormData({ ...formData, type: e.target.value })} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>
-                                            <option value="university">University (Certificates Issued)</option>
-                                            <option value="practice">Practice (No Certificates)</option>
-                                        </select>
-                                    </div>
-                                    <div style={{ flex: 1 }}>
-                                        <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.5rem' }}>Max Attempts</label>
-                                        <input type="number" value={formData.maxAttempts} onChange={e => setFormData({ ...formData, maxAttempts: e.target.value })} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }} />
-                                    </div>
-                                </div>
-                                <div style={{ display: 'flex', gap: '1rem' }}>
-                                    <div style={{ flex: 1 }}>
-                                        <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.5rem' }}>Time Limit (mins)</label>
-                                        <input type="number" value={formData.timeLimit} onChange={e => setFormData({ ...formData, timeLimit: e.target.value })} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }} />
-                                    </div>
-                                    <div style={{ flex: 1 }}>
-                                        <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.5rem' }}>Passing Score (%)</label>
-                                        <input type="number" value={formData.passingScore} onChange={e => setFormData({ ...formData, passingScore: e.target.value })} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }} />
-                                    </div>
-                                </div>
-                                <div style={{ padding: '1rem', background: 'rgba(99,102,241,0.05)', borderRadius: '8px', border: '1px solid rgba(99,102,241,0.2)', fontSize: '0.9rem', display: 'flex', justifyContent: 'space-between' }}>
-                                    <span>Loaded Questions:</span>
-                                    <strong>{formData.questions.length}</strong>
-                                </div>
-                                <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-                                    <button type="button" onClick={() => setIsCreateModalOpen(false)} style={{ flex: 1, padding: '0.75rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: '8px', cursor: 'pointer' }}>Cancel</button>
-                                    <button type="submit" disabled={submitting || formData.questions.length === 0} style={{ flex: 1, padding: '0.75rem', background: 'var(--brand-primary)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', opacity: submitting || formData.questions.length === 0 ? 0.7 : 1 }}>
-                                        {submitting ? 'Saving...' : 'Save Quiz'}
-                                    </button>
-                                </div>
-                            </form>
-                        </motion.div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+            {/* Manual Create / Quiz Form Modal */}
+            <QuizFormModal
+                isOpen={isCreateModalOpen}
+                onClose={() => setIsCreateModalOpen(false)}
+                onSave={handleSaveQuiz}
+                initialData={formData}
+                isTeacher={false}
+            />
         </div>
     );
 };

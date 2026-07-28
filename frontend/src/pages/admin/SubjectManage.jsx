@@ -347,7 +347,7 @@ const SubjectManage = () => {
                                                 style={{ height: '42px', fontSize: '0.9rem', padding: '0 1rem' }}
                                             >
                                                 <option value="">Choose dept</option>
-                                                {departments.map(d => <option key={d._id} value={d._id}>{d.departmentName}</option>)}
+                                                {departments.map(d => <option key={d._id || d.id} value={d._id || d.id}>{d.departmentName || d.name}</option>)}
                                             </select>
                                         </div>
 

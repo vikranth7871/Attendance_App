@@ -1,3 +1,4 @@
+import { pool } from '../config/db.js';
 import User from '../models/User.js';
 import Attendance from '../models/Attendance.js';
 import Subject from '../models/Subject.js';
@@ -58,101 +59,62 @@ export const getStudentOverview = async (req, res) => {
  */
 export const getMySubjects = async (req, res) => {
     try {
-        const userId = req.user._id;
+        const userId = req.user.id || req.user._id;
 
-        // Fetch student with enrolledSubjects populated, using lean for plain objects
-        const student = await User.findById(userId)
-            .populate({
-                path: 'enrolledSubjects.subject',
-                model: 'Subject'
-            })
-            .lean();
-
-        if (!student) {
+        const userRes = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
+        if (userRes.rows.length === 0) {
             return res.status(404).json({ message: 'Student not found' });
         }
+        const student = userRes.rows[0];
 
-        const classIdStr = student.classId ? (student.classId._id ? student.classId._id.toString() : student.classId.toString()) : null;
-
-        // Start with class-allocated subjects (Timetable)
-        let classAllocations = [];
-        if (classIdStr) {
-            classAllocations = await SubjectAllocation.find({ classId: classIdStr })
-                .populate('teacherId', 'name email')
-                .populate('classId', 'className section')
-                .populate('subjectId', 'subjectName departmentId')
-                .lean();
+        let result = { rows: [] };
+        if (student.class_id) {
+            result = await pool.query(`
+                SELECT sa.id as allocation_id,
+                       sa.day_of_week, sa.time_slot, sa.start_time, sa.end_time, sa.room_number,
+                       s.id as subject_id, s.name as subject_name, s.department_id,
+                       c.id as class_id, c.name as class_name,
+                       u.id as teacher_id, u.name as teacher_name, u.email as teacher_email
+                FROM subject_allocations sa
+                LEFT JOIN subjects s ON sa.subject_id = s.id
+                LEFT JOIN classes c ON sa.class_id = c.id
+                LEFT JOIN users u ON sa.teacher_id = u.id
+                WHERE sa.class_id = $1
+            `, [student.class_id]);
         }
 
-        /**
-         * Use a Map to deduplicate subjects by their Subject ID.
-         * We prioritize classAllocations because they contain schedule and teacher info.
-         */
-        const subjectMap = new Map();
-
-        // 1. Process Class Allocations (Timetable)
-        classAllocations.forEach(alloc => {
-            if (!alloc.subjectId) return;
-            const subjectId = alloc.subjectId._id ? alloc.subjectId._id.toString() : alloc.subjectId.toString();
-
-            // If multiple slots for same subject, we keep them all (they are different timetable entries)
-            // But we can group them if needed. For now, we return them as separate entries if they have different IDs.
-            // Actually, SubjectAllocation _is_ the entry. One subject might have multiple slots.
-            // If the user wants to see unique subjects, we might need a different approach, 
-            // but usually a student wants to see their timetable entries.
-            // Let's assume we want to return all timetable entries + any individual ones not in timetable.
-            subjectMap.set(alloc._id.toString(), {
-                ...alloc,
-                isEnrolled: false // Default
-            });
-        });
-
-        const classSubjectIds = new Set(classAllocations.map(a =>
-            a.subjectId?._id ? a.subjectId._id.toString() : a.subjectId?.toString()
-        ).filter(Boolean));
-
-        // 2. Process Individually Enrolled Subjects
-        (student.enrolledSubjects || []).forEach(enrollment => {
-            if (!enrollment.subject) return;
-            const subjectObj = enrollment.subject;
-            const subjectIdStr = subjectObj._id ? subjectObj._id.toString() : subjectObj.toString();
-
-            if (classSubjectIds.has(subjectIdStr)) {
-                // This subject is already in the class timetable.
-                // Mark all matching class entries as "isEnrolled"
-                classAllocations.forEach(alloc => {
-                    const allocSubId = alloc.subjectId?._id ? alloc.subjectId._id.toString() : alloc.subjectId?.toString();
-                    if (allocSubId === subjectIdStr) {
-                        const existingEntry = subjectMap.get(alloc._id.toString());
-                        if (existingEntry) existingEntry.isEnrolled = true;
-                    }
-                });
-            } else {
-                // Individual subject not in class timetable. Create a virtual allocation entry.
-                const virtualId = enrollment._id ? enrollment._id.toString() : `enrolled_${subjectIdStr}`;
-                subjectMap.set(virtualId, {
-                    _id: virtualId,
-                    subjectId: {
-                        _id: subjectObj._id,
-                        subjectName: subjectObj.subjectName,
-                        departmentId: subjectObj.departmentId
-                    },
-                    teacherId: null,
-                    timeSlot: `Semester ${enrollment.semester || 'N/A'}, Year ${enrollment.year || 'N/A'}`,
-                    isIndividuallyAssigned: true,
-                    isEnrolled: true
-                });
+        const subjects = result.rows.map(r => ({
+            _id: String(r.allocation_id),
+            id: r.allocation_id,
+            dayOfWeek: r.day_of_week,
+            timeSlot: r.time_slot,
+            startTime: r.start_time,
+            endTime: r.end_time,
+            roomNumber: r.room_number,
+            subjectId: {
+                _id: String(r.subject_id),
+                id: r.subject_id,
+                subjectName: r.subject_name,
+                name: r.subject_name,
+                departmentId: r.department_id
+            },
+            classId: {
+                _id: String(r.class_id),
+                id: r.class_id,
+                className: r.class_name,
+                name: r.class_name
+            },
+            teacherId: {
+                _id: String(r.teacher_id),
+                id: r.teacher_id,
+                name: r.teacher_name,
+                email: r.teacher_email
             }
-        });
+        }));
 
-        const allSubjects = Array.from(subjectMap.values());
-
-        res.json(allSubjects);
+        res.json(subjects);
     } catch (error) {
         console.error('CRITICAL ERROR in getMySubjects:', error);
-        res.status(500).json({
-            message: 'Internal server error while fetching subjects',
-            error: error.message
-        });
+        res.status(500).json({ message: error.message });
     }
 };

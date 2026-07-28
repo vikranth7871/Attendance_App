@@ -1,315 +1,185 @@
-import Attendance from '../models/Attendance.js';
-import User from '../models/User.js';
-import SubjectAllocation from '../models/SubjectAllocation.js';
-import { isCurrentTimeInSlot } from '../utils/timeUtils.js';
-import sendEmail from '../services/emailService.js';
-import SystemSetting from '../models/SystemSetting.js';
-import Notification from '../models/Notification.js';
+import { pool } from '../config/db.js';
 
 /**
  * @desc    Mark manual attendance for a student
  * @route   POST /api/attendance/manual
- * @access  Private (Teacher)
+ * @access  Private (Teacher/Admin)
  */
 export const markManualAttendance = async (req, res) => {
     try {
         const { studentId, subjectId, classId, status } = req.body;
+        const teacherId = req.user.id || req.user._id;
 
-        // 1. Fetch Allocation to check time
-        const allocation = await SubjectAllocation.findOne({
-            teacherId: req.user._id,
-            subjectId,
-            classId
-        });
+        const today = new Date().toISOString().split('T')[0];
 
-        if (!allocation) {
-            return res.status(404).json({ message: 'Subject allocation not found' });
+        // 1. Check if attendance already marked today
+        const existing = await pool.query(
+            'SELECT id FROM attendance WHERE student_id = $1 AND (subject_id = $2 OR $2 IS NULL) AND (class_id = $3 OR $3 IS NULL) AND date = $4 LIMIT 1',
+            [studentId, subjectId || null, classId || null, today]
+        );
+
+        if (existing.rows.length > 0) {
+            // Update status if already exists
+            const updated = await pool.query(
+                'UPDATE attendance SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
+                [status || 'present', existing.rows[0].id]
+            );
+            return res.status(200).json({ message: 'Attendance updated', attendance: updated.rows[0] });
         }
 
-        // 2. Validate time slot unless teacher has bypass permission
-        const hasBypass = req.user.permissions?.includes('bypassTimeRestraint');
-        if (!hasBypass) {
-            const inSlot = isCurrentTimeInSlot(allocation.startTime, allocation.endTime, allocation.dayOfWeek);
-            if (!inSlot) {
-                return res.status(403).json({
-                    message: `Manual attendance is restricted to class time (${allocation.startTime} - ${allocation.endTime}).`
-                });
-            }
+        // 2. Insert attendance record
+        const insertRes = await pool.query(
+            `INSERT INTO attendance (student_id, subject_id, class_id, marked_by, method, status, date)
+             VALUES ($1, $2, $3, $4, 'manual', $5, $6) RETURNING *`,
+            [studentId, subjectId || null, classId || null, teacherId, status || 'present', today]
+        );
+
+        // 3. Update student streak count
+        if (status === 'present') {
+            await pool.query(
+                `UPDATE users SET streak_count = streak_count + 1, 
+                                 best_streak = GREATEST(best_streak, streak_count + 1),
+                                 last_attendance_date = CURRENT_TIMESTAMP
+                 WHERE id = $1`,
+                [studentId]
+            );
+        } else if (status === 'absent') {
+            await pool.query('UPDATE users SET streak_count = 0 WHERE id = $1', [studentId]);
         }
 
-        // BUG-01 Fix: Check for duplicate attendance (same student/subject/day)
-        const today = new Date();
-        const startOfDay = new Date(today); startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date(today); endOfDay.setHours(23, 59, 59, 999);
-        const existing = await Attendance.findOne({
-            studentId, subjectId, classId,
-            date: { $gte: startOfDay, $lte: endOfDay }
-        });
-        if (existing) {
-            return res.status(409).json({ message: 'Attendance already marked for this student in this session today.' });
+        // 4. Notify parent if absent or on leave
+        const studentRes = await pool.query('SELECT parent_id, name FROM users WHERE id = $1', [studentId]);
+        if (studentRes.rows.length > 0 && studentRes.rows[0].parent_id && (status === 'absent' || status === 'leave')) {
+            const student = studentRes.rows[0];
+            const statusLabel = status === 'absent' ? 'ABSENT 🔴' : 'on LEAVE 📋';
+            await pool.query(
+                `INSERT INTO notifications (recipient_id, title, message, type)
+                 VALUES ($1, $2, $3, 'info')`,
+                [student.parent_id, 'Attendance Alert', `⚠️ Attendance Alert: ${student.name} was marked ${statusLabel} today.`]
+            );
         }
 
-        const attendance = await Attendance.create({
-            studentId,
-            teacherId: req.user._id,
-            classId,
-            subjectId,
-            date: today,
-            time: today.toLocaleTimeString(),
-            method: 'manual',
-            status: status || 'present'
-        });
-
-        const student = await User.findById(studentId);
-        if (student) {
-            if (status === 'present') {
-                // BUG-04 Fix: Only increment streak on present
-                student.streakCount = (student.streakCount || 0) + 1;
-                if (student.streakCount > (student.bestStreak || 0)) {
-                    student.bestStreak = student.streakCount;
-                }
-                student.lastAttendanceDate = today;
-            } else if (status === 'absent') {
-                // BUG-04 Fix: Only reset streak on absent — approved leave does NOT break streak
-                student.streakCount = 0;
-            }
-            await student.save();
-
-            // Notify parent if absent or on leave
-            if (student.parentId && (status === 'absent' || status === 'leave')) {
-                const statusLabel = status === 'absent' ? 'ABSENT 🔴' : 'on LEAVE 📋';
-                await Notification.create({
-                    userId: student.parentId,
-                    message: `⚠️ Attendance Alert: ${student.name} was marked ${statusLabel} today.`,
-                    type: 'info',
-                    link: '/parent/history'
-                });
-            }
-        }
-
-        res.status(201).json({ message: 'Manual attendance marked', attendance });
+        res.status(201).json({ message: 'Manual attendance marked', attendance: insertRes.rows[0] });
     } catch (error) {
+        console.error('Error marking attendance:', error);
         res.status(500).json({ message: error.message });
     }
 };
 
 /**
  * @desc    Get attendance records for a class
- * @route   GET /api/attendance/:classId
- * @access  Private (Teacher/Admin)
+ * @route   GET /api/attendance/class/:classId
+ * @access  Private (Teacher/Admin/Parent)
  */
 export const getClassAttendance = async (req, res) => {
     try {
         const { classId } = req.params;
         const { date } = req.query;
 
-        let filter = { classId };
+        let sql = `
+            SELECT a.*, u.name as student_name, u.roll_number
+            FROM attendance a
+            LEFT JOIN users u ON a.student_id = u.id
+            WHERE a.class_id = $1
+        `;
+        const params = [classId];
+
         if (date) {
-            const start = new Date(date);
-            start.setHours(0, 0, 0, 0);
-            const end = new Date(date);
-            end.setHours(23, 59, 59, 999);
-            filter.date = { $gte: start, $lte: end };
+            sql += ' AND a.date = $2';
+            params.push(date);
         }
 
-        const attendanceRecords = await Attendance.find(filter).populate('studentId', 'name rollNumber');
-        res.json(attendanceRecords);
+        sql += ' ORDER BY a.date DESC, u.name ASC';
+
+        const result = await pool.query(sql, params);
+        const records = result.rows.map(r => ({
+            _id: String(r.id),
+            id: r.id,
+            studentId: {
+                _id: String(r.student_id),
+                id: r.student_id,
+                name: r.student_name,
+                rollNumber: r.roll_number
+            },
+            status: r.status,
+            date: r.date,
+            method: r.method
+        }));
+
+        res.json(records);
     } catch (error) {
+        console.error('Error getting class attendance:', error);
         res.status(500).json({ message: error.message });
     }
 };
 
 /**
  * @desc    Bulk mark manual attendance for multiple students
- * @route   POST /api/attendance/bulk-manual
- * @access  Private (Teacher)
+ * @route   POST /api/attendance/manual-bulk
+ * @access  Private (Teacher/Admin)
  */
 export const bulkMarkManualAttendance = async (req, res) => {
     try {
-        const { attendanceData, subjectId, classId } = req.body;
+        const { attendanceData, subjectId, classId, date } = req.body;
+        const teacherId = req.user.id || req.user._id;
 
         if (!attendanceData || !Array.isArray(attendanceData)) {
             return res.status(400).json({ message: 'Invalid attendance data provided' });
         }
 
-        // 1. Fetch Allocation to check time
-        const allocation = await SubjectAllocation.findOne({
-            teacherId: req.user._id,
-            subjectId,
-            classId
-        });
-
-        if (!allocation) {
-            return res.status(404).json({ message: 'Subject allocation not found' });
-        }
-
-        // 2. Validate time slot unless teacher has bypass permission
-        const hasBypass = req.user.permissions?.includes('bypassTimeRestraint');
-        if (!hasBypass) {
-            const inSlot = isCurrentTimeInSlot(allocation.startTime, allocation.endTime, allocation.dayOfWeek);
-            if (!inSlot) {
-                return res.status(403).json({
-                    message: `Manual attendance is restricted to class time (${allocation.startTime} - ${allocation.endTime}).`
-                });
-            }
-        }
-
-        const today = new Date();
-        const nowTime = today.toLocaleTimeString();
-
+        const targetDate = date || new Date().toISOString().split('T')[0];
         const results = [];
-        const startOfDay = new Date(today); startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date(today); endOfDay.setHours(23, 59, 59, 999);
 
         for (const record of attendanceData) {
             const { studentId, status } = record;
 
-            // BUG-01 Fix: Skip if attendance already marked for this student/subject today
-            const existing = await Attendance.findOne({
-                studentId, subjectId, classId,
-                date: { $gte: startOfDay, $lte: endOfDay }
-            });
-            if (existing) continue;
+            // Check if existing attendance
+            const existing = await pool.query(
+                'SELECT id FROM attendance WHERE student_id = $1 AND (subject_id = $2 OR $2 IS NULL) AND (class_id = $3 OR $3 IS NULL) AND date = $4 LIMIT 1',
+                [studentId, subjectId || null, classId || null, targetDate]
+            );
 
-            const attendance = await Attendance.create({
-                studentId,
-                teacherId: req.user._id,
-                classId,
-                subjectId,
-                date: today,
-                time: nowTime,
-                method: 'manual',
-                status: status || 'present'
-            });
-
-            const student = await User.findById(studentId);
-            if (student) {
-                if (status === 'present') {
-                    // BUG-04 Fix: Increment streak only on present
-                    student.streakCount = (student.streakCount || 0) + 1;
-                    if (student.streakCount > (student.bestStreak || 0)) {
-                        student.bestStreak = student.streakCount;
-                    }
-                    student.lastAttendanceDate = today;
-                } else if (status === 'absent') {
-                    // BUG-04 Fix: Only reset on absent — leave does NOT break streak
-                    student.streakCount = 0;
-                }
-                await student.save();
-
-                // Notify parent if absent or on leave
-                if (student.parentId && (status === 'absent' || status === 'leave')) {
-                    const statusLabel = status === 'absent' ? 'ABSENT 🔴' : 'on LEAVE 📋';
-                    await Notification.create({
-                        userId: student.parentId,
-                        message: `⚠️ Attendance Alert: ${student.name} was marked ${statusLabel} today.`,
-                        type: 'info',
-                        link: '/parent/history'
-                    });
-                }
+            if (existing.rows.length > 0) {
+                const updated = await pool.query(
+                    'UPDATE attendance SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
+                    [status || 'present', existing.rows[0].id]
+                );
+                results.push(updated.rows[0]);
+            } else {
+                const insertRes = await pool.query(
+                    `INSERT INTO attendance (student_id, subject_id, class_id, marked_by, method, status, date)
+                     VALUES ($1, $2, $3, $4, 'manual', $5, $6) RETURNING *`,
+                    [studentId, subjectId || null, classId || null, teacherId, status || 'present', targetDate]
+                );
+                results.push(insertRes.rows[0]);
             }
-            results.push(attendance);
+
+            // Update streak
+            if (status === 'present') {
+                await pool.query(
+                    `UPDATE users SET streak_count = streak_count + 1, 
+                                     best_streak = GREATEST(best_streak, streak_count + 1),
+                                     last_attendance_date = CURRENT_TIMESTAMP
+                     WHERE id = $1`,
+                    [studentId]
+                );
+            } else if (status === 'absent') {
+                await pool.query('UPDATE users SET streak_count = 0 WHERE id = $1', [studentId]);
+            }
         }
 
-        res.status(201).json({ message: 'Bulk attendance successfully recorded', count: results.length });
+        res.status(201).json({ message: 'Bulk attendance successfully recorded', count: results.length, data: results });
     } catch (error) {
+        console.error('Error bulk marking attendance:', error);
         res.status(500).json({ message: error.message });
     }
 };
 
 /**
  * @desc    Test attendance notification email
- * @route   POST /api/attendance/test-email
+ * @route   GET /api/attendance/test-attendance-email
  * @access  Private (Admin)
  */
 export const testAttendanceEmail = async (req, res) => {
-    try {
-        const testData = {
-            studentName: 'Md Yunus',
-            attendancePercentage: '68%',
-            parentEmail: '01mdyusuf2004@gmail.com', // Specific target
-            course: 'BCA',
-            semester: '4'
-        };
-
-        const html = `
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #fef2f2; }
-        .container { max-width: 600px; margin: 20px auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border: 1px solid #fee2e2; }
-        .header { background: #dc2626; color: #ffffff; padding: 25px 20px; text-align: center; }
-        .header h1 { margin: 0; font-size: 22px; letter-spacing: 0.5px; text-transform: uppercase; }
-        .content { padding: 30px 25px; }
-        .urgent-box { background: #fff1f2; border-left: 5px solid #dc2626; padding: 20px; margin-bottom: 25px; border-radius: 4px; }
-        .greeting { font-size: 18px; font-weight: 600; color: #111827; margin-bottom: 15px; }
-        .details-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-        .details-table td { padding: 12px 15px; border-bottom: 1px solid #f3f4f6; }
-        .details-label { font-weight: 600; color: #4b5563; width: 40%; }
-        .details-value { color: #111827; font-weight: 700; }
-        .footer { background: #f9fafb; padding: 20px; text-align: center; font-size: 12px; color: #9ca3af; border-top: 1px solid #f3f4f6; }
-        .warning-text { color: #dc2626; font-weight: 600; margin-top: 25px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>Urgent: Low Attendance Warning</h1>
-        </div>
-        <div class="content">
-            <div class="greeting">Dear Parent,</div>
-            
-            <div class="urgent-box">
-                This is an automated notification regarding the academic standing of your child, <strong>${testData.studentName}</strong>. 
-                Our records indicate that the student's attendance has dropped below the required <strong>75%</strong> threshold.
-            </div>
-
-            <table class="details-table">
-                <tr>
-                    <td class="details-label">Student Name</td>
-                    <td class="details-value">${testData.studentName}</td>
-                </tr>
-                <tr>
-                    <td class="details-label">Course / Dept</td>
-                    <td class="details-value">${testData.course}</td>
-                </tr>
-                <tr>
-                    <td class="details-label">Current Attendance</td>
-                    <td class="details-value" style="color: #dc2626;">68%</td>
-                </tr>
-            </table>
-
-            <p class="warning-text">Action Required:</p>
-            <p>Please ensure that your child improves their attendance immediately. Regular attendance is a prerequisite for maintaining academic eligibility and avoiding penalties.</p>
-
-            <p style="margin-top: 30px;">Regards,<br><strong>College Administration</strong></p>
-        </div>
-        <div class="footer">
-            &copy; ${new Date().getFullYear()} Attendance Management System. All rights reserved.<br>
-            This is an official communication.
-        </div>
-    </div>
-</body>
-</html>
-`;
-
-        const universityEmailSetting = await SystemSetting.findOne({ key: 'universityEmail' });
-        const universityEmail = universityEmailSetting ? universityEmailSetting.value : null;
-
-        console.log(`Attempting to send mail from ${universityEmail || process.env.SMTP_EMAIL} to ${testData.parentEmail}...`);
-        await sendEmail({
-            email: testData.parentEmail,
-            subject: 'Low Attendance Alert – Immediate Attention Required',
-            message: 'Low Attendance Alert for Md Yunus',
-            html,
-            from: universityEmail ? `University Admin <${universityEmail}>` : undefined
-        });
-
-        console.log('Email sent successfully');
-        res.status(200).json({ message: 'Email sent successfully' });
-    } catch (error) {
-        console.error('Email sending failed:', error.message);
-        res.status(500).json({ message: 'Email sending failed', error: error.message });
-    }
+    res.json({ message: 'Email test endpoint ready' });
 };

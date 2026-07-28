@@ -90,7 +90,72 @@ const ManualAttendance = () => {
         setAttendedStudents(prev => ({ ...prev, ...updates }));
     };
 
+
+
+    const [selectedSlotIndex, setSelectedSlotIndex] = useState(0);
+    const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
+
+    useEffect(() => {
+        if (selectedSession && selectedSession.slots && selectedSession.slots.length > 0) {
+            const activeIdx = selectedSession.slots.findIndex(s => isCurrentTimeInSlot(s.startTime, s.endTime, s.dayOfWeek));
+            setSelectedSlotIndex(activeIdx !== -1 ? activeIdx : 0);
+        } else {
+            setSelectedSlotIndex(0);
+        }
+    }, [selectedSession]);
+
+    const currentSlot = (selectedSession?.slots && selectedSession.slots.length > 0)
+        ? selectedSession.slots[selectedSlotIndex] || selectedSession.slots[0]
+        : null;
+
+    const isSlotTimeActive = (slot, selectedDate) => {
+        if (!slot || !slot.startTime || !slot.endTime || !slot.dayOfWeek) return true;
+
+        const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const now = new Date();
+        const todayStr = now.toISOString().split('T')[0];
+
+        // 1. Check Date (Must be today's date for regular teachers)
+        if (selectedDate && selectedDate !== todayStr) return false;
+
+        // 2. Check Day of Week
+        if (days[now.getDay()] !== slot.dayOfWeek) return false;
+
+        // 3. Check Time Window
+        const timeToMinutes = (timeStr) => {
+            const parts = timeStr.trim().split(' ');
+            if (parts.length < 2) return 0;
+            const [time, modifier] = parts;
+            let [hours, minutes] = time.split(':');
+            hours = parseInt(hours, 10);
+            minutes = parseInt(minutes, 10);
+            if (modifier === 'PM' && hours !== 12) hours += 12;
+            if (modifier === 'AM' && hours === 12) hours = 0;
+            return hours * 60 + minutes;
+        };
+
+        const currentMinutes = now.getHours() * 60 + now.getMinutes();
+        const startMinutes = timeToMinutes(slot.startTime) - 10;
+        const endMinutes = timeToMinutes(slot.endTime) + 10;
+
+        return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+    };
+
+    const hasBypass = user?.permissions?.includes('bypassTimeRestraint') || user?.role === 'admin';
+    const isSelectedSlotActive = isSlotTimeActive(currentSlot, attendanceDate);
+    const canMark = isSelectedSlotActive || hasBypass;
+
+    const filteredStudents = selectedSession?.students.filter(s =>
+        s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        s.rollNumber?.toLowerCase().includes(searchTerm.toLowerCase())
+    ) || [];
+
     const submitBulkAttendance = async () => {
+        if (!canMark) {
+            setError("Attendance marking is restricted outside the active slot time.");
+            return;
+        }
+
         const studentIds = Object.keys(attendedStudents);
         if (studentIds.length === 0) {
             setError("No attendance records to submit.");
@@ -109,10 +174,11 @@ const ManualAttendance = () => {
             await axios.post('/attendance/manual-bulk', {
                 attendanceData,
                 classId: selectedSession.class?._id,
-                subjectId: selectedSession.subject?._id
+                subjectId: selectedSession.subject?._id,
+                date: attendanceDate
             });
 
-            setSuccess(`Successfully submitted attendance for ${studentIds.length} students.`);
+            setSuccess(`Successfully submitted attendance for ${studentIds.length} students (${attendanceDate}).`);
             setAttendedStudents({}); // Clear staging
 
             // Refresh roster to get updated statuses from backend
@@ -127,17 +193,6 @@ const ManualAttendance = () => {
             setLoading(false);
         }
     };
-
-    if (loading) return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading student rosters...</div>;
-
-    const hasBypass = user?.permissions?.includes('bypassTimeRestraint');
-    const isSessionActive = selectedSession ? isCurrentTimeInSlot(selectedSession.startTime, selectedSession.endTime, selectedSession.dayOfWeek) : false;
-    const canMark = isSessionActive || hasBypass;
-
-    const filteredStudents = selectedSession?.students.filter(s =>
-        s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        s.rollNumber?.toLowerCase().includes(searchTerm.toLowerCase())
-    ) || [];
 
     if (!user?.permissions?.includes('manualAttendance') && !user?.permissions?.includes('markAttendance')) {
         return (
@@ -155,26 +210,26 @@ const ManualAttendance = () => {
             <div className="glass-panel" style={{ padding: '1.5rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
                 <div style={{ textAlign: isMobile ? 'center' : 'left', width: isMobile ? '100%' : 'auto' }}>
                     <h2 style={{ fontSize: '1.25rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.75rem', justifyContent: isMobile ? 'center' : 'flex-start' }}>
-                        <Users className="text-brand-primary" size={24} /> Manual Attendance
+                        <Users className="text-brand-primary" size={24} /> Mark Attendance
                     </h2>
-                    <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Record attendance manually for assigned classes</p>
+                    <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Record attendance for assigned classes and sessions</p>
                 </div>
 
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: isMobile ? 'center' : 'flex-end', width: isMobile ? '100%' : 'auto' }}>
                     {roster.map((session) => {
-                        const active = isCurrentTimeInSlot(session.startTime, session.endTime, session.dayOfWeek);
+                        const active = session.slots?.some(s => isSlotTimeActive(s, attendanceDate));
                         return (
                             <button
                                 key={session.allocationId}
                                 onClick={() => { setSelectedSession(session); setError(null); }}
                                 style={{
-                                    padding: '0.6rem 1rem',
+                                    padding: '0.65rem 1.25rem',
                                     borderRadius: '0.75rem',
                                     border: selectedSession?.allocationId === session.allocationId ? '2px solid var(--brand-primary)' : '1px solid var(--border-color)',
                                     backgroundColor: selectedSession?.allocationId === session.allocationId ? 'var(--bg-primary)' : 'var(--bg-secondary)',
                                     color: 'var(--text-primary)',
                                     fontSize: '0.85rem',
-                                    fontWeight: '600',
+                                    fontWeight: '700',
                                     cursor: 'pointer',
                                     transition: 'all 0.2s ease',
                                     display: 'flex',
@@ -183,8 +238,8 @@ const ManualAttendance = () => {
                                     position: 'relative'
                                 }}
                             >
-                                <BookOpen size={16} className={active ? 'text-success' : 'text-light'} />
-                                {session.subject?.subjectName}
+                                <BookOpen size={16} className={active ? 'text-success' : 'text-brand-primary'} />
+                                {session.class?.className} - {session.subject?.subjectName}
                                 {active && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', position: 'absolute', top: '-2px', right: '-2px', boxShadow: '0 0 10px #10b981' }}></span>}
                             </button>
                         );
@@ -206,29 +261,65 @@ const ManualAttendance = () => {
                 )}
             </AnimatePresence>
 
-            {/* Status Bar */}
-            <div className="glass-panel" style={{ padding: '1rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: canMark ? 'rgba(16, 185, 129, 0.05)' : 'rgba(245, 158, 11, 0.05)', flexWrap: 'wrap', gap: '1rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <div style={{ padding: '0.5rem', borderRadius: '0.5rem', background: isSessionActive ? 'var(--success)' : 'var(--bg-secondary)', color: isSessionActive ? 'white' : 'var(--text-light)' }}>
-                        {isSessionActive ? <Clock size={20} /> : <Lock size={20} />}
-                    </div>
-                    <div>
-                        <div style={{ fontSize: '0.9rem', fontWeight: '700' }}>
-                            {isSessionActive ? 'In-Progress Session' : 'Outside Scheduled Time'}
+            {/* Status & Time Slot Selector Bar */}
+            <div className="glass-panel" style={{
+                padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem',
+                background: isSelectedSlotActive ? 'rgba(16, 185, 129, 0.06)' : 'rgba(239, 68, 68, 0.06)',
+                borderRadius: '1rem', border: '1px solid ' + (isSelectedSlotActive ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)')
+            }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <div style={{ padding: '0.6rem', borderRadius: '0.75rem', background: isSelectedSlotActive ? 'var(--success)' : 'var(--danger)', color: 'white' }}>
+                            {isSelectedSlotActive ? <Clock size={22} /> : <Lock size={22} />}
                         </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                            {selectedSession?.dayOfWeek} | {selectedSession?.startTime} - {selectedSession?.endTime}
+                        <div>
+                            <div style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--text-primary)' }}>
+                                Marking Attendance: <span style={{ color: 'var(--brand-primary)' }}>{selectedSession?.class?.className} - {selectedSession?.subject?.subjectName}</span>
+                            </div>
+                            <div style={{ fontSize: '0.85rem', color: isSelectedSlotActive ? 'var(--success)' : 'var(--danger)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem' }}>
+                                {isSelectedSlotActive ? (
+                                    <span>🟢 Active Slot Session: <strong>{currentSlot?.dayOfWeek} @ {currentSlot?.timeSlot || `${currentSlot?.startTime} - ${currentSlot?.endTime}`}</strong></span>
+                                ) : (
+                                    <span>🔒 Restricted: Outside Slot Time ({currentSlot?.dayOfWeek || 'Scheduled Slot'} {currentSlot?.timeSlot || `${currentSlot?.startTime} - ${currentSlot?.endTime}`})</span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Date & Slot Selector Controls */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                        {selectedSession?.slots && selectedSession.slots.length > 1 && (
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Select Time Slot</label>
+                                <select
+                                    value={selectedSlotIndex}
+                                    onChange={e => setSelectedSlotIndex(Number(e.target.value))}
+                                    style={{ padding: '0.5rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: '600', outline: 'none' }}
+                                >
+                                    {selectedSession.slots.map((slot, idx) => (
+                                        <option key={idx} value={idx}>
+                                            {slot.dayOfWeek} • {slot.timeSlot || `${slot.startTime} - ${slot.endTime}`}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
+                        <div>
+                            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Attendance Date</label>
+                            <input
+                                type="date"
+                                value={attendanceDate}
+                                onChange={e => setAttendanceDate(e.target.value)}
+                                style={{ padding: '0.5rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: '600', outline: 'none' }}
+                            />
                         </div>
                     </div>
                 </div>
-                {hasBypass && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--brand-primary)', fontSize: '0.85rem', fontWeight: '600', padding: '0.4rem 0.8rem', background: 'rgba(79, 70, 229, 0.1)', borderRadius: '0.5rem' }}>
-                        <ShieldCheck size={16} /> <span style={{ display: isMobile ? 'none' : 'inline' }}>Admin Override Active</span>
-                    </div>
-                )}
+
                 {!canMark && (
-                    <div style={{ color: 'var(--danger)', fontSize: '0.8rem', fontWeight: '600', textAlign: 'right' }}>
-                        {isMobile ? 'Restricted Access' : 'Restricted: Access only during class time.'}
+                    <div style={{ fontSize: '0.8rem', color: 'var(--danger)', fontWeight: '600', padding: '0.5rem 0.75rem', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <AlertCircle size={16} /> Attendance marking is restricted. You can only mark attendance during the active slot time ({currentSlot?.dayOfWeek} {currentSlot?.timeSlot || `${currentSlot?.startTime} - ${currentSlot?.endTime}`}).
                     </div>
                 )}
             </div>

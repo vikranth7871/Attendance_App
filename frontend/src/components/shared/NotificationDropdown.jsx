@@ -69,8 +69,14 @@ const NotificationDropdown = () => {
     const fetchNotifications = useCallback(async () => {
         try {
             const { data } = await axios.get('/notifications');
-            setNotifications(data);
-            setUnreadCount(data.filter(n => !n.read).length);
+            const formatted = data.map(n => ({
+                ...n,
+                _id: String(n.id || n._id),
+                read: n.is_read !== undefined ? n.is_read : (n.read || false),
+                createdAt: n.created_at || n.createdAt || new Date()
+            }));
+            setNotifications(formatted);
+            setUnreadCount(formatted.filter(n => !n.read).length);
         } catch (err) {
             // Silently fail — backend may be starting up
         }

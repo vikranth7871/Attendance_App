@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Trophy, Medal, Clock, Award, Download, CheckCircle, Search } from 'lucide-react';
 import axios from 'axios';
@@ -48,15 +49,17 @@ const QuizResultsModal = ({ isOpen, onClose, quiz }) => {
         cert.certificateId?.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-    return (
+    if (!isOpen) return null;
+
+    return createPortal(
         <AnimatePresence>
             {isOpen && (
                 <motion.div
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                     style={{
-                        position: 'fixed', inset: 0, zIndex: 3000,
-                        background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem'
+                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999,
+                        background: 'rgba(15,23,42,0.75)', backdropFilter: 'blur(8px)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem 1rem'
                     }}
                 >
                     <motion.div
@@ -227,7 +230,8 @@ const QuizResultsModal = ({ isOpen, onClose, quiz }) => {
                     </motion.div>
                 </motion.div>
             )}
-        </AnimatePresence>
+        </AnimatePresence>,
+        document.body
     );
 };
 

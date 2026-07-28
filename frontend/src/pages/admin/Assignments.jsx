@@ -32,8 +32,66 @@ const Assignments = () => {
     const [message, setMessage] = useState({ type: '', text: '' });
     const [fetchError, setFetchError] = useState('');
 
-    const [selectedDay, setSelectedDay] = useState('');
-    const [selectedTime, setSelectedTime] = useState('');
+    const [activeDay, setActiveDay] = useState('Monday');
+    const [selectedSlots, setSelectedSlots] = useState([]); // Array of { dayOfWeek, timeSlot, startTime, endTime }
+
+    const isSlotSelected = (day, time) => {
+        return selectedSlots.some(s => s.dayOfWeek === day && s.timeSlot === time);
+    };
+
+    const toggleSlot = (day, time) => {
+        if (!day) return;
+        const parts = time.split(' - ');
+        const startTime = parts[0];
+        const endTime = parts[1];
+
+        setSelectedSlots(prev => {
+            const exists = prev.some(s => s.dayOfWeek === day && s.timeSlot === time);
+            if (exists) {
+                return prev.filter(s => !(s.dayOfWeek === day && s.timeSlot === time));
+            } else {
+                return [...prev, { dayOfWeek: day, timeSlot: time, startTime, endTime }];
+            }
+        });
+    };
+
+    const toggleAllSlotsForActiveDay = () => {
+        const allSelected = TIMES.every(t => isSlotSelected(activeDay, t));
+        setSelectedSlots(prev => {
+            if (allSelected) {
+                return prev.filter(s => s.dayOfWeek !== activeDay);
+            } else {
+                const filtered = prev.filter(s => s.dayOfWeek !== activeDay);
+                TIMES.forEach(t => {
+                    const parts = t.split(' - ');
+                    filtered.push({ dayOfWeek: activeDay, timeSlot: t, startTime: parts[0], endTime: parts[1] });
+                });
+                return filtered;
+            }
+        });
+    };
+
+    const applyActiveDayToAllDays = () => {
+        const activeDaySlots = selectedSlots.filter(s => s.dayOfWeek === activeDay);
+        if (activeDaySlots.length === 0) return;
+
+        setSelectedSlots(prev => {
+            const newSlots = [];
+            DAYS.forEach(day => {
+                activeDaySlots.forEach(slot => {
+                    newSlots.push({
+                        ...slot,
+                        dayOfWeek: day
+                    });
+                });
+            });
+            return newSlots;
+        });
+    };
+
+    const removeSlot = (day, time) => {
+        setSelectedSlots(prev => prev.filter(s => !(s.dayOfWeek === day && s.timeSlot === time)));
+    };
 
     useEffect(() => {
         fetchInitialData();
@@ -73,28 +131,22 @@ const Assignments = () => {
 
     const handleSubjectSubmit = async (e) => {
         e.preventDefault();
+        if (selectedSlots.length === 0) {
+            return setMessage({ type: 'error', text: 'Please select at least one schedule time slot.' });
+        }
         setLoading(true);
         setMessage({ type: '', text: '' });
 
-        let startTime = '';
-        let endTime = '';
-        if (selectedTime) {
-            const parts = selectedTime.split(' - ');
-            startTime = parts[0];
-            endTime = parts[1];
-        }
-
         const payload = {
             ...subjectForm,
-            dayOfWeek: selectedDay,
-            startTime,
-            endTime
+            slots: selectedSlots
         };
 
         try {
             await axios.post('/admin/assign-subject', payload);
-            setMessage({ type: 'success', text: 'Subject assigned successfully!' });
+            setMessage({ type: 'success', text: `Successfully assigned subject for ${selectedSlots.length} schedule slot(s)!` });
             setSubjectForm({ ...subjectForm, subjectId: '', teacherId: '' }); // keep dept/class
+            setSelectedSlots([]);
         } catch (error) {
             setMessage({ type: 'error', text: error.response?.data?.message || 'Failed to assign subject' });
         } finally {
@@ -314,102 +366,194 @@ const Assignments = () => {
 
                                 {/* Section 2: Schedule Picker */}
                                 <div>
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '1.5rem' }}>
-                                        <Calendar size={18} color="var(--brand-primary)" /> Weekly Schedule Selection
-                                    </label>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+                                            <Calendar size={18} color="var(--brand-primary)" /> Weekly Schedule Selection
+                                        </label>
+                                        {selectedSlots.length > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelectedSlots([])}
+                                                style={{ fontSize: '0.8rem', color: '#ef4444', background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: '600' }}
+                                            >
+                                                Clear All ({selectedSlots.length})
+                                            </button>
+                                        )}
+                                    </div>
 
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
                                         {/* Day Row */}
                                         <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-                                            {DAYS.map(day => (
-                                                <motion.button
-                                                    key={day}
-                                                    type="button"
-                                                    whileHover={{ scale: 1.02 }}
-                                                    whileTap={{ scale: 0.98 }}
-                                                    onClick={() => {
-                                                        setSelectedDay(day);
-                                                        const time = selectedTime ? ` - ${selectedTime}` : '';
-                                                        setSubjectForm({ ...subjectForm, timeSlot: `${day}${time}` });
-                                                    }}
-                                                    style={{
-                                                        padding: '0.6rem 1.2rem',
-                                                        borderRadius: '0.75rem',
-                                                        border: '1px solid',
-                                                        borderColor: selectedDay === day ? 'var(--brand-primary)' : 'var(--border-color)',
-                                                        background: selectedDay === day ? 'rgba(79, 70, 229, 0.1)' : 'var(--bg-primary)',
-                                                        color: selectedDay === day ? 'var(--brand-primary)' : 'var(--text-secondary)',
-                                                        fontWeight: '600',
-                                                        cursor: 'pointer',
-                                                        transition: 'all 0.3s'
-                                                    }}
-                                                >
-                                                    {day.substring(0, 3)}
-                                                </motion.button>
-                                            ))}
+                                            {DAYS.map(day => {
+                                                const count = selectedSlots.filter(s => s.dayOfWeek === day).length;
+                                                const isActive = activeDay === day;
+                                                return (
+                                                    <motion.button
+                                                        key={day}
+                                                        type="button"
+                                                        whileHover={{ scale: 1.02 }}
+                                                        whileTap={{ scale: 0.98 }}
+                                                        onClick={() => setActiveDay(day)}
+                                                        style={{
+                                                            padding: '0.6rem 1.2rem',
+                                                            borderRadius: '0.75rem',
+                                                            border: '1px solid',
+                                                            borderColor: isActive ? 'var(--brand-primary)' : 'var(--border-color)',
+                                                            background: isActive ? 'var(--brand-primary)' : 'var(--bg-primary)',
+                                                            color: isActive ? '#ffffff' : 'var(--text-secondary)',
+                                                            fontWeight: '600',
+                                                            cursor: 'pointer',
+                                                            transition: 'all 0.2s',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '0.4rem'
+                                                        }}
+                                                    >
+                                                        {day.substring(0, 3)}
+                                                        {count > 0 && (
+                                                            <span style={{
+                                                                background: isActive ? '#ffffff' : 'var(--brand-primary)',
+                                                                color: isActive ? 'var(--brand-primary)' : '#ffffff',
+                                                                borderRadius: '50%',
+                                                                width: '18px',
+                                                                height: '18px',
+                                                                fontSize: '0.7rem',
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                fontWeight: '700'
+                                                            }}>
+                                                                {count}
+                                                            </span>
+                                                        )}
+                                                    </motion.button>
+                                                );
+                                            })}
+                                        </div>
+
+                                        {/* Action Toolbar */}
+                                        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                                            <button
+                                                type="button"
+                                                onClick={toggleAllSlotsForActiveDay}
+                                                style={{
+                                                    fontSize: '0.8rem',
+                                                    padding: '0.4rem 0.8rem',
+                                                    borderRadius: '0.5rem',
+                                                    background: 'var(--bg-secondary)',
+                                                    border: '1px solid var(--border-color)',
+                                                    color: 'var(--text-primary)',
+                                                    cursor: 'pointer',
+                                                    fontWeight: '600'
+                                                }}
+                                            >
+                                                {TIMES.every(t => isSlotSelected(activeDay, t)) ? `Deselect All (${activeDay})` : `Select All Slots (${activeDay})`}
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={applyActiveDayToAllDays}
+                                                disabled={selectedSlots.filter(s => s.dayOfWeek === activeDay).length === 0}
+                                                style={{
+                                                    fontSize: '0.8rem',
+                                                    padding: '0.4rem 0.8rem',
+                                                    borderRadius: '0.5rem',
+                                                    background: 'var(--bg-secondary)',
+                                                    border: '1px solid var(--border-color)',
+                                                    color: 'var(--text-primary)',
+                                                    cursor: 'pointer',
+                                                    fontWeight: '600',
+                                                    opacity: selectedSlots.filter(s => s.dayOfWeek === activeDay).length === 0 ? 0.5 : 1
+                                                }}
+                                            >
+                                                Copy {activeDay} Slots to Everyday
+                                            </button>
                                         </div>
 
                                         {/* Time Grid */}
                                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.8rem' }}>
-                                            {TIMES.map(time => (
-                                                <motion.button
-                                                    key={time}
-                                                    type="button"
-                                                    whileHover={{ y: -2 }}
-                                                    onClick={() => {
-                                                        setSelectedTime(time);
-                                                        const day = selectedDay || 'Select Day';
-                                                        setSubjectForm({ ...subjectForm, timeSlot: `${day} ${time}` });
-                                                    }}
-                                                    style={{
-                                                        padding: '1rem',
-                                                        borderRadius: '0.75rem',
-                                                        border: '1px solid',
-                                                        borderColor: selectedTime === time ? 'var(--brand-primary)' : 'var(--border-color)',
-                                                        background: selectedTime === time ? 'rgba(79, 70, 229, 0.05)' : 'var(--bg-primary)',
-                                                        color: selectedTime === time ? 'var(--brand-primary)' : 'var(--text-secondary)',
-                                                        fontWeight: '500',
-                                                        fontSize: '0.85rem',
-                                                        cursor: 'pointer',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                        gap: '0.5rem'
-                                                    }}
-                                                >
-                                                    <Clock size={14} opacity={selectedTime === time ? 1 : 0.5} />
-                                                    {time}
-                                                </motion.button>
-                                            ))}
+                                            {TIMES.map(time => {
+                                                const selected = isSlotSelected(activeDay, time);
+                                                return (
+                                                    <motion.button
+                                                        key={time}
+                                                        type="button"
+                                                        whileHover={{ y: -2 }}
+                                                        onClick={() => toggleSlot(activeDay, time)}
+                                                        style={{
+                                                            padding: '1rem',
+                                                            borderRadius: '0.75rem',
+                                                            border: '1.5px solid',
+                                                            borderColor: selected ? 'var(--brand-primary)' : 'var(--border-color)',
+                                                            background: selected ? 'rgba(79, 70, 229, 0.12)' : 'var(--bg-primary)',
+                                                            color: selected ? 'var(--brand-primary)' : 'var(--text-secondary)',
+                                                            fontWeight: selected ? '700' : '500',
+                                                            fontSize: '0.85rem',
+                                                            cursor: 'pointer',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between',
+                                                            gap: '0.5rem'
+                                                        }}
+                                                    >
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                            <Clock size={14} opacity={selected ? 1 : 0.5} />
+                                                            {time}
+                                                        </div>
+                                                        {selected ? <Check size={16} color="var(--brand-primary)" /> : <Plus size={14} opacity={0.4} />}
+                                                    </motion.button>
+                                                );
+                                            })}
                                         </div>
 
-                                        {/* Selection Summary */}
+                                        {/* Selected Slots Summary Chips */}
                                         <AnimatePresence>
-                                            {subjectForm.timeSlot && (
+                                            {selectedSlots.length > 0 && (
                                                 <motion.div
                                                     initial={{ opacity: 0, scale: 0.95 }}
                                                     animate={{ opacity: 1, scale: 1 }}
                                                     style={{
-                                                        padding: '1rem 1.5rem',
-                                                        background: 'linear-gradient(90deg, var(--brand-primary), var(--brand-secondary))',
+                                                        padding: '1.2rem 1.5rem',
+                                                        background: 'linear-gradient(135deg, var(--brand-primary), #6366f1)',
                                                         borderRadius: '0.75rem',
                                                         color: 'white',
-                                                        display: 'flex',
-                                                        justifyContent: 'space-between',
-                                                        alignItems: 'center',
                                                         boxShadow: '0 10px 20px rgba(79, 70, 229, 0.2)'
                                                     }}
                                                 >
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                                        <div style={{ background: 'rgba(255,255,255,0.2)', padding: '0.5rem', borderRadius: '0.5rem' }}>
-                                                            <Calendar size={20} />
-                                                        </div>
-                                                        <div>
-                                                            <div style={{ fontSize: '0.75rem', opacity: 0.8, fontWeight: '500' }}>SELECTED TIME SLOT</div>
-                                                            <div style={{ fontSize: '1.1rem', fontWeight: '700' }}>{subjectForm.timeSlot}</div>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                            <Calendar size={18} />
+                                                            <span style={{ fontSize: '0.85rem', fontWeight: '700', letterSpacing: '0.05em' }}>
+                                                                SELECTED SCHEDULE ({selectedSlots.length} SLOT{selectedSlots.length > 1 ? 'S' : ''})
+                                                            </span>
                                                         </div>
                                                     </div>
-                                                    <Check size={24} />
+
+                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', maxHeight: '150px', overflowY: 'auto' }}>
+                                                        {selectedSlots.map((slot, idx) => (
+                                                            <span
+                                                                key={idx}
+                                                                style={{
+                                                                    background: 'rgba(255, 255, 255, 0.2)',
+                                                                    backdropFilter: 'blur(5px)',
+                                                                    padding: '0.35rem 0.75rem',
+                                                                    borderRadius: '2rem',
+                                                                    fontSize: '0.8rem',
+                                                                    fontWeight: '600',
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '0.4rem'
+                                                                }}
+                                                            >
+                                                                {slot.dayOfWeek.substring(0, 3)}: {slot.timeSlot}
+                                                                <X
+                                                                    size={14}
+                                                                    style={{ cursor: 'pointer' }}
+                                                                    onClick={() => removeSlot(slot.dayOfWeek, slot.timeSlot)}
+                                                                />
+                                                            </span>
+                                                        ))}
+                                                    </div>
                                                 </motion.div>
                                             )}
                                         </AnimatePresence>

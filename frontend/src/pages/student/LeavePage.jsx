@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { Clock, Calendar, AlertCircle, Info, UploadCloud, X, ArrowRightCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import LeaveCalendarPicker from '../../components/shared/LeaveCalendarPicker';
 
 const RulesModal = ({ onClose }) => (
     <AnimatePresence>
@@ -246,21 +247,13 @@ const LeavePage = () => {
                         </select>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 140px), 1fr))', gap: '1rem' }}>
-                        <div>
-                            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Start Date</label>
-                            <input type="date" className="input-field" min={!leaveData.extensionFor ? todayStr : undefined} value={leaveData.startDate} onChange={e => setLeaveData({ ...leaveData, startDate: e.target.value })} required disabled={!!leaveData.extensionFor} />
-                        </div>
-                        <div>
-                            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>End Date</label>
-                            <input type="date" className="input-field" min={leaveData.startDate || todayStr} max={maxDateStr || undefined} value={leaveData.endDate} onChange={e => setLeaveData({ ...leaveData, endDate: e.target.value })} required />
-                        </div>
-                    </div>
                     <div>
-                        <div style={{ background: 'rgba(99,102,241,0.05)', border: '1px dashed var(--brand-primary)', borderRadius: 'var(--radius-md)', padding: '0.75rem', textAlign: 'center', color: 'var(--brand-primary)', fontWeight: '600', fontSize: '0.9rem' }}>
-                            Duration: {totalDays} {totalDays === 1 ? 'Day' : 'Days'} 
-                            {totalDays > 3 && <span style={{ color: 'var(--danger)', display: 'block', fontSize: '0.75rem', marginTop: '0.25rem' }}>(Proof Mandatory for &gt; 3 days)</span>}
-                        </div>
+                        <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Leave Date / Range Selection</label>
+                        <LeaveCalendarPicker
+                            startDate={leaveData.startDate}
+                            endDate={leaveData.endDate}
+                            onChange={({ startDate, endDate }) => setLeaveData({ ...leaveData, startDate, endDate })}
+                        />
                     </div>
 
                     <div>

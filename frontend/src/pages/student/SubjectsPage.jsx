@@ -25,6 +25,33 @@ const SubjectsPage = () => {
         fetchSubjects();
     }, []);
 
+    const uniqueSubjectCards = React.useMemo(() => {
+        const map = new Map();
+        subjects.forEach(sub => {
+            const subId = sub.subjectId?._id || sub.subjectId?.id || sub.subjectId || sub._id;
+            if (!map.has(subId)) {
+                map.set(subId, {
+                    ...sub,
+                    allSlots: []
+                });
+            }
+            if (sub.dayOfWeek || sub.timeSlot || sub.startTime) {
+                map.get(subId).allSlots.push(sub);
+            }
+        });
+        return Array.from(map.values()).map(item => {
+            let scheduleBadge = 'Individual Assignment';
+            if (item.allSlots.length > 0) {
+                const days = [...new Set(item.allSlots.map(s => s.dayOfWeek ? s.dayOfWeek.substring(0, 3) : ''))].filter(Boolean).join(', ');
+                scheduleBadge = `${item.allSlots.length} Weekly Slot${item.allSlots.length > 1 ? 's' : ''} (${days})`;
+            }
+            return {
+                ...item,
+                scheduleBadge
+            };
+        });
+    }, [subjects]);
+
     if (loading) return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading subjects...</div>;
     if (error) return <div style={{ padding: '2rem', color: 'red', textAlign: 'center' }}>{error}</div>;
 
@@ -71,8 +98,8 @@ const SubjectsPage = () => {
             ) : view === 'timetable' ? (
                 <TimetableGrid subjects={subjects} />
             ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))', gap: '1.5rem' }}>
-                    {subjects.map((subject, index) => (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: '1.5rem' }}>
+                    {uniqueSubjectCards.map((subject, index) => (
                         <motion.div
                             key={subject._id}
                             initial={{ opacity: 0, y: 10 }}
@@ -106,13 +133,13 @@ const SubjectsPage = () => {
                                 }}>
                                     <BookOpen size={20} />
                                 </div>
-                                <div style={{ paddingRight: '3rem' }}>
+                                <div>
                                     <h3 style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--text-primary)', margin: 0 }}>
                                         {subject.subjectId?.subjectName || 'Unknown Subject'}
                                     </h3>
-                                    {(subject.startTime || subject.timeSlot) && (
-                                        <div style={{ fontSize: '0.875rem', color: subject.isIndividuallyAssigned ? '#10b981' : 'var(--brand-primary)', fontWeight: '500', marginTop: '0.25rem' }}>
-                                            {subject.startTime ? `${subject.startTime} - ${subject.endTime}` : subject.timeSlot}
+                                    {subject.scheduleBadge && (
+                                        <div style={{ fontSize: '0.8rem', color: 'var(--brand-primary)', fontWeight: '600', marginTop: '0.35rem' }}>
+                                            🗓️ {subject.scheduleBadge}
                                         </div>
                                     )}
                                 </div>

@@ -218,19 +218,42 @@ const ClassRoster = () => {
             {/* Sub-navigation for Subject Roster */}
             {activeTab === 'subject' && rosterData.subjectRoster.length > 0 && (
                 <div style={{ display: 'flex', gap: '1rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
-                    {rosterData.subjectRoster.map((session) => (
-                        <button
-                            key={session.allocationId}
-                            onClick={() => setSelectedSession(session)}
-                            className="glass-panel"
-                            style={{
-                                padding: '1rem 1.5rem', borderRadius: '1.25rem', background: selectedSession?.allocationId === session.allocationId ? 'var(--brand-secondary)' : 'rgba(255,255,255,0.02)', color: selectedSession?.allocationId === session.allocationId ? 'white' : 'var(--text-primary)', border: '1px solid var(--border-color)', fontWeight: '700', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '0.75rem'
-                            }}
-                        >
-                            <BookOpen size={18} />
-                            {session.class?.className} - {session.subject?.subjectName}
-                        </button>
-                    ))}
+                    {rosterData.subjectRoster.map((session) => {
+                        const isSelected = selectedSession?.allocationId === session.allocationId;
+                        return (
+                            <button
+                                key={session.allocationId}
+                                onClick={() => setSelectedSession(session)}
+                                className="glass-panel"
+                                style={{
+                                    padding: '0.85rem 1.35rem',
+                                    borderRadius: '1.25rem',
+                                    background: isSelected ? 'var(--brand-secondary)' : 'rgba(255,255,255,0.02)',
+                                    color: isSelected ? 'white' : 'var(--text-primary)',
+                                    border: '1px solid var(--border-color)',
+                                    fontWeight: '700',
+                                    cursor: 'pointer',
+                                    flexShrink: 0,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.75rem',
+                                    transition: 'all 0.2s ease'
+                                }}
+                            >
+                                <BookOpen size={18} />
+                                <div style={{ textAlign: 'left' }}>
+                                    <div style={{ fontSize: '0.95rem' }}>
+                                        {session.class?.className} - {session.subject?.subjectName}
+                                    </div>
+                                    {session.scheduleBadge && (
+                                        <div style={{ fontSize: '0.75rem', opacity: isSelected ? 0.9 : 0.6, fontWeight: '500' }}>
+                                            🗓️ {session.scheduleBadge}
+                                        </div>
+                                    )}
+                                </div>
+                            </button>
+                        );
+                    })}
                 </div>
             )}
 
@@ -239,10 +262,16 @@ const ClassRoster = () => {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2.5rem', flexWrap: 'wrap', gap: '1.5rem' }}>
                     <div style={{ flex: '1 1 min-content' }}>
                         <h3 style={{ fontSize: '1.25rem', fontWeight: '800' }}>
-                            {activeTab === 'coordinated' ? `${rosterData.coordinatedRoster.class?.className} Students` : `${selectedSession?.class?.className} (${selectedSession?.class?.section})`}
+                            {activeTab === 'coordinated'
+                                ? `${rosterData.coordinatedRoster?.class?.className || 'Coordinated Class'} Students`
+                                : `${selectedSession?.class?.className || ''} - ${selectedSession?.subject?.subjectName || ''}`
+                            }
                         </h3>
-                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                            {activeTab === 'coordinated' ? 'Complete roster for your coordinated class.' : `List updated for the current ${selectedSession?.subject?.subjectName} schedule.`}
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
+                            {activeTab === 'coordinated'
+                                ? 'Complete roster for your coordinated class.'
+                                : selectedSession?.scheduleBadge ? `🗓️ ${selectedSession.scheduleBadge} • ${currentStudents.length} Students Enrolled` : `List updated for the current ${selectedSession?.subject?.subjectName} schedule.`
+                            }
                         </p>
                     </div>
                     <div style={{ position: 'relative', width: '100%', maxWidth: '350px' }}>

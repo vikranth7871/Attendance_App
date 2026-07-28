@@ -1,19 +1,17 @@
-import LeaveRequest from '../models/LeaveRequest.js';
-import Attendance from '../models/Attendance.js';
-import User from '../models/User.js';
-import Notification from '../models/Notification.js';
+import { pool } from '../config/db.js';
 import cloudinary from '../config/cloudinary.js';
 
 /**
- * @desc    Apply for a new leave
+ * @desc    Apply for a new leave (Student or Teacher)
  * @route   POST /api/leave/apply
  * @access  Private (Student/Teacher)
  */
 export const applyLeave = async (req, res) => {
     try {
-        const { leaveType, startDate, endDate, reason, extensionFor } = req.body;
-        
-        // Handle Cloudinary upload
+        const { leaveType, startDate, endDate, reason } = req.body;
+        const userId = req.user.id || req.user._id;
+        const userRole = req.user.role;
+
         let documentUrl = '';
         if (req.file) {
             const fileBase64 = req.file.buffer.toString('base64');
@@ -25,86 +23,70 @@ export const applyLeave = async (req, res) => {
             documentUrl = uploadRes.secure_url;
         }
 
-        if (extensionFor && leaveType !== 'Medical') {
-            return res.status(400).json({ message: 'Only Medical leaves can be extended.' });
-        }
-
-        // Calculate duration
         const start = new Date(startDate);
         const end = new Date(endDate);
         const diffTime = Math.abs(end - start);
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
-        // 1. Strict 3-day rule
-        const isSpecialCase = ['Medical', 'Emergency'].includes(leaveType);
-        if (diffDays > 3) {
-            if (!isSpecialCase) {
-                return res.status(400).json({ message: 'Standard leaves (Casual/Other) cannot exceed 3 days. Please contact your coordinator for special permission.' });
-            }
-            if (!req.file) {
-                return res.status(400).json({ message: `For ${leaveType} leave exceeding 3 days, uploading a supporting document (Medical Certificate/Proof) is mandatory.` });
+        if (userRole === 'student') {
+            const isSpecialCase = ['Medical', 'Emergency'].includes(leaveType);
+            if (diffDays > 3 && !isSpecialCase) {
+                return res.status(400).json({ message: 'Standard leaves cannot exceed 3 days.' });
             }
         }
 
-        // 2. 18-day semester limit (Jan-Jun / Jul-Dec)
-        const now = new Date(startDate);
-        let semStart, semEnd;
-        if (now.getMonth() < 6) { // Jan - Jun
-            semStart = new Date(now.getFullYear(), 0, 1);
-            semEnd = new Date(now.getFullYear(), 5, 30);
-        } else { // Jul - Dec
-            semStart = new Date(now.getFullYear(), 6, 1);
-            semEnd = new Date(now.getFullYear(), 11, 31);
+        const result = await pool.query(
+            `INSERT INTO leave_requests
+             (user_id, role, leave_type, start_date, end_date, reason, document_url, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending') RETURNING *`,
+            [userId, userRole, leaveType || 'Casual', startDate, endDate, reason, documentUrl]
+        );
+
+        const leave = result.rows[0];
+
+        // If teacher applied, notify all admins
+        if (userRole === 'teacher') {
+            const admins = await pool.query(`SELECT id FROM users WHERE role = 'admin'`);
+            for (const admin of admins.rows) {
+                await pool.query(
+                    `INSERT INTO notifications (recipient_id, title, message, type)
+                     VALUES ($1, $2, $3, $4)`,
+                    [
+                        admin.id,
+                        'Teacher Leave Application',
+                        `📋 New leave application from Teacher ${req.user.name} (${new Date(startDate).toLocaleDateString()} – ${new Date(endDate).toLocaleDateString()}): "${reason}"`,
+                        'teacher_leave_request'
+                    ]
+                );
+            }
         }
 
-        const existingLeaves = await LeaveRequest.find({
-            userId: req.user._id,
-            status: 'approved',
-            startDate: { $gte: semStart, $lte: semEnd }
-        });
-
-        const totalApprovedDays = existingLeaves.reduce((total, leave) => {
-            const s = new Date(leave.startDate);
-            const e = new Date(leave.endDate);
-            const d = Math.ceil(Math.abs(e - s) / (1000 * 60 * 60 * 24)) + 1;
-            return total + d;
-        }, 0);
-
-        if (totalApprovedDays + diffDays > 18) {
-            return res.status(400).json({ 
-                message: `Semester leave limit exceeded. You have already taken ${totalApprovedDays} days this semester. Total allowed is 18 days.` 
-            });
+        // If student applied, notify class coordinator
+        if (userRole === 'student') {
+            const studentClassId = req.user.classId || req.user.class_id || 1;
+            const coordRes = await pool.query(
+                `SELECT u.id FROM users u 
+                 LEFT JOIN class_coordinators cc ON cc.teacher_id = u.id 
+                 WHERE cc.class_id = $1 OR u.class_coordinator_for = $1 LIMIT 1`,
+                [studentClassId]
+            );
+            if (coordRes.rows.length > 0) {
+                await pool.query(
+                    `INSERT INTO notifications (recipient_id, title, message, type)
+                     VALUES ($1, $2, $3, $4)`,
+                    [
+                        coordRes.rows[0].id,
+                        'Student Leave Request',
+                        `📋 New leave request from ${req.user.name} (${new Date(startDate).toLocaleDateString()} – ${new Date(endDate).toLocaleDateString()})`,
+                        'leave_request'
+                    ]
+                );
+            }
         }
 
-        const leave = await LeaveRequest.create({
-            userId: req.user._id,
-            role: req.user.role,
-            leaveType: leaveType || 'Casual',
-            startDate,
-            endDate,
-            reason,
-            documentUrl,
-            extensionFor: extensionFor || undefined
-        });
         res.status(201).json({ message: 'Leave application submitted successfully', leave });
-
-        // Notify the class coordinator (if student applying and classId is set)
-        if (req.user.role === 'student' && req.user.classId) {
-            const coordinator = await User.findOne({
-                role: 'teacher',
-                classCoordinatorFor: req.user.classId
-            });
-
-            if (coordinator) {
-                await Notification.create({
-                    userId: coordinator._id,
-                    message: `📋 New leave request from ${req.user.name} (${new Date(startDate).toLocaleDateString()} – ${new Date(endDate).toLocaleDateString()}): "${reason.substring(0, 60)}${reason.length > 60 ? '…' : ''}"`,
-                    type: 'leave_request',
-                    link: '/teacher/leaves'
-                });
-            }
-        }
     } catch (error) {
+        console.error('Apply leave error:', error);
         res.status(400).json({ message: error.message });
     }
 };
@@ -116,7 +98,22 @@ export const applyLeave = async (req, res) => {
  */
 export const getMyLeaves = async (req, res) => {
     try {
-        const leaves = await LeaveRequest.find({ userId: req.user._id }).sort({ createdAt: -1 });
+        const userId = req.user.id || req.user._id;
+        const result = await pool.query(
+            `SELECT * FROM leave_requests WHERE user_id = $1 ORDER BY created_at DESC`,
+            [userId]
+        );
+        const leaves = result.rows.map(r => ({
+            _id: String(r.id),
+            id: r.id,
+            leaveType: r.leave_type,
+            startDate: r.start_date,
+            endDate: r.end_date,
+            reason: r.reason,
+            status: r.status,
+            documentUrl: r.document_url,
+            createdAt: r.created_at
+        }));
         res.json(leaves);
     } catch (error) {
         res.status(400).json({ message: error.message });
@@ -130,29 +127,116 @@ export const getMyLeaves = async (req, res) => {
  */
 export const getCoordinatorLeaves = async (req, res) => {
     try {
-        // Find the class this teacher is coordinator for
-        if (!req.user.classCoordinatorFor) {
-            return res.status(403).json({ message: 'You are not assigned as a class coordinator' });
+        const userId = req.user.id || req.user._id;
+
+        let classId = null;
+
+        // 1. Check users.class_coordinator_for
+        const userRes = await pool.query(`SELECT class_coordinator_for FROM users WHERE id = $1`, [userId]);
+        if (userRes.rows.length > 0 && userRes.rows[0].class_coordinator_for) {
+            classId = userRes.rows[0].class_coordinator_for;
         }
 
-        const classId = req.user.classCoordinatorFor;
+        // 2. Check class_coordinators table
+        if (!classId) {
+            const coordRes = await pool.query(
+                `SELECT class_id FROM class_coordinators WHERE teacher_id = $1 LIMIT 1`,
+                [userId]
+            );
+            if (coordRes.rows.length > 0) {
+                classId = coordRes.rows[0].class_id;
+            }
+        }
 
-        // Find all students in this class
-        const students = await User.find({ classId: classId, role: 'student' }).select('_id');
-        const studentIds = students.map(s => s._id);
+        // 3. Check allocated classes for teacher
+        if (!classId) {
+            const allocRes = await pool.query(
+                `SELECT class_id FROM subject_allocations WHERE teacher_id = $1 LIMIT 1`,
+                [userId]
+            );
+            if (allocRes.rows.length > 0) {
+                classId = allocRes.rows[0].class_id;
+            }
+        }
 
-        // Fetch leave requests for these students
-        const leaves = await LeaveRequest.find({
-            userId: { $in: studentIds }
-        }).populate({
-            path: 'userId',
-            select: 'name rollNumber email departmentId section',
-            populate: { path: 'departmentId', select: 'departmentName name' }
-        }).sort({ createdAt: -1 });
+        const result = classId ? await pool.query(
+            `SELECT lr.*, u.name as student_name, u.email, u.roll_number
+             FROM leave_requests lr
+             JOIN users u ON lr.user_id = u.id
+             WHERE u.class_id = $1 AND lr.role = 'student'
+             ORDER BY lr.created_at DESC`,
+            [classId]
+        ) : await pool.query(
+            `SELECT lr.*, u.name as student_name, u.email, u.roll_number
+             FROM leave_requests lr
+             JOIN users u ON lr.user_id = u.id
+             WHERE lr.role = 'student'
+             ORDER BY lr.created_at DESC`
+        );
+
+        const leaves = result.rows.map(r => ({
+            _id: String(r.id),
+            id: r.id,
+            leaveType: r.leave_type,
+            startDate: r.start_date,
+            endDate: r.end_date,
+            reason: r.reason,
+            status: r.status,
+            documentUrl: r.document_url,
+            createdAt: r.created_at,
+            userId: {
+                _id: String(r.user_id),
+                name: r.student_name,
+                email: r.email,
+                rollNumber: r.roll_number
+            }
+        }));
 
         res.json(leaves);
     } catch (error) {
-        res.status(400).json({ message: error.message });
+        console.error('Error fetching coordinator leaves:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+/**
+ * @desc    Get teacher leave applications for Admin
+ * @route   GET /api/leave/admin/teacher-leaves
+ * @access  Private (Admin)
+ */
+export const getAdminTeacherLeaves = async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT lr.*, u.name as teacher_name, u.email as teacher_email, d.name as department_name
+            FROM leave_requests lr
+            JOIN users u ON lr.user_id = u.id
+            LEFT JOIN departments d ON u.department_id = d.id
+            WHERE LOWER(lr.role) = 'teacher' OR LOWER(u.role) = 'teacher'
+            ORDER BY lr.created_at DESC
+        `);
+
+        const leaves = result.rows.map(r => ({
+            _id: String(r.id),
+            id: r.id,
+            leaveType: r.leave_type,
+            startDate: r.start_date,
+            endDate: r.end_date,
+            reason: r.reason,
+            status: r.status,
+            documentUrl: r.document_url,
+            createdAt: r.created_at,
+            userId: {
+                _id: String(r.user_id),
+                name: r.teacher_name,
+                email: r.teacher_email,
+                departmentName: r.department_name || 'N/A'
+            }
+        }));
+
+        res.json(leaves);
+    } catch (error) {
+        console.error('Error fetching admin teacher leaves:', error);
+        res.status(500).json({ message: error.message });
     }
 };
 
@@ -163,77 +247,33 @@ export const getCoordinatorLeaves = async (req, res) => {
  */
 export const approveLeave = async (req, res) => {
     try {
-        const leave = await LeaveRequest.findById(req.params.id);
-        if (!leave) return res.status(404).json({ message: 'Leave request not found' });
+        const { id } = req.params;
+        const reviewerId = req.user.id || req.user._id;
 
-        if (leave.status !== 'pending') {
-            return res.status(400).json({ message: `Leave request is already ${leave.status}` });
+        const result = await pool.query(
+            `UPDATE leave_requests SET status = 'approved', reviewed_by = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
+            [reviewerId, id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'Leave request not found' });
         }
 
-        leave.status = 'approved';
-        leave.approvedBy = req.user._id;
-        await leave.save();
+        const leave = result.rows[0];
 
-        // Mark attendance as 'leave' for the student
-        const student = await User.findById(leave.userId).populate('enrolledSubjects.subject');
+        // Notify applicant
+        await pool.query(
+            `INSERT INTO notifications (recipient_id, title, message, type)
+             VALUES ($1, $2, $3, $4)`,
+            [
+                leave.user_id,
+                'Leave Approved',
+                `✅ Your leave request (${new Date(leave.start_date).toLocaleDateString()} – ${new Date(leave.end_date).toLocaleDateString()}) has been APPROVED.`,
+                'leave_approved'
+            ]
+        );
 
-        if (student && student.role === 'student') {
-            const start = new Date(leave.startDate);
-            const end = new Date(leave.endDate);
-
-            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                const currentDate = new Date(d);
-                currentDate.setHours(0, 0, 0, 0);
-
-                // For each subject the student is enrolled in, create a leave record
-                for (const enrollment of student.enrolledSubjects) {
-                    // BUG-10 Fix: Skip if subject was deleted after enrollment
-                    if (!enrollment.subject?._id) continue;
-
-                    await Attendance.findOneAndUpdate(
-                        {
-                            studentId: student._id,
-                            subjectId: enrollment.subject._id,
-                            date: {
-                                $gte: currentDate,
-                                $lt: new Date(new Date(currentDate).setDate(currentDate.getDate() + 1))
-                            }
-                        },
-                        {
-                            studentId: student._id,
-                            teacherId: req.user._id,
-                            classId: student.classId,
-                            subjectId: enrollment.subject._id,
-                            date: currentDate,
-                            time: '00:00:00',
-                            method: 'manual',
-                            status: 'leave'
-                        },
-                        { upsert: true, new: true }
-                    );
-                }
-            }
-        }
-
-        res.json({ message: 'Leave approved and attendance adjusted', leave });
-
-        // Notify student: approved
-        await Notification.create({
-            userId: leave.userId,
-            message: `✅ Your leave request (${new Date(leave.startDate).toLocaleDateString()} – ${new Date(leave.endDate).toLocaleDateString()}) has been APPROVED by your coordinator.`,
-            type: 'leave_approved',
-            link: '/student/leaves'
-        });
-
-        // Notify parent: approved
-        if (student && student.parentId) {
-            await Notification.create({
-                userId: student.parentId,
-                message: `✅ Leave request for ${student.name} (${new Date(leave.startDate).toLocaleDateString()} – ${new Date(leave.endDate).toLocaleDateString()}) has been APPROVED.`,
-                type: 'leave_approved',
-                link: '/parent/leaves'
-            });
-        }
+        res.json({ message: 'Leave approved successfully', leave });
     } catch (error) {
         res.status(400).json({ message: error.message });
     }
@@ -246,32 +286,34 @@ export const approveLeave = async (req, res) => {
  */
 export const rejectLeave = async (req, res) => {
     try {
-        const leave = await LeaveRequest.findById(req.params.id);
-        if (!leave) return res.status(404).json({ message: 'Leave request not found' });
+        const { id } = req.params;
+        const { reason } = req.body;
+        const reviewerId = req.user.id || req.user._id;
 
-        leave.status = 'rejected';
-        leave.approvedBy = req.user._id;
-        await leave.save();
-        res.json({ message: 'Leave request rejected', leave });
+        const result = await pool.query(
+            `UPDATE leave_requests SET status = 'rejected', reviewed_by = $1, rejection_reason = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *`,
+            [reviewerId, reason || 'Rejected by Admin', id]
+        );
 
-        // Notify student: rejected
-        await Notification.create({
-            userId: leave.userId,
-            message: `❌ Your leave request (${new Date(leave.startDate).toLocaleDateString()} – ${new Date(leave.endDate).toLocaleDateString()}) has been REJECTED by your coordinator.`,
-            type: 'leave_rejected',
-            link: '/student/leaves'
-        });
-
-        // Notify parent: rejected
-        const student = await User.findById(leave.userId);
-        if (student && student.parentId) {
-            await Notification.create({
-                userId: student.parentId,
-                message: `❌ Leave request for ${student.name} (${new Date(leave.startDate).toLocaleDateString()} – ${new Date(leave.endDate).toLocaleDateString()}) has been REJECTED.`,
-                type: 'leave_rejected',
-                link: '/parent/leaves'
-            });
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'Leave request not found' });
         }
+
+        const leave = result.rows[0];
+
+        // Notify applicant
+        await pool.query(
+            `INSERT INTO notifications (recipient_id, title, message, type)
+             VALUES ($1, $2, $3, $4)`,
+            [
+                leave.user_id,
+                'Leave Rejected',
+                `❌ Your leave request (${new Date(leave.start_date).toLocaleDateString()} – ${new Date(leave.end_date).toLocaleDateString()}) has been REJECTED.`,
+                'leave_rejected'
+            ]
+        );
+
+        res.json({ message: 'Leave request rejected', leave });
     } catch (error) {
         res.status(400).json({ message: error.message });
     }
@@ -284,52 +326,34 @@ export const rejectLeave = async (req, res) => {
  */
 export const revokeLeave = async (req, res) => {
     try {
+        const { id } = req.params;
         const { reason } = req.body;
-        const leave = await LeaveRequest.findById(req.params.id);
-        if (!leave) return res.status(404).json({ message: 'Leave request not found' });
+        const reviewerId = req.user.id || req.user._id;
 
-        if (leave.status !== 'approved') {
-            return res.status(400).json({ message: 'Only approved leaves can be revoked' });
+        const result = await pool.query(
+            `UPDATE leave_requests SET status = 'revoked', reviewed_by = $1, rejection_reason = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *`,
+            [reviewerId, reason || 'Revoked by Admin', id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'Leave request not found' });
         }
 
-        leave.status = 'revoked';
-        leave.revokedBy = req.user._id;
-        leave.revocationReason = reason || 'Revoked by coordinator';
-        await leave.save();
+        const leave = result.rows[0];
 
-        // Remove the 'leave' attendance records
-        const start = new Date(leave.startDate);
-        const end = new Date(leave.endDate);
+        // Notify applicant
+        await pool.query(
+            `INSERT INTO notifications (recipient_id, title, message, type)
+             VALUES ($1, $2, $3, $4)`,
+            [
+                leave.user_id,
+                'Leave Revoked',
+                `⚠️ Your approved leave (${new Date(leave.start_date).toLocaleDateString()} – ${new Date(leave.end_date).toLocaleDateString()}) has been REVOKED.`,
+                'leave_revoked'
+            ]
+        );
 
-        await Attendance.deleteMany({
-            studentId: leave.userId,
-            status: 'leave',
-            date: {
-                $gte: new Date(start.setHours(0, 0, 0, 0)),
-                $lte: new Date(end.setHours(23, 59, 59, 999))
-            }
-        });
-
-        res.json({ message: 'Leave revoked and attendance records cleared', leave });
-
-        // Notify student: revoked
-        await Notification.create({
-            userId: leave.userId,
-            message: `⚠️ Your approved leave (${new Date(leave.startDate).toLocaleDateString()} – ${new Date(leave.endDate).toLocaleDateString()}) has been REVOKED. Reason: ${leave.revocationReason}`,
-            type: 'leave_revoked',
-            link: '/student/leaves'
-        });
-
-        // Notify parent: revoked
-        const student = await User.findById(leave.userId);
-        if (student && student.parentId) {
-            await Notification.create({
-                userId: student.parentId,
-                message: `⚠️ Approved leave for ${student.name} (${new Date(leave.startDate).toLocaleDateString()} – ${new Date(leave.endDate).toLocaleDateString()}) has been REVOKED.`,
-                type: 'leave_revoked',
-                link: '/parent/leaves'
-            });
-        }
+        res.json({ message: 'Leave request revoked', leave });
     } catch (error) {
         res.status(400).json({ message: error.message });
     }

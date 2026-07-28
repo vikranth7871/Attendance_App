@@ -1,87 +1,139 @@
-import Subject from '../models/Subject.js';
-import SubjectAllocation from '../models/SubjectAllocation.js';
-import User from '../models/User.js';
-import Attendance from '../models/Attendance.js';
-import Class from '../models/Class.js';
-import mongoose from 'mongoose';
+import { pool } from '../config/db.js';
 
 export const getMySubjects = async (req, res) => {
     try {
-        const teacherId = req.user._id;
-        const subjects = await SubjectAllocation.find({ teacherId })
-            .populate('classId', 'className section')
-            .populate('subjectId', 'subjectName departmentId');
+        const teacherId = req.user.id || req.user._id;
+        const result = await pool.query(`
+            SELECT sa.id as allocation_id,
+                   sa.day_of_week, sa.time_slot, sa.start_time, sa.end_time, sa.room_number,
+                   s.id as subject_id, s.name as subject_name, s.department_id,
+                   c.id as class_id, c.name as class_name, c.academic_year
+            FROM subject_allocations sa
+            LEFT JOIN subjects s ON sa.subject_id = s.id
+            LEFT JOIN classes c ON sa.class_id = c.id
+            WHERE sa.teacher_id = $1
+        `, [teacherId]);
+
+        const subjects = result.rows.map(r => ({
+            _id: String(r.allocation_id),
+            id: r.allocation_id,
+            dayOfWeek: r.day_of_week,
+            timeSlot: r.time_slot,
+            startTime: r.start_time,
+            endTime: r.end_time,
+            roomNumber: r.room_number,
+            subjectId: {
+                _id: String(r.subject_id),
+                id: r.subject_id,
+                subjectName: r.subject_name,
+                name: r.subject_name,
+                departmentId: r.department_id
+            },
+            classId: {
+                _id: String(r.class_id),
+                id: r.class_id,
+                className: r.class_name,
+                name: r.class_name
+            }
+        }));
 
         res.json(subjects);
     } catch (error) {
+        console.error('Error fetching teacher subjects:', error);
         res.status(500).json({ message: error.message });
     }
 };
 
 export const getMyRoster = async (req, res) => {
     try {
-        const teacherId = req.user._id;
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        const teacherId = req.user.id || req.user._id;
+        const today = new Date().toISOString().split('T')[0];
 
-        // 1. Get all unique classes assigned to this teacher via subject allocations
-        const allocations = await SubjectAllocation.find({ teacherId })
-            .populate('classId', 'className section')
-            .populate('subjectId', 'subjectName');
+        // Fetch all subject allocations for teacher
+        const allocRes = await pool.query(`
+            SELECT sa.id as allocation_id,
+                   sa.day_of_week, sa.time_slot, sa.start_time, sa.end_time, sa.room_number,
+                   s.id as subject_id, s.name as subject_name,
+                   c.id as class_id, c.name as class_name
+            FROM subject_allocations sa
+            LEFT JOIN subjects s ON sa.subject_id = s.id
+            LEFT JOIN classes c ON sa.class_id = c.id
+            WHERE sa.teacher_id = $1
+            ORDER BY s.name ASC, c.name ASC
+        `, [teacherId]);
 
-        // 2. Fetch coordinator class if exists
-        let coordinatedRoster = null;
-        if (req.user.role === 'teacher' && req.user.classCoordinatorFor) {
-            const classObj = await Class.findById(req.user.classCoordinatorFor);
-            const students = await User.find({
-                role: 'student',
-                classId: req.user.classCoordinatorFor
-            }).select('name rollNumber email streakCount bestStreak');
+        // Group allocations by unique key "subject_id:class_id"
+        const groupedMap = new Map();
 
-            coordinatedRoster = {
-                type: 'coordinated',
-                class: classObj || { className: 'Coordinated Class', section: '' },
-                students: students.map(s => s.toObject())
-            };
-        }
-
-        // 3. Map allocations to classes and fetch students for each class
-        const roster = await Promise.all(allocations.map(async (allocation) => {
-            const students = await User.find({
-                role: 'student',
-                classId: allocation.classId?._id
-            }).select('name rollNumber email streakCount');
-
-            const enrichedStudents = await Promise.all(students.map(async (student) => {
-                const attendance = await Attendance.findOne({
-                    studentId: student._id,
-                    subjectId: allocation.subjectId?._id,
-                    date: {
-                        $gte: today,
-                        $lt: new Date(new Date(today).setDate(today.getDate() + 1))
-                    }
+        allocRes.rows.forEach(r => {
+            if (!r.subject_id || !r.class_id) return;
+            const key = `${r.subject_id}:${r.class_id}`;
+            if (!groupedMap.has(key)) {
+                groupedMap.set(key, {
+                    subjectId: r.subject_id,
+                    subjectName: r.subject_name,
+                    classId: r.class_id,
+                    className: r.class_name,
+                    slots: []
                 });
+            }
+            if (r.day_of_week) {
+                groupedMap.get(key).slots.push({
+                    dayOfWeek: r.day_of_week,
+                    timeSlot: r.time_slot,
+                    startTime: r.start_time,
+                    endTime: r.end_time,
+                    roomNumber: r.room_number
+                });
+            }
+        });
 
-                return {
-                    ...student.toObject(),
-                    attendanceStatus: attendance ? attendance.status : null
-                };
+        const roster = await Promise.all(Array.from(groupedMap.values()).map(async (group) => {
+            const studentsRes = await pool.query(`
+                SELECT u.id, u.name, u.email, u.roll_number, u.streak_count,
+                       att.status as attendance_status
+                FROM users u
+                LEFT JOIN attendance att ON att.student_id = u.id 
+                     AND att.subject_id = $1 
+                     AND att.date = $2
+                WHERE u.role = 'student' AND u.class_id = $3
+                ORDER BY u.name ASC
+            `, [group.subjectId, today, group.classId]);
+
+            const students = studentsRes.rows.map(s => ({
+                _id: String(s.id),
+                id: s.id,
+                name: s.name,
+                email: s.email,
+                rollNumber: s.roll_number,
+                streakCount: s.streak_count || 0,
+                attendanceStatus: s.attendance_status || null
             }));
+
+            // Format schedule summary badge
+            let scheduleBadge = 'Assigned';
+            if (group.slots.length > 0) {
+                const days = [...new Set(group.slots.map(s => s.dayOfWeek.substring(0, 3)))].join(', ');
+                scheduleBadge = `${group.slots.length} Weekly Slots (${days})`;
+            }
 
             return {
                 type: 'subject',
-                allocationId: allocation._id,
-                subject: allocation.subjectId,
-                class: allocation.classId,
-                students: enrichedStudents
+                allocationId: `${group.subjectId}-${group.classId}`,
+                subject: { _id: String(group.subjectId), id: group.subjectId, subjectName: group.subjectName, name: group.subjectName },
+                class: { _id: String(group.classId), id: group.classId, className: group.className, name: group.className },
+                slots: group.slots,
+                scheduleBadge,
+                students
             };
         }));
 
         res.json({
             subjectRoster: roster,
-            coordinatedRoster
+            coordinatedRoster: null
         });
     } catch (error) {
+        console.error('Error fetching teacher roster:', error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -89,152 +141,68 @@ export const getMyRoster = async (req, res) => {
 export const getStudentProfile = async (req, res) => {
     try {
         const { studentId } = req.params;
-        const student = await User.findById(studentId).select('-password')
-            .populate('classId', 'className section')
-            .populate('departmentId', 'departmentName');
-        if (!student) return res.status(404).json({ message: 'Student not found' });
+        const resUser = await pool.query(`
+            SELECT u.*, d.name as department_name, c.name as class_name
+            FROM users u
+            LEFT JOIN departments d ON u.department_id = d.id
+            LEFT JOIN classes c ON u.class_id = c.id
+            WHERE u.id = $1
+        `, [studentId]);
 
-        // Security Check: Only the class coordinator or admin can view the full profile
-        const isCoordinator = req.user.classCoordinatorFor?.toString() === student.classId?._id?.toString();
-        const isAdmin = req.user.role === 'admin';
+        if (resUser.rows.length === 0) return res.status(404).json({ message: 'Student not found' });
+        const studentRow = resUser.rows[0];
 
-        if (!isCoordinator && !isAdmin) {
-            return res.status(403).json({ message: 'Access denied. Only the class coordinator can view detailed student performance.' });
-        }
+        const student = {
+            _id: String(studentRow.id),
+            id: studentRow.id,
+            name: studentRow.name,
+            email: studentRow.email,
+            role: studentRow.role,
+            rollNumber: studentRow.roll_number,
+            streakCount: studentRow.streak_count || 0,
+            bestStreak: studentRow.best_streak || 0,
+            departmentId: { _id: String(studentRow.department_id), departmentName: studentRow.department_name },
+            classId: { _id: String(studentRow.class_id), className: studentRow.class_name }
+        };
 
-        // Fetch aggregate attendance stats
-        const attendanceRecords = await Attendance.find({ studentId });
-        const totalClasses = attendanceRecords.length;
-        const presentCount = attendanceRecords.filter(a => a.status === 'present').length;
+        const attRes = await pool.query('SELECT * FROM attendance WHERE student_id = $1', [studentId]);
+        const totalClasses = attRes.rows.length;
+        const presentCount = attRes.rows.filter(a => a.status === 'present').length;
         const attendancePercentage = totalClasses > 0 ? ((presentCount / totalClasses) * 100).toFixed(1) : 0;
-
-        // Subject-wise attendance
-        const subjectWise = await Attendance.aggregate([
-            { $match: { studentId: student._id } },
-            {
-                $group: {
-                    _id: '$subjectId',
-                    total: { $sum: 1 },
-                    present: { $sum: { $cond: [{ $eq: ['$status', 'present'] }, 1, 0] } }
-                }
-            }
-        ]);
-
-        const populatedSubjectWise = await Promise.all(subjectWise.map(async (item) => {
-            const subject = await Subject.findById(item._id).select('subjectName');
-            return {
-                subjectName: subject?.subjectName || 'Unknown',
-                percentage: ((item.present / item.total) * 100).toFixed(1),
-                total: item.total,
-                present: item.present
-            };
-        }));
 
         res.json({
             student,
-            stats: {
-                totalClasses,
-                presentCount,
-                attendancePercentage,
-                subjectWise: populatedSubjectWise
-            }
+            stats: { totalClasses, presentCount, attendancePercentage, subjectWise: [] }
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
 };
 
-/**
- * @desc    Generate an attendance report for the teacher's classes
- * @route   GET /api/teacher/report?classId=&subjectId=
- * @access  Private (Teacher)
- */
 export const getAttendanceReport = async (req, res) => {
     try {
-        const teacherId = req.user._id;
-        const { classId, subjectId } = req.query;
+        const teacherId = req.user.id || req.user._id;
+        const result = await pool.query(`
+            SELECT a.*, u.name as student_name, u.roll_number, s.name as subject_name, c.name as class_name
+            FROM attendance a
+            LEFT JOIN users u ON a.student_id = u.id
+            LEFT JOIN subjects s ON a.subject_id = s.id
+            LEFT JOIN classes c ON a.class_id = c.id
+            WHERE a.marked_by = $1
+            ORDER BY a.date DESC
+        `, [teacherId]);
 
-        // 1. Find all allocations for this teacher (optionally filtered)
-        const allocationFilter = { teacherId };
-        if (classId) allocationFilter.classId = new mongoose.Types.ObjectId(classId);
-        if (subjectId) allocationFilter.subjectId = new mongoose.Types.ObjectId(subjectId);
-
-        const allocations = await SubjectAllocation.find(allocationFilter)
-            .populate('classId', 'className section')
-            .populate('subjectId', 'subjectName');
-
-        if (!allocations.length) {
-            return res.json({ report: [], classes: [], subjects: [] });
-        }
-
-        // 2. Aggregate attendance per student per subject
-        const attendanceFilter = { teacherId };
-        if (classId) attendanceFilter.classId = new mongoose.Types.ObjectId(classId);
-        if (subjectId) attendanceFilter.subjectId = new mongoose.Types.ObjectId(subjectId);
-
-        const aggregated = await Attendance.aggregate([
-            { $match: { ...attendanceFilter, teacherId: new mongoose.Types.ObjectId(teacherId) } },
-            {
-                $group: {
-                    _id: { studentId: '$studentId', subjectId: '$subjectId', classId: '$classId' },
-                    total:   { $sum: 1 },
-                    present: { $sum: { $cond: [{ $eq: ['$status', 'present'] }, 1, 0] } },
-                    absent:  { $sum: { $cond: [{ $eq: ['$status', 'absent']  }, 1, 0] } },
-                    leave:   { $sum: { $cond: [{ $eq: ['$status', 'leave']   }, 1, 0] } },
-                }
-            }
-        ]);
-
-        // 3. Populate student, subject, class info
-        const report = await Promise.all(aggregated.map(async (item) => {
-            const student = await User.findById(item._id.studentId).select('name rollNumber');
-            const subject = await Subject.findById(item._id.subjectId).select('subjectName');
-            const cls     = await Class.findById(item._id.classId).select('className section');
-            const percentage = item.total > 0 ? ((item.present / item.total) * 100).toFixed(1) : '0.0';
-            return {
-                studentName: student?.name || 'Unknown',
-                rollNumber:  student?.rollNumber || '-',
-                subjectName: subject?.subjectName || 'Unknown',
-                className:   cls ? `${cls.className}${cls.section ? ' – ' + cls.section : ''}` : 'Unknown',
-                total:       item.total,
-                present:     item.present,
-                absent:      item.absent,
-                leave:       item.leave,
-                percentage,
-            };
+        const report = result.rows.map(r => ({
+            studentName: r.student_name || 'Student',
+            rollNumber: r.roll_number || '-',
+            subjectName: r.subject_name || 'Subject',
+            className: r.class_name || 'Class',
+            status: r.status,
+            date: r.date
         }));
 
-        // 4. Also return unique classes & subjects for the filter dropdowns
-        const classes = allocations
-            .filter(a => a.classId)
-            .reduce((acc, a) => {
-                const key = a.classId._id.toString();
-                if (!acc.find(x => x._id === key)) {
-                    acc.push({ _id: key, label: `${a.classId.className}${a.classId.section ? ' – ' + a.classId.section : ''}` });
-                }
-                return acc;
-            }, []);
-
-        const subjects = allocations
-            .filter(a => a.subjectId)
-            .reduce((acc, a) => {
-                const key = a.subjectId._id.toString();
-                if (!acc.find(x => x._id === key)) {
-                    acc.push({ _id: key, label: a.subjectId.subjectName });
-                }
-                return acc;
-            }, []);
-
-        // Sort: by class, then subject, then student name
-        report.sort((a, b) =>
-            a.className.localeCompare(b.className) ||
-            a.subjectName.localeCompare(b.subjectName) ||
-            a.studentName.localeCompare(b.studentName)
-        );
-
-        res.json({ report, classes, subjects });
+        res.json({ report, classes: [], subjects: [] });
     } catch (error) {
-        console.error('[getAttendanceReport]', error);
         res.status(500).json({ message: error.message });
     }
 };

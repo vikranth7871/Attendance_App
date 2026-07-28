@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { pool } from '../config/db.js';
 import mongoose from 'mongoose';
 import Quiz from '../models/Quiz.js';
 import QuizAttempt from '../models/QuizAttempt.js';
@@ -142,51 +143,59 @@ export const generateAIQuestions = async (req, res) => {
 export const createQuiz = async (req, res) => {
     try {
         const {
-            title, description, type, subjectId, semester, year,
-            questions, timeLimit, passingScore, tags, syllabus,
-            targetClass, targetDepartment, maxAttempts, difficulty,
+            title, description, type, subjectId,
+            questions, timeLimit, passingScore, maxAttempts, difficulty,
             generateWithAI, aiSubject, aiCount
         } = req.body;
 
+        const userId = req.user.id || req.user._id;
         let finalQuestions = questions || [];
 
-        // If AI generation requested and no questions provided
         if (generateWithAI && finalQuestions.length === 0) {
             const subjectLabel = aiSubject || title;
             finalQuestions = await generateQuestionsWithAI({
                 subject: subjectLabel,
-                syllabus,
                 count: aiCount || 10,
                 difficulty: difficulty || 'mixed'
             });
         }
 
-        if (finalQuestions.length === 0) {
+        if (!finalQuestions || finalQuestions.length === 0) {
             return res.status(400).json({ message: 'A quiz must have at least one question.' });
         }
 
-        const quiz = await Quiz.create({
-            title,
-            description,
-            type: type || 'practice',
-            subjectId: subjectId || null,
-            semester,
-            year,
-            questions: finalQuestions,
-            timeLimit: timeLimit || 30,
-            passingScore: passingScore || 80,
-            isPublished: false,
-            createdBy: req.user._id,
-            tags: tags || [],
-            syllabus: syllabus || '',
-            targetClass: targetClass || null,
-            targetDepartment: targetDepartment || null,
-            maxAttempts: maxAttempts || 3,
-            difficulty: difficulty || 'mixed'
-        });
+        const result = await pool.query(
+            `INSERT INTO quizzes 
+             (title, description, type, subject_id, creator_id, questions, time_limit, passing_score, max_attempts, difficulty, is_active)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, false) RETURNING *`,
+            [
+                title,
+                description || null,
+                type || 'practice',
+                subjectId || null,
+                userId,
+                JSON.stringify(finalQuestions),
+                timeLimit || 30,
+                passingScore || 80,
+                maxAttempts || 1,
+                difficulty || 'mixed'
+            ]
+        );
 
-        res.status(201).json({ message: 'Quiz created successfully', quiz });
+        const q = result.rows[0];
+        res.status(201).json({
+            message: 'Quiz created successfully',
+            quiz: {
+                _id: String(q.id),
+                id: q.id,
+                title: q.title,
+                description: q.description,
+                isPublished: q.is_active,
+                questions: q.questions
+            }
+        });
     } catch (error) {
+        console.error('Error creating quiz:', error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -198,18 +207,20 @@ export const createQuiz = async (req, res) => {
 ───────────────────────────────────────────────────────────── */
 export const togglePublishQuiz = async (req, res) => {
     try {
-        const quiz = await Quiz.findById(req.params.id);
-        if (!quiz) return res.status(404).json({ message: 'Quiz not found' });
-
-        // Only creator or admin can publish
-        if (req.user.role !== 'admin' && quiz.createdBy.toString() !== req.user._id.toString()) {
-            return res.status(403).json({ message: 'Not authorized to modify this quiz' });
+        const { id } = req.params;
+        const result = await pool.query(
+            `UPDATE quizzes SET is_active = NOT is_active, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`,
+            [id]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'Quiz not found' });
         }
 
-        quiz.isPublished = !quiz.isPublished;
-        await quiz.save();
-
-        res.json({ message: `Quiz ${quiz.isPublished ? 'published' : 'unpublished'} successfully`, isPublished: quiz.isPublished });
+        const quiz = result.rows[0];
+        res.json({
+            message: `Quiz ${quiz.is_active ? 'published' : 'unpublished'} successfully`,
+            isPublished: quiz.is_active
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -277,23 +288,38 @@ export const getQuizzes = async (req, res) => {
 ───────────────────────────────────────────────────────────── */
 export const getManageQuizzes = async (req, res) => {
     try {
-        const filter = req.user.role === 'teacher'
-            ? { createdBy: req.user._id }
-            : {};
+        const userId = req.user.id || req.user._id;
+        let sql = `
+            SELECT q.*, s.name as subject_name, u.name as creator_name
+            FROM quizzes q
+            LEFT JOIN subjects s ON q.subject_id = s.id
+            LEFT JOIN users u ON q.creator_id = u.id
+        `;
+        const params = [];
+        if (req.user.role === 'teacher') {
+            sql += ' WHERE q.creator_id = $1';
+            params.push(userId);
+        }
+        sql += ' ORDER BY q.created_at DESC';
 
-        const quizzes = await Quiz.find(filter)
-            .populate('subjectId', 'subjectName')
-            .populate('createdBy', 'name')
-            .sort({ createdAt: -1 });
-
-        // Attach total attempt counts
-        const withCounts = await Promise.all(quizzes.map(async (q) => {
-            const attemptCount = await QuizAttempt.countDocuments({ quizId: q._id });
-            return { ...q.toObject(), totalAttempts: attemptCount, questionCount: q.questions.length };
+        const result = await pool.query(sql, params);
+        const quizzes = result.rows.map(q => ({
+            _id: String(q.id),
+            id: q.id,
+            title: q.title,
+            description: q.description,
+            isPublished: q.is_active,
+            type: q.type || 'practice',
+            subjectId: q.subject_id ? { _id: String(q.subject_id), id: q.subject_id, subjectName: q.subject_name } : null,
+            createdBy: { _id: String(q.creator_id), name: q.creator_name },
+            totalAttempts: 0,
+            questionCount: Array.isArray(q.questions) ? q.questions.length : 0,
+            questions: q.questions || []
         }));
 
-        res.json(withCounts);
+        res.json(quizzes);
     } catch (error) {
+        console.error('Error fetching manage quizzes:', error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -464,63 +490,35 @@ export const submitAttempt = async (req, res) => {
 export const getLeaderboard = async (req, res) => {
     try {
         const quizId = req.params.id;
+        const currentUserId = req.user.id || req.user._id;
 
-        // Get best attempt per student for this quiz
-        const leaderboard = await QuizAttempt.aggregate([
-            { $match: { quizId: new mongoose.Types.ObjectId(quizId) } },
-            // Group by student, get best percentage + shortest time for that percentage
-            {
-                $sort: { percentage: -1, timeTaken: 1, completedAt: 1 }
-            },
-            {
-                $group: {
-                    _id: '$studentId',
-                    bestPercentage: { $first: '$percentage' },
-                    bestScore: { $first: '$score' },
-                    bestTime: { $first: '$timeTaken' },
-                    completedAt: { $first: '$completedAt' },
-                    attemptId: { $first: '$_id' }
-                }
-            },
-            { $sort: { bestPercentage: -1, bestTime: 1 } },
-            { $limit: 50 },
-            {
-                $lookup: {
-                    from: 'users',
-                    localField: '_id',
-                    foreignField: '_id',
-                    as: 'student'
-                }
-            },
-            { $unwind: '$student' },
-            {
-                $project: {
-                    studentId: '$_id',
-                    name: '$student.name',
-                    rollNumber: '$student.rollNumber',
-                    percentage: '$bestPercentage',
-                    score: '$bestScore',
-                    timeTaken: '$bestTime',
-                    completedAt: 1
-                }
-            }
-        ]);
+        const result = await pool.query(`
+            SELECT qa.*, u.name as student_name, u.roll_number
+            FROM quiz_attempts qa
+            LEFT JOIN users u ON qa.student_id = u.id
+            WHERE qa.quiz_id = $1
+            ORDER BY qa.percentage DESC, qa.created_at ASC
+        `, [quizId]);
 
-        // Add rank numbers
-        const ranked = leaderboard.map((entry, idx) => ({
-            ...entry,
+        const leaderboard = result.rows.map((row, idx) => ({
+            studentId: String(row.student_id),
+            name: row.student_name || 'Student',
+            rollNumber: row.roll_number || '-',
+            percentage: parseFloat(row.percentage) || 0,
+            score: row.score || 0,
+            timeTaken: row.duration_seconds || 0,
             rank: idx + 1
         }));
 
-        // Find current user's rank
-        const myRank = ranked.findIndex(e => e.studentId.toString() === req.user._id.toString());
+        const myRankIdx = leaderboard.findIndex(e => e.studentId === String(currentUserId));
 
         res.json({
-            leaderboard: ranked,
-            myRank: myRank >= 0 ? myRank + 1 : null,
-            myEntry: myRank >= 0 ? ranked[myRank] : null
+            leaderboard,
+            myRank: myRankIdx >= 0 ? myRankIdx + 1 : null,
+            myEntry: myRankIdx >= 0 ? leaderboard[myRankIdx] : null
         });
     } catch (error) {
+        console.error('Error fetching leaderboard:', error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -532,11 +530,16 @@ export const getLeaderboard = async (req, res) => {
 ───────────────────────────────────────────────────────────── */
 export const getMyAttempts = async (req, res) => {
     try {
-        const attempts = await QuizAttempt.find({ studentId: req.user._id })
-            .populate('quizId', 'title type subjectId passingScore timeLimit')
-            .sort({ completedAt: -1 });
+        const userId = req.user.id || req.user._id;
+        const result = await pool.query(`
+            SELECT qa.*, q.title as quiz_title, q.type as quiz_type, q.passing_score
+            FROM quiz_attempts qa
+            LEFT JOIN quizzes q ON qa.quiz_id = q.id
+            WHERE qa.student_id = $1
+            ORDER BY qa.created_at DESC
+        `, [userId]);
 
-        res.json(attempts);
+        res.json(result.rows);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -549,11 +552,16 @@ export const getMyAttempts = async (req, res) => {
 ───────────────────────────────────────────────────────────── */
 export const getMyCertificates = async (req, res) => {
     try {
-        const certificates = await Certificate.find({ studentId: req.user._id })
-            .populate('quizId', 'title type')
-            .sort({ issuedAt: -1 });
+        const userId = req.user.id || req.user._id;
+        const result = await pool.query(`
+            SELECT c.*, q.title as quiz_title, q.type as quiz_type
+            FROM certificates c
+            LEFT JOIN quizzes q ON c.quiz_id = q.id
+            WHERE c.student_id = $1
+            ORDER BY c.created_at DESC
+        `, [userId]);
 
-        res.json(certificates);
+        res.json(result.rows);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -566,17 +574,8 @@ export const getMyCertificates = async (req, res) => {
 ───────────────────────────────────────────────────────────── */
 export const deleteQuiz = async (req, res) => {
     try {
-        const quiz = await Quiz.findById(req.params.id);
-        if (!quiz) return res.status(404).json({ message: 'Quiz not found' });
-
-        if (req.user.role !== 'admin' && quiz.createdBy.toString() !== req.user._id.toString()) {
-            return res.status(403).json({ message: 'Not authorized to delete this quiz' });
-        }
-
-        await Quiz.findByIdAndDelete(req.params.id);
-        await QuizAttempt.deleteMany({ quizId: req.params.id });
-        // Note: certificates are kept even after quiz deletion (evidence of achievement)
-
+        const { id } = req.params;
+        await pool.query('DELETE FROM quizzes WHERE id = $1', [id]);
         res.json({ message: 'Quiz deleted successfully' });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -591,12 +590,30 @@ export const deleteQuiz = async (req, res) => {
 export const getQuizCertificates = async (req, res) => {
     try {
         const quizId = req.params.id;
-        const certificates = await Certificate.find({ quizId })
-            .populate('studentId', 'name rollNumber email')
-            .sort({ percentage: -1, issuedAt: -1 });
+        const result = await pool.query(`
+            SELECT c.*, u.name as student_name, u.roll_number, u.email
+            FROM certificates c
+            LEFT JOIN users u ON c.student_id = u.id
+            WHERE c.quiz_id = $1
+            ORDER BY c.created_at DESC
+        `, [quizId]);
+
+        const certificates = result.rows.map(row => ({
+            _id: String(row.id),
+            id: row.id,
+            certificateId: row.certificate_id || `CERT-${row.id}`,
+            percentage: row.percentage || 100,
+            studentId: {
+                _id: String(row.student_id),
+                name: row.student_name,
+                rollNumber: row.roll_number,
+                email: row.email
+            }
+        }));
 
         res.json(certificates);
     } catch (error) {
+        console.error('Error fetching quiz certificates:', error);
         res.status(500).json({ message: error.message });
     }
 };
