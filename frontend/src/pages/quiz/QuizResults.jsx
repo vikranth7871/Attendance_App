@@ -117,7 +117,8 @@ const QuizResults = () => {
 
     if (!results) return null;
 
-    const { score, total, percentage, passed, passingScore, timeTaken, gradedAnswers, certificate, isUniversity } = results;
+    const { score, total: rawTotal, totalQuestions, percentage, passed, passingScore, timeTaken, gradedAnswers, certificate, isUniversity } = results;
+    const total = totalQuestions || rawTotal || (gradedAnswers ? gradedAnswers.length : 0);
 
     const minutes = Math.floor((timeTaken || 0) / 60);
     const seconds = (timeTaken || 0) % 60;
@@ -125,8 +126,8 @@ const QuizResults = () => {
     const scoreColor = passed ? '#16a34a' : percentage >= 50 ? '#d97706' : '#dc2626';
     const scoreGlow = passed ? 'rgba(22,163,74,0.25)' : percentage >= 50 ? 'rgba(217,119,6,0.2)' : 'rgba(220,38,38,0.2)';
 
-    const correctCount = gradedAnswers?.filter(a => a.isCorrect).length || score;
-    const wrongCount = (gradedAnswers?.length || total) - correctCount;
+    const correctCount = gradedAnswers?.filter(a => a.isCorrect).length ?? score;
+    const wrongCount = Math.max(0, total - correctCount);
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', paddingBottom: '3rem' }}>

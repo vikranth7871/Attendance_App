@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { motion } from 'framer-motion';
 import {
@@ -14,13 +15,21 @@ import {
     ShieldCheck
 } from 'lucide-react';
 
-const StatCard = ({ title, value, icon: Icon, color, delay }) => (
+const StatCard = ({ title, value, icon: Icon, color, delay, onClick }) => (
     <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay }}
+        onClick={onClick}
         className="glass-panel"
-        style={{ padding: '1.5rem', flex: 1, minWidth: '200px' }}
+        style={{
+            padding: '1.5rem',
+            flex: 1,
+            minWidth: '200px',
+            cursor: onClick ? 'pointer' : 'default',
+            transition: 'all 0.2s'
+        }}
+        whileHover={onClick ? { scale: 1.02, boxShadow: '0 8px 24px rgba(0,0,0,0.1)' } : {}}
     >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
@@ -40,6 +49,7 @@ const StatCard = ({ title, value, icon: Icon, color, delay }) => (
 );
 
 const DashboardOverview = () => {
+    const navigate = useNavigate();
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('students'); // 'students' or 'teachers'
@@ -77,6 +87,8 @@ const DashboardOverview = () => {
         ? ((activeData.present / activeData.total) * 100).toFixed(1)
         : 0;
 
+    const maxTeacherScore = Math.max(...(stats.teacherPerformance?.map(tp => tp.markingCount) || [100]), 50);
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
             {/* Dashboard Header */}
@@ -92,6 +104,7 @@ const DashboardOverview = () => {
                     icon={Users}
                     color="#3b82f6"
                     delay={0.1}
+                    onClick={() => navigate('/admin/users')}
                 />
                 <StatCard
                     title="Faculty Members"
@@ -99,6 +112,7 @@ const DashboardOverview = () => {
                     icon={UserCheck}
                     color="#ec4899"
                     delay={0.2}
+                    onClick={() => navigate('/admin/users')}
                 />
                 <StatCard
                     title="Active Classes"
@@ -106,6 +120,7 @@ const DashboardOverview = () => {
                     icon={School}
                     color="#10b981"
                     delay={0.3}
+                    onClick={() => navigate('/admin/academic')}
                 />
                 <StatCard
                     title="Total Subjects"
@@ -113,6 +128,7 @@ const DashboardOverview = () => {
                     icon={BookOpen}
                     color="#f59e0b"
                     delay={0.4}
+                    onClick={() => navigate('/admin/subjects')}
                 />
             </div>
 
@@ -204,18 +220,18 @@ const DashboardOverview = () => {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Absent</span>
                                 <span style={{ fontWeight: '600', color: 'var(--danger)' }}>
-                                    {activeTab === 'students' ? activeData.absent : (activeData.total - activeData.present)}
+                                    {activeData.absent}
                                 </span>
                             </div>
                             <div style={{ height: '4px', background: 'var(--border-color)', borderRadius: '2px', overflow: 'hidden' }}>
                                 <motion.div
                                     initial={{ width: 0 }}
-                                    animate={{ width: `${((activeTab === 'students' ? activeData.absent : (activeData.total - activeData.present)) / activeData.total) * 100}%` }}
+                                    animate={{ width: `${activeData.total > 0 ? (activeData.absent / activeData.total) * 100 : 0}%` }}
                                     style={{ height: '100%', background: 'var(--danger)' }}
                                 ></motion.div>
                             </div>
 
-                            {activeTab === 'students' && (
+                            {activeData.leave > 0 && (
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>On Leave</span>
                                     <span style={{ fontWeight: '600', color: 'var(--brand-primary)' }}>{activeData.leave}</span>
@@ -284,7 +300,7 @@ const DashboardOverview = () => {
                     </div>
                 </motion.div>
 
-                {/* Recent Activities */}
+                {/* Teacher Performance & Metrics Section (Top Right beside Snapshot) */}
                 <motion.div
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -294,10 +310,101 @@ const DashboardOverview = () => {
                 >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
                         <h3 style={{ fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <TrendingUp size={20} className="text-brand" /> Teacher Activity Overview
+                        </h3>
+                        <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Top Performers</span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+                        {stats.teacherPerformance?.map((tp, idx) => (
+                            <div key={tp._id} style={{
+                                padding: '1rem',
+                                background: 'var(--bg-secondary)',
+                                borderRadius: '16px',
+                                position: 'relative',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.85rem'
+                            }}>
+                                <div style={{
+                                    width: '42px',
+                                    height: '42px',
+                                    borderRadius: '12px',
+                                    background: 'var(--brand-primary)',
+                                    color: 'white',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '1.1rem',
+                                    fontWeight: 'bold',
+                                    flexShrink: 0
+                                }}>
+                                    {tp.name.charAt(0)}
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.25rem' }}>
+                                        <div style={{ minWidth: 0 }}>
+                                            <h4 style={{ fontSize: '0.9rem', fontWeight: '600', marginBottom: '0.125rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tp.name}</h4>
+                                            <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginBottom: '0.25rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tp.email}</p>
+                                        </div>
+                                        {tp.department && (
+                                            <span style={{ fontSize: '0.65rem', background: 'var(--brand-primary)10', color: 'var(--brand-primary)', padding: '0.15rem 0.4rem', borderRadius: '4px', fontWeight: '600', flexShrink: 0 }}>
+                                                {tp.department}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div style={{ marginTop: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div style={{ height: '5px', background: 'var(--border-color)', borderRadius: '3px', flex: 1, marginRight: '0.75rem', overflow: 'hidden' }}>
+                                            <div style={{
+                                                width: `${Math.min((tp.markingCount / maxTeacherScore) * 100, 100)}%`,
+                                                height: '100%',
+                                                background: 'linear-gradient(90deg, var(--brand-primary), #ec4899)',
+                                                borderRadius: '3px'
+                                            }}></div>
+                                        </div>
+                                        <span style={{ fontSize: '0.78rem', fontWeight: 'bold' }}>{tp.markingCount} marks</span>
+                                    </div>
+                                </div>
+                                {idx === 0 && (
+                                    <div style={{
+                                        position: 'absolute',
+                                        top: '-0.5rem',
+                                        right: '0.75rem',
+                                        background: 'gold',
+                                        color: 'black',
+                                        padding: '0.15rem 0.45rem',
+                                        borderRadius: '6px',
+                                        fontSize: '0.68rem',
+                                        fontWeight: 'bold'
+                                    }}>#1 Rank</div>
+                                )}
+                            </div>
+                        ))}
+                        {(!stats.teacherPerformance || stats.teacherPerformance.length === 0) && (
+                            <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
+                                No performance data available yet.
+                            </div>
+                        )}
+                    </div>
+                </motion.div>
+            </div>
+
+            {/* Recent Activities Section (Full Width Bottom) */}
+            <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.7 }}
+                    className="glass-panel"
+                    style={{ flex: 1, minWidth: '280px', padding: '1.5rem' }}
+                >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+                        <h3 style={{ fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <Clock size={20} className="text-brand" /> Recent System Logs
                         </h3>
                         <button 
                             className="text-brand" 
+                            onClick={() => navigate('/admin/activity')}
                             style={{ 
                                 background: 'none', 
                                 border: 'none', 
@@ -315,25 +422,25 @@ const DashboardOverview = () => {
                         </button>
                     </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
                         {recentActivities.length > 0 ? recentActivities.map((activity, idx) => (
                             <div key={activity._id} style={{
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: '1rem',
-                                padding: '0.75rem',
+                                padding: '0.85rem 1rem',
                                 background: 'var(--bg-secondary)',
                                 borderRadius: '12px',
                                 borderLeft: `4px solid ${activity.status === 'present' ? 'var(--success)' : activity.status === 'absent' ? 'var(--danger)' : 'var(--brand-primary)'}`
                             }}>
-                                <div style={{ minWidth: '40px', textAlign: 'center' }}>
+                                <div style={{ minWidth: '36px', textAlign: 'center' }}>
                                     <ShieldCheck size={18} color="var(--text-light)" />
                                 </div>
                                 <div style={{ flex: 1 }}>
-                                    <p style={{ fontSize: '0.875rem', fontWeight: '500' }}>
+                                    <p style={{ fontSize: '0.875rem', fontWeight: '500', margin: 0 }}>
                                         {activity.studentId?.name} - <span style={{ opacity: 0.7 }}>{activity.subjectId?.subjectName}</span>
                                     </p>
-                                    <p style={{ fontSize: '0.75rem', color: 'var(--text-light)', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                    <p style={{ fontSize: '0.75rem', color: 'var(--text-light)', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap', margin: '4px 0 0 0' }}>
                                         Marked as <span style={{ textTransform: 'uppercase', fontWeight: '600' }}>{activity.status}</span> • {new Date(activity.createdAt).toLocaleTimeString()}
                                         {activity.studentId?.departmentId?.departmentName && (
                                             <span style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '0.05rem 0.4rem', fontWeight: '600', color: 'var(--text-secondary)', fontSize: '0.7rem' }}>
@@ -345,99 +452,7 @@ const DashboardOverview = () => {
                                 <ChevronRight size={16} color="var(--text-light)" />
                             </div>
                         )) : (
-                            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>No recent activities found.</div>
-                        )}
-                    </div>
-                </motion.div>
-            </div>
-
-            {/* Teacher Performance & Metrics Section */}
-            <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.7 }}
-                    className="glass-panel"
-                    style={{ flex: 2, minWidth: '280px', padding: '1.5rem' }}
-                >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-                        <h3 style={{ fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <TrendingUp size={20} className="text-brand" /> Teacher Activity Overview
-                        </h3>
-                        <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Top Performers</span>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem' }}>
-                        {stats.teacherPerformance?.map((tp, idx) => (
-                            <div key={tp._id} style={{
-                                padding: '1.25rem',
-                                background: 'var(--bg-secondary)',
-                                borderRadius: '16px',
-                                position: 'relative',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '1rem'
-                            }}>
-                                <div style={{
-                                    width: '48px',
-                                    height: '48px',
-                                    borderRadius: '12px',
-                                    background: 'var(--brand-primary)',
-                                    color: 'white',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontSize: '1.25rem',
-                                    fontWeight: 'bold'
-                                }}>
-                                    {tp.name.charAt(0)}
-                                </div>
-                                <div style={{ flex: 1 }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                        <div>
-                                            <h4 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.125rem' }}>{tp.name}</h4>
-                                            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>{tp.email}</p>
-                                        </div>
-                                        {tp.department ? (
-                                            <span style={{ fontSize: '0.7rem', background: 'var(--brand-primary)10', color: 'var(--brand-primary)', padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: '600' }}>
-                                                {tp.department}
-                                            </span>
-                                        ) : (
-                                            <span style={{ fontSize: '0.7rem', background: 'var(--bg-primary)', color: 'var(--text-light)', padding: '0.2rem 0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)' }}>
-                                                No Dept
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div style={{ marginTop: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <div style={{ height: '6px', background: 'var(--border-color)', borderRadius: '3px', flex: 1, marginRight: '1rem', overflow: 'hidden' }}>
-                                            <div style={{
-                                                width: `${Math.min((tp.markingCount / 50) * 100, 100)}%`,
-                                                height: '100%',
-                                                background: 'linear-gradient(90deg, var(--brand-primary), #ec4899)',
-                                                borderRadius: '3px'
-                                            }}></div>
-                                        </div>
-                                        <span style={{ fontSize: '0.875rem', fontWeight: 'bold' }}>{tp.markingCount} marks</span>
-                                    </div>
-                                </div>
-                                <div style={{
-                                    position: 'absolute',
-                                    top: '-0.5rem',
-                                    right: '1rem',
-                                    background: 'gold',
-                                    color: 'black',
-                                    padding: '0.25rem 0.5rem',
-                                    borderRadius: '8px',
-                                    fontSize: '0.75rem',
-                                    fontWeight: 'bold',
-                                    display: idx === 0 ? 'block' : 'none'
-                                }}>#1 Rank</div>
-                            </div>
-                        ))}
-                        {(!stats.teacherPerformance || stats.teacherPerformance.length === 0) && (
-                            <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
-                                No performance data available yet.
-                            </div>
+                            <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>No recent activities found.</div>
                         )}
                     </div>
                 </motion.div>

@@ -178,10 +178,13 @@ export const initSchema = async () => {
             score NUMERIC,
             total_marks NUMERIC,
             percentage NUMERIC,
+            duration_seconds INTEGER DEFAULT 0,
             submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+
+        ALTER TABLE quiz_attempts ADD COLUMN IF NOT EXISTS duration_seconds INTEGER DEFAULT 0;
 
         CREATE TABLE IF NOT EXISTS certificates (
             id SERIAL PRIMARY KEY,
@@ -217,6 +220,18 @@ export const initSchema = async () => {
             academic_year VARCHAR(50),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS teacher_attendance (
+            id SERIAL PRIMARY KEY,
+            teacher_id INTEGER NOT NULL,
+            date DATE NOT NULL,
+            status VARCHAR(50) DEFAULT 'present',
+            marked_by INTEGER,
+            remarks TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT unique_teacher_date UNIQUE(teacher_id, date)
         );
     `;
     try {

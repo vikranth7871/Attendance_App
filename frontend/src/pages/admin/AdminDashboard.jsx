@@ -15,6 +15,7 @@ import DashboardOverview from './DashboardOverview';
 import AdminProfile from './AdminProfile';
 import AdminQuizManage from './AdminQuizManage';
 import AdminTeacherLeaves from './AdminTeacherLeaves';
+import AdminTeacherAttendance from './AdminTeacherAttendance';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
@@ -75,6 +76,7 @@ const AdminDashboard = () => {
                         <Route path="/profile" element={<AdminProfile />} />
                         <Route path="/quizzes" element={<AdminQuizManage />} />
                         <Route path="/teacher-leaves" element={<AdminTeacherLeaves />} />
+                        <Route path="/teacher-attendance" element={<AdminTeacherAttendance />} />
                     </Routes>
                 </div>
             </main>

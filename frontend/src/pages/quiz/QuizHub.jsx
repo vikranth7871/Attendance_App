@@ -191,10 +191,20 @@ const QuizCard = ({ quiz, onStart, idx }) => {
    Results History Row
 ───────────────────────────────────────── */
 const AttemptRow = ({ attempt, idx }) => {
-    const passed = attempt.passed;
-    const date = new Date(attempt.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    const minutes = Math.floor((attempt.timeTaken || 0) / 60);
-    const seconds = (attempt.timeTaken || 0) % 60;
+    const percentage = parseFloat(attempt.percentage) || 0;
+    const passingScore = attempt.passing_score || 80;
+    const passed = attempt.passed !== undefined ? attempt.passed : percentage >= passingScore;
+    const dateObj = new Date(attempt.completedAt || attempt.submitted_at || attempt.created_at || Date.now());
+    const date = isNaN(dateObj.getTime()) ? 'Recently' : dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+    const totalSecs = parseInt(attempt.duration_seconds || attempt.timeTaken || 0, 10);
+    const minutes = Math.floor(totalSecs / 60);
+    const seconds = totalSecs % 60;
+    const durationStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+
+    const title = attempt.quiz_title || attempt.quizId?.title || 'Quiz';
+    const score = attempt.score || 0;
+    const totalMarks = attempt.total_marks || attempt.totalQuestions || attempt.quizId?.questions?.length || '?';
 
     return (
         <motion.div
@@ -203,28 +213,48 @@ const AttemptRow = ({ attempt, idx }) => {
             transition={{ delay: idx * 0.04 }}
             style={{
                 display: 'flex', alignItems: 'center', gap: '1rem',
-                padding: '1rem 1.25rem',
+                padding: '1.2rem 1.5rem',
                 background: 'var(--bg-secondary)',
-                borderRadius: '12px',
-                border: `1px solid ${passed ? 'rgba(22,163,74,0.2)' : 'var(--border-color)'}`,
-                borderLeft: `4px solid ${passed ? '#16a34a' : '#dc2626'}`
+                borderRadius: '16px',
+                border: `1px solid ${passed ? 'rgba(22,163,74,0.25)' : 'rgba(220,38,38,0.2)'}`,
+                borderLeft: `4px solid ${passed ? '#16a34a' : '#dc2626'}`,
+                boxShadow: '0 4px 12px rgba(0,0,0,0.03)'
             }}
         >
-            <div style={{ fontSize: '1.5rem' }}>{passed ? '✅' : '❌'}</div>
+            <div style={{
+                width: '42px', height: '42px', borderRadius: '12px', flexShrink: 0,
+                background: passed ? 'rgba(22,163,74,0.12)' : 'rgba(220,38,38,0.12)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '1.4rem'
+            }}>
+                {passed ? '🎉' : '❌'}
+            </div>
+
             <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: '600', fontSize: '0.9rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {attempt.quizId?.title || 'Quiz'}
+                <div style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {title}
                 </div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                    {date} • {minutes > 0 ? `${minutes}m ` : ''}{seconds}s
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <span>{date}</span>
+                    <span>•</span>
+                    <span>⏱️ {durationStr}</span>
+                    {passed && (
+                        <>
+                            <span>•</span>
+                            <span style={{ color: '#16a34a', fontWeight: '700', fontSize: '0.75rem', background: 'rgba(22,163,74,0.12)', padding: '0.15rem 0.5rem', borderRadius: '999px' }}>
+                                Passed
+                            </span>
+                        </>
+                    )}
                 </div>
             </div>
+
             <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                <div style={{ fontSize: '1.25rem', fontWeight: '800', color: passed ? '#16a34a' : '#dc2626' }}>
-                    {attempt.percentage}%
+                <div style={{ fontSize: '1.35rem', fontWeight: '800', color: passed ? '#16a34a' : '#dc2626' }}>
+                    {percentage}%
                 </div>
-                <div style={{ fontSize: '0.65rem', color: 'var(--text-light)', fontWeight: '600', textTransform: 'uppercase' }}>
-                    {attempt.score}/{attempt.quizId?.questions?.length || '?'} correct
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: '600' }}>
+                    {score} / {totalMarks} Correct
                 </div>
             </div>
         </motion.div>
@@ -462,13 +492,13 @@ const QuizHubMain = () => {
             setLoading(true);
             try {
                 const [quizRes, attemptRes, certRes] = await Promise.all([
-                    axios.get('/quiz'),
-                    axios.get('/quiz/my-attempts'),
-                    axios.get('/quiz/my-certificates')
+                    axios.get('/quiz').catch(() => ({ data: [] })),
+                    axios.get('/quiz/my-attempts').catch(() => ({ data: [] })),
+                    axios.get('/quiz/my-certificates').catch(() => ({ data: [] }))
                 ]);
-                setQuizzes(quizRes.data);
-                setAttempts(attemptRes.data);
-                setCertificates(certRes.data);
+                setQuizzes(Array.isArray(quizRes.data) ? quizRes.data : []);
+                setAttempts(Array.isArray(attemptRes.data) ? attemptRes.data : []);
+                setCertificates(Array.isArray(certRes.data) ? certRes.data : []);
             } catch (err) {
                 console.error('Failed to fetch quiz data:', err);
             } finally {
@@ -479,15 +509,31 @@ const QuizHubMain = () => {
     }, []);
 
     const filtered = quizzes.filter(q => {
-        const matchType = q.type === activeTab || (activeTab !== 'practice' && activeTab !== 'university');
-        const matchSearch = !search || q.title.toLowerCase().includes(search.toLowerCase()) ||
-            (q.subjectId?.subjectName || '').toLowerCase().includes(search.toLowerCase());
+        let matchType = false;
+        if (activeTab === 'university') {
+            matchType = q.type === 'university' || q.type === 'official' || q.type === 'competitive';
+        } else if (activeTab === 'practice') {
+            matchType = !q.type || q.type === 'practice';
+        } else {
+            matchType = true;
+        }
+
+        const matchSearch = !search ||
+            (q.title || '').toLowerCase().includes(search.toLowerCase()) ||
+            (q.description || '').toLowerCase().includes(search.toLowerCase()) ||
+            (q.subjectId?.subjectName || q.subjectId?.name || '').toLowerCase().includes(search.toLowerCase());
+
         return matchType && matchSearch;
     });
 
-    const practiceQuizzes = quizzes.filter(q => q.type === 'practice');
-    const universityQuizzes = quizzes.filter(q => q.type === 'university');
-    const passedCount = attempts.filter(a => a.passed).length;
+    const practiceQuizzes = quizzes.filter(q => !q.type || q.type === 'practice');
+    const universityQuizzes = quizzes.filter(q => q.type === 'university' || q.type === 'official' || q.type === 'competitive');
+
+    // Unattempted / Pending published quizzes (have available attempts and student has not passed)
+    const practiceNewCount = practiceQuizzes.filter(q => q.canAttempt && !q.hasPassed).length;
+    const universityNewCount = universityQuizzes.filter(q => q.canAttempt && !q.hasPassed).length;
+
+    const passedCount = attempts.filter(a => a.passed || a.percentage >= 80).length;
 
     const handleStart = (quiz) => {
         navigate(`/student/quiz/${quiz._id}/attempt`, { state: { quiz } });
@@ -554,31 +600,37 @@ const QuizHubMain = () => {
             {/* ── Tab Navigation ── */}
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', background: 'var(--bg-secondary)', padding: '0.3rem', borderRadius: '12px', gap: '0.2rem', border: '1px solid var(--border-color)', flexWrap: 'wrap' }}>
-                    {tabs.map(tab => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id)}
-                            style={{
-                                display: 'flex', alignItems: 'center', gap: '0.4rem',
-                                padding: '0.5rem 1rem', borderRadius: '9px', border: 'none',
-                                background: activeTab === tab.id
-                                    ? 'linear-gradient(135deg, var(--brand-primary), var(--brand-secondary))'
-                                    : 'transparent',
-                                color: activeTab === tab.id ? 'white' : 'var(--text-secondary)',
-                                cursor: 'pointer', fontWeight: '600', fontSize: '0.82rem',
-                                transition: 'all 0.2s'
-                            }}
-                        >
-                            {tab.icon} {tab.label}
-                            {tab.id === 'university' && universityQuizzes.length > 0 && (
-                                <span style={{
-                                    background: activeTab === 'university' ? 'rgba(255,255,255,0.25)' : 'var(--brand-primary)',
-                                    color: 'white', borderRadius: '999px', fontSize: '0.6rem',
-                                    padding: '0.1rem 0.4rem', fontWeight: '800'
-                                }}>{universityQuizzes.length}</span>
-                            )}
-                        </button>
-                    ))}
+                    {tabs.map(tab => {
+                        let newCount = 0;
+                        if (tab.id === 'practice') newCount = practiceNewCount;
+                        if (tab.id === 'university') newCount = universityNewCount;
+
+                        return (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id)}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: '0.4rem',
+                                    padding: '0.5rem 1rem', borderRadius: '999px', border: 'none',
+                                    background: activeTab === tab.id
+                                        ? 'linear-gradient(135deg, var(--brand-primary), var(--brand-secondary))'
+                                        : 'transparent',
+                                    color: activeTab === tab.id ? 'white' : 'var(--text-secondary)',
+                                    cursor: 'pointer', fontWeight: '600', fontSize: '0.82rem',
+                                    transition: 'all 0.2s'
+                                }}
+                            >
+                                {tab.icon} {tab.label}
+                                {newCount > 0 && (
+                                    <span style={{
+                                        background: activeTab === tab.id ? 'rgba(255,255,255,0.25)' : 'var(--brand-primary)',
+                                        color: 'white', borderRadius: '999px', fontSize: '0.6rem',
+                                        padding: '0.1rem 0.4rem', fontWeight: '800'
+                                    }}>{newCount}</span>
+                                )}
+                            </button>
+                        );
+                    })}
                 </div>
 
                 {/* Search */}

@@ -1,7 +1,5 @@
 # 🎓 iAttend — Smart Student Attendance & Academic Management System
 
-![iAttend Banner](./assets/iAttend-Banner.jpeg)
-
 **iAttend** is an advanced, high-performance Academic & Attendance Management System designed for modern educational institutions. It empowers administrators, educators, students, and parents with real-time timetable tracking, interactive leave applications, quiz generation, automated certificates, and strict slot-based attendance marking.
 
 Built using **React (Vite)**, **Node.js/Express**, **Neon DB (PostgreSQL)**, and **Cloudinary**.
@@ -97,5 +95,3 @@ Open **[http://localhost:3000](http://localhost:3000)** in your browser!
 ## 👤 Author & Maintainer
 
 Developed & Maintained by **[Vikranth](https://github.com/vikranth7871)**.
-
-*Developed with ❤️ for Academic Excellence.*

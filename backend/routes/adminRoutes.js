@@ -6,7 +6,7 @@ import {
     enrollSubject, updateEnrolledSubject, removeEnrolledSubject, getSubjects,
     updateSubjectAllocation, deleteSubjectAllocation, getParents, getSystemActivity, getDashboardStats,
     updateAdminProfile, getSystemSettings, updateSystemSettings,
-    deleteDepartment, deleteClass
+    deleteDepartment, deleteClass, getTeacherAttendance, markTeacherAttendance
 } from '../controllers/adminController.js';
 import { protect, authorizeRoles } from '../middleware/authMiddleware.js';
 
@@ -62,5 +62,9 @@ router.get('/profile', (req, res) => res.json(req.user));
 router.put('/profile', updateAdminProfile);
 router.get('/settings', getSystemSettings);
 router.put('/settings', updateSystemSettings);
+
+// Teacher Attendance
+router.get('/teacher-attendance', getTeacherAttendance);
+router.post('/teacher-attendance', markTeacherAttendance);
 
 export default router;

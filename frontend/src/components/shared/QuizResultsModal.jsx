@@ -38,9 +38,11 @@ const QuizResultsModal = ({ isOpen, onClose, quiz }) => {
     };
 
     const formatTime = (seconds) => {
-        const m = Math.floor(seconds / 60);
-        const s = seconds % 60;
-        return `${m}m ${s}s`;
+        const secs = parseInt(seconds, 10) || 0;
+        const m = Math.floor(secs / 60);
+        const s = secs % 60;
+        if (m > 0) return `${m}m ${s}s`;
+        return `${s}s`;
     };
 
     const filteredCertificates = certificates.filter(cert => 
@@ -89,31 +91,33 @@ const QuizResultsModal = ({ isOpen, onClose, quiz }) => {
                             }}><X size={20} /></button>
                         </div>
 
-                        {/* Tabs */}
-                        <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-primary)' }}>
-                            <button
-                                onClick={() => setActiveTab('leaderboard')}
-                                style={{
-                                    flex: 1, padding: '1rem', background: 'transparent', border: 'none', cursor: 'pointer',
-                                    fontWeight: '600', color: activeTab === 'leaderboard' ? 'var(--brand-primary)' : 'var(--text-secondary)',
-                                    borderBottom: activeTab === 'leaderboard' ? '3px solid var(--brand-primary)' : '3px solid transparent',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', transition: 'all 0.2s'
-                                }}
-                            >
-                                <Trophy size={18} /> Leaderboard
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('certificates')}
-                                style={{
-                                    flex: 1, padding: '1rem', background: 'transparent', border: 'none', cursor: 'pointer',
-                                    fontWeight: '600', color: activeTab === 'certificates' ? 'var(--brand-primary)' : 'var(--text-secondary)',
-                                    borderBottom: activeTab === 'certificates' ? '3px solid var(--brand-primary)' : '3px solid transparent',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', transition: 'all 0.2s'
-                                }}
-                            >
-                                <Award size={18} /> Issued Certificates ({certificates.length})
-                            </button>
-                        </div>
+                        {/* Tabs (Show Issued Certificates only for University Quizzes) */}
+                        {(quiz?.type === 'university' || quiz?.type === 'official') && (
+                            <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-primary)' }}>
+                                <button
+                                    onClick={() => setActiveTab('leaderboard')}
+                                    style={{
+                                        flex: 1, padding: '1rem', background: 'transparent', border: 'none', cursor: 'pointer',
+                                        fontWeight: '600', color: activeTab === 'leaderboard' ? 'var(--brand-primary)' : 'var(--text-secondary)',
+                                        borderBottom: activeTab === 'leaderboard' ? '3px solid var(--brand-primary)' : '3px solid transparent',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', transition: 'all 0.2s'
+                                    }}
+                                >
+                                    <Trophy size={18} /> Leaderboard
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('certificates')}
+                                    style={{
+                                        flex: 1, padding: '1rem', background: 'transparent', border: 'none', cursor: 'pointer',
+                                        fontWeight: '600', color: activeTab === 'certificates' ? 'var(--brand-primary)' : 'var(--text-secondary)',
+                                        borderBottom: activeTab === 'certificates' ? '3px solid var(--brand-primary)' : '3px solid transparent',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', transition: 'all 0.2s'
+                                    }}
+                                >
+                                    <Award size={18} /> Issued Certificates ({certificates.length})
+                                </button>
+                            </div>
+                        )}
 
                         {/* Body */}
                         <div style={{ padding: '1.5rem', overflowY: 'auto', flex: 1, background: 'var(--bg-secondary)' }}>

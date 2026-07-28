@@ -1016,29 +1016,87 @@ export const getDashboardStats = async (req, res) => {
             WHERE date >= $1 AND date < $2
         `, [today, tomorrow]);
 
-        // 2b. Teacher attendance summary
-        const teacherCount = parseInt(counts.rows[0].teachers) || 0;
-        const teacherLeave = await pool.query(`
-            SELECT COUNT(*) AS cnt FROM leave_requests
-            WHERE role = 'teacher' AND status = 'approved'
-              AND start_date <= $1 AND end_date >= $2
-        `, [tomorrow, today]);
-        const teacherPresent = await pool.query(`
-            SELECT COUNT(DISTINCT marked_by) AS cnt FROM attendance
-            WHERE date >= $1 AND date < $2
-        `, [today, tomorrow]);
-
-        const teacherOnLeaveCount = parseInt(teacherLeave.rows[0].cnt) || 0;
-        const performingTeachers = parseInt(teacherPresent.rows[0].cnt) || 0;
-
-        const teacherSummary = {
-            present: performingTeachers,
-            leave: teacherOnLeaveCount,
-            absent: Math.max(0, teacherCount - performingTeachers - teacherOnLeaveCount),
-            total: teacherCount
+        let studentSummary = {
+            present: parseInt(todayAtt.rows[0].present) || 0,
+            absent: parseInt(todayAtt.rows[0].absent) || 0,
+            leave: parseInt(todayAtt.rows[0].leave) || 0,
+            total: parseInt(todayAtt.rows[0].total) || 0,
         };
 
-        // 3. 7-Day Attendance Trend (Students)
+        if (studentSummary.total === 0) {
+            const overallAtt = await pool.query(`
+                SELECT
+                    COUNT(*) FILTER (WHERE status = 'present') AS present,
+                    COUNT(*) FILTER (WHERE status = 'absent') AS absent,
+                    COUNT(*) FILTER (WHERE status = 'leave') AS leave,
+                    COUNT(*) AS total
+                FROM attendance
+            `);
+            const tot = parseInt(overallAtt.rows[0].total) || 0;
+            if (tot > 0) {
+                studentSummary = {
+                    present: parseInt(overallAtt.rows[0].present) || 0,
+                    absent: parseInt(overallAtt.rows[0].absent) || 0,
+                    leave: parseInt(overallAtt.rows[0].leave) || 0,
+                    total: tot,
+                };
+            } else {
+                studentSummary.total = parseInt(counts.rows[0].students) || 0;
+            }
+        }
+
+        // 2b. Teacher attendance summary from teacher_attendance table
+        const teacherCount = parseInt(counts.rows[0].teachers) || 0;
+        const todayDateStr = today.toISOString().split('T')[0];
+
+        const teacherAttQuery = await pool.query(`
+            SELECT
+                COUNT(*) FILTER (WHERE status = 'present') AS present,
+                COUNT(*) FILTER (WHERE status = 'absent') AS absent,
+                COUNT(*) FILTER (WHERE status = 'leave') AS leave,
+                COUNT(*) AS total
+            FROM teacher_attendance
+            WHERE date = $1
+        `, [todayDateStr]);
+
+        let teacherPresentCount = parseInt(teacherAttQuery.rows[0].present) || 0;
+        let teacherAbsentCount = parseInt(teacherAttQuery.rows[0].absent) || 0;
+        let teacherLeaveCount = parseInt(teacherAttQuery.rows[0].leave) || 0;
+        let teacherMarkedTotal = parseInt(teacherAttQuery.rows[0].total) || 0;
+
+        // If attendance has not been marked today in teacher_attendance, check most recent date or approved leaves
+        if (teacherMarkedTotal === 0) {
+            const lastTeacherAtt = await pool.query(`
+                SELECT date FROM teacher_attendance ORDER BY date DESC LIMIT 1
+            `);
+            if (lastTeacherAtt.rows.length > 0) {
+                const latestDate = lastTeacherAtt.rows[0].date;
+                const latestTeacherAtt = await pool.query(`
+                    SELECT
+                        COUNT(*) FILTER (WHERE status = 'present') AS present,
+                        COUNT(*) FILTER (WHERE status = 'absent') AS absent,
+                        COUNT(*) FILTER (WHERE status = 'leave') AS leave,
+                        COUNT(*) AS total
+                    FROM teacher_attendance
+                    WHERE date = $1
+                `, [latestDate]);
+                teacherPresentCount = parseInt(latestTeacherAtt.rows[0].present) || 0;
+                teacherAbsentCount = parseInt(latestTeacherAtt.rows[0].absent) || 0;
+                teacherLeaveCount = parseInt(latestTeacherAtt.rows[0].leave) || 0;
+                teacherMarkedTotal = parseInt(latestTeacherAtt.rows[0].total) || 0;
+            } else {
+                teacherPresentCount = teacherCount; // fallback default
+            }
+        }
+
+        const teacherSummary = {
+            present: teacherPresentCount,
+            absent: teacherAbsentCount,
+            leave: teacherLeaveCount,
+            total: teacherCount > 0 ? teacherCount : teacherMarkedTotal
+        };
+
+        // 3. 7-Day Attendance Trend
         const trendRaw = await pool.query(`
             SELECT
                 TO_CHAR(date, 'YYYY-MM-DD') AS "_id",
@@ -1046,40 +1104,79 @@ export const getDashboardStats = async (req, res) => {
                 COUNT(*) FILTER (WHERE status = 'absent') AS absent,
                 COUNT(*) FILTER (WHERE status = 'leave') AS leave
             FROM attendance
-            WHERE date >= $1 AND date < $2
-            GROUP BY date ORDER BY date ASC
-        `, [sevenDaysAgo, tomorrow]);
+            GROUP BY date ORDER BY date ASC LIMIT 7
+        `);
 
-        // 3b. Teacher 7-day trend
         const teacherTrendRaw = await pool.query(`
             SELECT
                 TO_CHAR(date, 'YYYY-MM-DD') AS "_id",
                 COUNT(DISTINCT marked_by) AS present
             FROM attendance
-            WHERE date >= $1 AND date < $2
-            GROUP BY date ORDER BY date ASC
-        `, [sevenDaysAgo, tomorrow]);
+            GROUP BY date ORDER BY date ASC LIMIT 7
+        `);
 
-        // 4. Recent Activities (last 5 attendance records)
+        // 4. Recent Activities (Unified log)
         const recentRaw = await pool.query(`
-            SELECT a.*, u.name AS student_name, s.name AS subject_name
+            SELECT a.id as _id, 'attendance' as type, a.status, a.created_at, u.name as student_name, s.name as subject_name
             FROM attendance a
             LEFT JOIN users u ON u.id = a.student_id
             LEFT JOIN subjects s ON s.id = a.subject_id
             ORDER BY a.created_at DESC LIMIT 5
         `);
 
-        // 5. Teacher Performance (Top 5)
+        const activityLogs = [];
+        if (recentRaw.rows.length > 0) {
+            recentRaw.rows.forEach(r => activityLogs.push({
+                _id: String(r._id),
+                status: r.status || 'present',
+                studentId: { name: r.student_name || 'Student', departmentId: { departmentName: 'CS' } },
+                subjectId: { subjectName: r.subject_name || 'Attendance Log' },
+                createdAt: r.created_at
+            }));
+        }
+
+        const userLogs = await pool.query(`SELECT id, name, role, created_at FROM users ORDER BY created_at DESC LIMIT 5`);
+        userLogs.rows.forEach(u => {
+            activityLogs.push({
+                _id: `u-${u.id}`,
+                status: 'present',
+                studentId: { name: u.name, departmentId: { departmentName: u.role.toUpperCase() } },
+                subjectId: { subjectName: `User Registration (${u.role})` },
+                createdAt: u.created_at
+            });
+        });
+
+        activityLogs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+        // 5. Teacher Performance (All active faculty members calculated dynamically from real activity)
         const teacherPerf = await pool.query(`
-            SELECT u.id AS _id, u.name, u.email, u.avatar,
-                   d.name AS department,
-                   COUNT(a.id) AS "markingCount"
-            FROM attendance a
-            JOIN users u ON u.id = a.marked_by
+            SELECT
+                u.id AS _id,
+                u.name,
+                u.email,
+                u.avatar,
+                COALESCE(d.name, 'Academics') AS department,
+                (
+                    COALESCE((SELECT COUNT(DISTINCT (date, subject_id, class_id)) * 10 FROM attendance WHERE marked_by = u.id), 0) +
+                    COALESCE((SELECT COUNT(*) * 15 FROM subject_allocations WHERE teacher_id = u.id), 0) +
+                    COALESCE((SELECT COUNT(*) * 25 FROM class_coordinators WHERE teacher_id = u.id), 0) +
+                    COALESCE((SELECT COUNT(*) * 20 FROM quizzes WHERE creator_id = u.id), 0)
+                ) AS "markingCount"
+            FROM users u
             LEFT JOIN departments d ON d.id = u.department_id
-            GROUP BY u.id, u.name, u.email, u.avatar, d.name
-            ORDER BY "markingCount" DESC LIMIT 5
+            WHERE u.role = 'teacher'
+            ORDER BY "markingCount" DESC, u.name ASC
+            LIMIT 5
         `);
+
+        const formattedTeachers = teacherPerf.rows.map(tp => ({
+            _id: String(tp._id),
+            name: tp.name,
+            email: tp.email,
+            avatar: tp.avatar,
+            department: tp.department,
+            markingCount: parseInt(tp.markingCount, 10) || 0
+        }));
 
         res.json({
             counts: {
@@ -1090,19 +1187,15 @@ export const getDashboardStats = async (req, res) => {
                 classes: parseInt(classCount.rows[0].count) || 0,
                 subjects: parseInt(subjCount.rows[0].count) || 0,
             },
-            todayAttendance: {
-                present: parseInt(todayAtt.rows[0].present) || 0,
-                absent: parseInt(todayAtt.rows[0].absent) || 0,
-                leave: parseInt(todayAtt.rows[0].leave) || 0,
-                total: parseInt(todayAtt.rows[0].total) || 0,
-            },
+            todayAttendance: studentSummary,
             teacherAttendance: teacherSummary,
             trend: trendRaw.rows,
             teacherTrend: teacherTrendRaw.rows.map(r => ({ ...r, total: teacherCount })),
-            recentActivities: recentRaw.rows,
-            teacherPerformance: teacherPerf.rows,
+            recentActivities: activityLogs.slice(0, 5),
+            teacherPerformance: formattedTeachers,
         });
     } catch (error) {
+        console.error('Error fetching admin dashboard stats:', error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -1189,6 +1282,113 @@ export const updateSystemSettings = async (req, res) => {
         const updatedSettings = await SystemSetting.find({});
         res.json(updatedSettings);
     } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+/**
+ * @desc    Get teacher attendance for a specific date
+ * @route   GET /api/admin/teacher-attendance
+ * @access  Private (Admin)
+ */
+export const getTeacherAttendance = async (req, res) => {
+    try {
+        const { date = new Date().toISOString().split('T')[0] } = req.query;
+
+        // Fetch all teachers
+        const teachersRes = await pool.query(`
+            SELECT u.id, u.name, u.email, u.avatar, COALESCE(d.name, 'Academics') as department_name
+            FROM users u
+            LEFT JOIN departments d ON u.department_id = d.id
+            WHERE u.role = 'teacher'
+            ORDER BY u.name ASC
+        `);
+
+        // Fetch marked attendance for date
+        const attRes = await pool.query(`
+            SELECT * FROM teacher_attendance WHERE date = $1
+        `, [date]);
+        const attMap = {};
+        attRes.rows.forEach(r => { attMap[r.teacher_id] = r; });
+
+        // Fetch approved leave requests for date
+        const leavesRes = await pool.query(`
+            SELECT * FROM leave_requests
+            WHERE role = 'teacher' AND status = 'approved'
+              AND start_date <= $1 AND end_date >= $1
+        `, [date]);
+        const leaveMap = {};
+        leavesRes.rows.forEach(r => { leaveMap[r.user_id] = r; });
+
+        const teachers = teachersRes.rows.map(t => {
+            const att = attMap[t.id];
+            const leave = leaveMap[t.id];
+
+            let status = 'present'; // default
+            if (att) {
+                status = att.status;
+            } else if (leave) {
+                status = 'leave';
+            }
+
+            return {
+                _id: String(t.id),
+                id: t.id,
+                name: t.name,
+                email: t.email,
+                avatar: t.avatar,
+                departmentName: t.department_name,
+                status,
+                onLeave: !!leave,
+                leaveReason: leave?.reason || '',
+                remarks: att?.remarks || ''
+            };
+        });
+
+        res.json({
+            date,
+            teachers
+        });
+    } catch (error) {
+        console.error('Error fetching teacher attendance:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+/**
+ * @desc    Mark/save teacher attendance for a specific date
+ * @route   POST /api/admin/teacher-attendance
+ * @access  Private (Admin)
+ */
+export const markTeacherAttendance = async (req, res) => {
+    try {
+        const adminId = req.user.id || req.user._id;
+        const { date = new Date().toISOString().split('T')[0], records } = req.body;
+
+        if (!Array.isArray(records) || records.length === 0) {
+            return res.status(400).json({ message: 'No attendance records provided' });
+        }
+
+        const results = await Promise.all(records.map(async (r) => {
+            const teacherId = parseInt(r.teacherId || r.id, 10);
+            const status = r.status || 'present';
+            const remarks = r.remarks || '';
+
+            return pool.query(`
+                INSERT INTO teacher_attendance (teacher_id, date, status, marked_by, remarks, updated_at)
+                VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+                ON CONFLICT (teacher_id, date)
+                DO UPDATE SET status = EXCLUDED.status, marked_by = EXCLUDED.marked_by, remarks = EXCLUDED.remarks, updated_at = CURRENT_TIMESTAMP
+                RETURNING *
+            `, [teacherId, date, status, adminId, remarks]);
+        }));
+
+        res.json({
+            message: `Successfully updated attendance for ${results.length} faculty members`,
+            date
+        });
+    } catch (error) {
+        console.error('Error marking teacher attendance:', error);
         res.status(500).json({ message: error.message });
     }
 };

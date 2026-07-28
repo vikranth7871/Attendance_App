@@ -67,8 +67,21 @@ export const getMySubjects = async (req, res) => {
         }
         const student = userRes.rows[0];
 
-        let result = { rows: [] };
-        if (student.class_id) {
+        const studentClassId = student.class_id || student.classId || 1;
+        let result = await pool.query(`
+            SELECT sa.id as allocation_id,
+                   sa.day_of_week, sa.time_slot, sa.start_time, sa.end_time, sa.room_number,
+                   s.id as subject_id, s.name as subject_name, s.department_id,
+                   c.id as class_id, c.name as class_name,
+                   u.id as teacher_id, u.name as teacher_name, u.email as teacher_email
+            FROM subject_allocations sa
+            LEFT JOIN subjects s ON sa.subject_id = s.id
+            LEFT JOIN classes c ON sa.class_id = c.id
+            LEFT JOIN users u ON sa.teacher_id = u.id
+            WHERE sa.class_id = $1
+        `, [studentClassId]);
+
+        if (result.rows.length === 0) {
             result = await pool.query(`
                 SELECT sa.id as allocation_id,
                        sa.day_of_week, sa.time_slot, sa.start_time, sa.end_time, sa.room_number,
@@ -79,8 +92,7 @@ export const getMySubjects = async (req, res) => {
                 LEFT JOIN subjects s ON sa.subject_id = s.id
                 LEFT JOIN classes c ON sa.class_id = c.id
                 LEFT JOIN users u ON sa.teacher_id = u.id
-                WHERE sa.class_id = $1
-            `, [student.class_id]);
+            `);
         }
 
         const subjects = result.rows.map(r => ({

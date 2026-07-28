@@ -409,6 +409,7 @@ const StudentOverview = () => {
     const { user } = useAuth();
     const [stats, setStats] = useState(null);
     const [subjects, setSubjects] = useState([]);
+    const [scheduleTab, setScheduleTab] = useState('today'); // 'today' | 'tomorrow'
 
     const canView = user?.permissions?.includes('viewAttendance');
 
@@ -416,17 +417,19 @@ const StudentOverview = () => {
         const fetchDashboardData = async () => {
             try {
                 const [statsRes, subjectsRes] = await Promise.all([
-                    canView ? axios.get('/student/overview') : Promise.resolve({ data: null }),
-                    axios.get('/student/subjects')
+                    axios.get('/student/overview').catch(() => ({ data: null })),
+                    axios.get('/student/subjects').catch(() => ({ data: [] }))
                 ]);
-                setStats(statsRes.data);
-                setSubjects(subjectsRes.data);
+                if (statsRes && statsRes.data) setStats(statsRes.data);
+                if (subjectsRes && subjectsRes.data) {
+                    setSubjects(Array.isArray(subjectsRes.data) ? subjectsRes.data : []);
+                }
             } catch (err) {
                 console.error('Failed to fetch dashboard data:', err);
             }
         };
         fetchDashboardData();
-    }, [canView]);
+    }, [user]);
 
     return (
         <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -508,41 +511,151 @@ const StudentOverview = () => {
                 </div>
             </div>
 
-            {/* Today's Schedule */}
-            <div style={{ background: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: '0.5rem' }}>
-                <h3 style={{ fontSize: '1.1rem', fontWeight: '600', marginBottom: '1rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <CalendarIcon size={18} /> Today's Schedule
-                </h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '1rem' }}>
-                    {(subjects.filter(s => {
-                        const dayName = format(new Date(), 'EEEE');
-                        return s.dayOfWeek === dayName;
-                    })).length > 0 ? (
-                        subjects.filter(s => {
-                            const dayName = format(new Date(), 'EEEE');
-                            return s.dayOfWeek === dayName;
+            {/* Schedule Section (Today & Tomorrow Switcher) */}
+            <div style={{ background: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: '0.75rem', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                    <h3 style={{ fontSize: '1.1rem', fontWeight: '600', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
+                        <CalendarIcon size={18} className="text-brand-primary" />
+                        {scheduleTab === 'today' ? `Today's Schedule (${format(new Date(), 'EEEE, MMM d')})` : `Tomorrow's Schedule (${format(new Date(Date.now() + 86400000), 'EEEE, MMM d')})`}
+                    </h3>
+
+                    {/* Today / Tomorrow Switcher Tabs */}
+                    <div style={{ display: 'flex', background: 'var(--bg-primary)', padding: '0.25rem', borderRadius: '0.75rem', border: '1px solid var(--border-color)' }}>
+                        <button
+                            onClick={() => setScheduleTab('today')}
+                            style={{
+                                padding: '0.45rem 0.9rem',
+                                borderRadius: '0.5rem',
+                                border: 'none',
+                                background: scheduleTab === 'today' ? 'var(--brand-primary)' : 'transparent',
+                                color: scheduleTab === 'today' ? 'white' : 'var(--text-secondary)',
+                                fontWeight: '700',
+                                fontSize: '0.8rem',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s ease',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.4rem'
+                            }}
+                        >
+                            📅 Today
+                        </button>
+                        <button
+                            onClick={() => setScheduleTab('tomorrow')}
+                            style={{
+                                padding: '0.45rem 0.9rem',
+                                borderRadius: '0.5rem',
+                                border: 'none',
+                                background: scheduleTab === 'tomorrow' ? 'var(--brand-primary)' : 'transparent',
+                                color: scheduleTab === 'tomorrow' ? 'white' : 'var(--text-secondary)',
+                                fontWeight: '700',
+                                fontSize: '0.8rem',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s ease',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.4rem'
+                            }}
+                        >
+                            🌅 Tomorrow
+                        </button>
+                    </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
+                    {(() => {
+                        const targetDate = scheduleTab === 'today' ? new Date() : new Date(Date.now() + 86400000);
+                        const targetDayName = format(targetDate, 'EEEE').toLowerCase();
+
+                        const scheduledClasses = subjects.filter(s => {
+                            const day = (s.dayOfWeek || s.day_of_week || '').toString().trim().toLowerCase();
+                            return day === targetDayName || (day.length >= 3 && targetDayName.startsWith(day.substring(0, 3))) || (targetDayName.length >= 3 && day.startsWith(targetDayName.substring(0, 3)));
                         }).sort((a, b) => {
-                            const t = (s) => {
-                                if (!s) return 0;
-                                const [h, m] = s.split(' ')[0].split(':');
-                                let hh = parseInt(h);
-                                if (s.includes('PM') && hh !== 12) hh += 12;
-                                if (s.includes('AM') && hh === 12) hh = 0;
-                                return hh * 60 + parseInt(m);
+                            const parseTime = (timeStr) => {
+                                if (!timeStr) return 0;
+                                const parts = timeStr.trim().split(' ');
+                                if (parts.length < 2) return 0;
+                                const [t, modifier] = parts;
+                                const [h, m] = t.split(':');
+                                let hh = parseInt(h, 10) || 0;
+                                let mm = parseInt(m, 10) || 0;
+                                if (modifier === 'PM' && hh !== 12) hh += 12;
+                                if (modifier === 'AM' && hh === 12) hh = 0;
+                                return hh * 60 + mm;
                             };
-                            return t(a.startTime) - t(b.startTime);
-                        }).map((s, i) => (
-                            <div key={s._id || i} style={{ background: 'var(--bg-primary)', padding: '1rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', borderLeft: '4px solid var(--brand-primary)' }}>
-                                <div style={{ fontWeight: 'bold', color: 'var(--text-primary)', fontSize: '0.9rem' }}>{s.subjectId?.subjectName || s.subjectName}</div>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>{s.startTime} - {s.endTime}</div>
-                                {s.teacherId?.name && <div style={{ fontSize: '0.75rem', color: 'var(--brand-primary)', marginTop: '0.25rem' }}>{s.teacherId.name}</div>}
-                            </div>
-                        ))
-                    ) : (
-                        <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '1.5rem', background: 'var(--bg-primary)', borderRadius: '0.5rem', border: '1px dashed var(--border-color)', color: 'var(--text-light)', fontSize: '0.875rem' }}>
-                            No scheduled classes for today.
-                        </div>
-                    )}
+                            return parseTime(a.startTime || a.timeSlot) - parseTime(b.startTime || b.timeSlot);
+                        });
+
+                        if (scheduledClasses.length === 0) {
+                            return (
+                                <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '2rem', background: 'var(--bg-primary)', borderRadius: '0.5rem', border: '1px dashed var(--border-color)', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+                                    No scheduled classes found for {scheduleTab === 'today' ? `today (${format(new Date(), 'EEEE')})` : `tomorrow (${format(new Date(Date.now() + 86400000), 'EEEE')})`}.
+                                </div>
+                            );
+                        }
+
+                        return scheduledClasses.map((s, i) => {
+                            const parseTime = (timeStr) => {
+                                if (!timeStr) return 0;
+                                const parts = timeStr.trim().split(' ');
+                                if (parts.length < 2) return 0;
+                                const [t, modifier] = parts;
+                                const [h, m] = t.split(':');
+                                let hh = parseInt(h, 10) || 0;
+                                let mm = parseInt(m, 10) || 0;
+                                if (modifier === 'PM' && hh !== 12) hh += 12;
+                                if (modifier === 'AM' && hh === 12) hh = 0;
+                                return hh * 60 + mm;
+                            };
+
+                            let statusBadge = { label: '🚀 Tomorrow', bg: 'rgba(79, 70, 229, 0.1)', color: 'var(--brand-primary)' };
+
+                            if (scheduleTab === 'today') {
+                                const now = new Date();
+                                const curMins = now.getHours() * 60 + now.getMinutes();
+                                const startMins = parseTime(s.startTime);
+                                const endMins = parseTime(s.endTime);
+
+                                statusBadge = { label: 'Upcoming', bg: 'rgba(79, 70, 229, 0.1)', color: 'var(--brand-primary)' };
+                                if (startMins > 0 && endMins > 0) {
+                                    if (curMins >= startMins && curMins < endMins) {
+                                        statusBadge = { label: '🟢 Live Now', bg: 'rgba(16, 185, 129, 0.15)', color: 'var(--success)' };
+                                    } else if (curMins >= endMins) {
+                                        statusBadge = { label: '✓ Completed', bg: 'rgba(156, 163, 175, 0.15)', color: 'var(--text-secondary)' };
+                                    }
+                                }
+                            }
+
+                            return (
+                                <div key={s._id || i} style={{
+                                    background: 'var(--bg-primary)',
+                                    padding: '1.2rem',
+                                    borderRadius: '0.75rem',
+                                    border: '1px solid var(--border-color)',
+                                    borderLeft: '4px solid ' + (statusBadge.label.includes('Live') ? 'var(--success)' : statusBadge.label.includes('Completed') ? 'var(--border-color)' : 'var(--brand-primary)'),
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '0.5rem',
+                                    position: 'relative'
+                                }}>
+                                    <div style={{ position: 'absolute', top: '1rem', right: '1rem', fontSize: '0.7rem', fontWeight: '700', padding: '0.2rem 0.6rem', borderRadius: '1rem', background: statusBadge.bg, color: statusBadge.color }}>
+                                        {statusBadge.label}
+                                    </div>
+                                    <div style={{ fontWeight: '700', color: 'var(--text-primary)', fontSize: '0.95rem', paddingRight: '5rem' }}>
+                                        {s.subjectId?.subjectName || s.subjectId?.name || s.subjectName || 'Assigned Subject'}
+                                    </div>
+                                    <div style={{ fontSize: '0.8rem', color: 'var(--brand-primary)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                        ⏰ {s.startTime ? `${s.startTime} - ${s.endTime}` : s.timeSlot} {s.roomNumber ? `(${s.roomNumber})` : ''}
+                                    </div>
+                                    {(s.teacherId?.name || s.teacherName) && (
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                            <User size={13} /> {s.teacherId?.name || s.teacherName}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        });
+                    })()}
                 </div>
             </div>
         </div>
