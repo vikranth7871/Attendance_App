@@ -35,7 +35,11 @@ const TeacherSidebar = ({ isOpen, setIsOpen }) => {
                             Educator Portal
                         </h2>
                         <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>{user?.name}</p>
-                        {user?.classCoordinatorFor && <span style={{ fontSize: '0.75rem', padding: '0.15rem 0.5rem', background: 'var(--accent)', color: 'white', borderRadius: '1rem', marginTop: '0.5rem', display: 'inline-block' }}>Coordinator</span>}
+                        {user?.classCoordinatorFor && (
+                            <span style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem', background: 'var(--accent)', color: 'white', borderRadius: '1rem', marginTop: '0.5rem', display: 'inline-block', fontWeight: '700' }}>
+                                Coordinator ({user.coordinatorClassName || 'CS101-A'})
+                            </span>
+                        )}
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                         <ThemeToggle />

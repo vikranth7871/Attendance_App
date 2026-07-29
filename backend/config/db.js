@@ -22,6 +22,11 @@ export const pool = new pg.Pool({
         : false
 });
 
+// Handle idle client errors gracefully to avoid server crashes
+pool.on('error', (err) => {
+    console.error('Unexpected error on idle Neon DB client:', err.message);
+});
+
 export const query = (text, params) => pool.query(text, params);
 
 /**

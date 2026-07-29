@@ -1058,10 +1058,21 @@ export const getDashboardStats = async (req, res) => {
             WHERE date::date = $1::date
         `, [todayDateStr]);
 
+        let studentLeaveCount = parseInt(todayAtt.rows[0].leave) || 0;
+        if (studentLeaveCount === 0) {
+            const activeStudentLeaves = await pool.query(`
+                SELECT COUNT(DISTINCT user_id) as leave_count 
+                FROM leave_requests 
+                WHERE role = 'student' AND status = 'approved' 
+                  AND start_date <= $1 AND end_date >= $1
+            `, [todayDateStr]);
+            studentLeaveCount = parseInt(activeStudentLeaves.rows[0].leave_count) || 0;
+        }
+
         const studentSummary = {
             present: parseInt(todayAtt.rows[0].present) || 0,
             absent: parseInt(todayAtt.rows[0].absent) || 0,
-            leave: parseInt(todayAtt.rows[0].leave) || 0,
+            leave: studentLeaveCount,
             total: studentCount,
         };
 
@@ -1091,7 +1102,7 @@ export const getDashboardStats = async (req, res) => {
                 WHERE role = 'teacher' AND status = 'approved' 
                   AND start_date <= $1 AND end_date >= $1
             `, [todayDateStr]);
-            
+
             teacherLeaveCount = parseInt(activeLeaves.rows[0].leave_count) || 0;
             teacherPresentCount = 0;
             teacherAbsentCount = Math.max(0, teacherCount - teacherLeaveCount);
@@ -1123,36 +1134,63 @@ export const getDashboardStats = async (req, res) => {
             GROUP BY date ORDER BY date ASC LIMIT 7
         `);
 
-        // 4. Recent Activities (Unified log)
-        const recentRaw = await pool.query(`
-            SELECT a.id as _id, 'attendance' as type, a.status, a.created_at, u.name as student_name, s.name as subject_name
+        // 4. Recent Activities (Unified Real System Log)
+        const studentAttRaw = await pool.query(`
+            SELECT a.id as _id, 'student_attendance' as type, a.status, a.created_at, 
+                   u.name as user_name, s.name as subject_name, COALESCE(d.name, 'CS') as dept_name
             FROM attendance a
             LEFT JOIN users u ON u.id = a.student_id
+            LEFT JOIN departments d ON d.id = u.department_id
             LEFT JOIN subjects s ON s.id = a.subject_id
-            ORDER BY a.created_at DESC LIMIT 5
+            ORDER BY a.created_at DESC LIMIT 10
+        `);
+
+        const teacherAttRaw = await pool.query(`
+            SELECT ta.id as _id, 'faculty_attendance' as type, ta.status, ta.created_at, 
+                   u.name as user_name, 'Faculty Attendance' as subject_name, COALESCE(d.name, 'Academics') as dept_name
+            FROM teacher_attendance ta
+            LEFT JOIN users u ON u.id = ta.teacher_id
+            LEFT JOIN departments d ON d.id = u.department_id
+            ORDER BY ta.created_at DESC LIMIT 10
+        `);
+
+        const leavesRaw = await pool.query(`
+            SELECT l.id as _id, 'leave_request' as type, l.status, l.created_at, 
+                   u.name as user_name, CONCAT('Leave: ', l.reason) as subject_name, 
+                   UPPER(l.role) as dept_name
+            FROM leave_requests l
+            LEFT JOIN users u ON u.id = l.user_id
+            ORDER BY l.created_at DESC LIMIT 10
         `);
 
         const activityLogs = [];
-        if (recentRaw.rows.length > 0) {
-            recentRaw.rows.forEach(r => activityLogs.push({
-                _id: String(r._id),
-                status: r.status || 'present',
-                studentId: { name: r.student_name || 'Student', departmentId: { departmentName: 'CS' } },
-                subjectId: { subjectName: r.subject_name || 'Attendance Log' },
-                createdAt: r.created_at
-            }));
-        }
 
-        const userLogs = await pool.query(`SELECT id, name, role, created_at FROM users ORDER BY created_at DESC LIMIT 5`);
-        userLogs.rows.forEach(u => {
-            activityLogs.push({
-                _id: `u-${u.id}`,
-                status: 'present',
-                studentId: { name: u.name, departmentId: { departmentName: u.role.toUpperCase() } },
-                subjectId: { subjectName: `User Registration (${u.role})` },
-                createdAt: u.created_at
-            });
-        });
+        studentAttRaw.rows.forEach(r => activityLogs.push({
+            _id: `att-${r._id}`,
+            type: 'attendance',
+            status: r.status || 'present',
+            studentId: { name: r.user_name || 'Student', departmentId: { departmentName: r.dept_name } },
+            subjectId: { subjectName: r.subject_name || 'Class Session' },
+            createdAt: r.created_at
+        }));
+
+        teacherAttRaw.rows.forEach(r => activityLogs.push({
+            _id: `tatt-${r._id}`,
+            type: 'faculty',
+            status: r.status || 'present',
+            studentId: { name: r.user_name || 'Faculty', departmentId: { departmentName: 'FACULTY' } },
+            subjectId: { subjectName: 'Daily Faculty Marking' },
+            createdAt: r.created_at
+        }));
+
+        leavesRaw.rows.forEach(r => activityLogs.push({
+            _id: `leave-${r._id}`,
+            type: 'leave',
+            status: r.status || 'pending',
+            studentId: { name: r.user_name || 'User', departmentId: { departmentName: r.dept_name } },
+            subjectId: { subjectName: r.subject_name },
+            createdAt: r.created_at
+        }));
 
         activityLogs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 

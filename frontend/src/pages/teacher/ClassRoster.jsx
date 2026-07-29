@@ -283,55 +283,101 @@ const ClassRoster = () => {
                     </div>
                 </div>
 
-                {/* Grid */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.5rem' }}>
-                    {filteredStudents.length > 0 ? filteredStudents.map((student) => (
-                        <motion.div
-                            layout key={student._id} className="student-card"
-                            style={{ padding: '1.75rem', borderRadius: '1.5rem', border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.02)', position: 'relative', overflow: 'hidden' }}
-                            whileHover={{ scale: 1.02, backgroundColor: 'rgba(255,255,255,0.04)' }}
-                        >
-                            <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center', marginBottom: '1.5rem' }}>
-                                <div style={{ width: '56px', height: '56px', borderRadius: '1rem', background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                    <User size={28} className="text-brand-primary" />
-                                </div>
-                                <div style={{ flex: 1 }}>
-                                    <div style={{ fontWeight: '800', fontSize: '1.15rem' }}>{student.name}</div>
-                                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Roll: {student.rollNumber || 'N/A'}</div>
-                                </div>
-                                {activeTab === 'subject' && student.attendanceStatus && (
-                                    <div className={`badge badge-${student.attendanceStatus === 'present' ? 'success' : 'danger'}`} style={{ textTransform: 'uppercase', fontSize: '0.65rem' }}>
-                                        {student.attendanceStatus}
-                                    </div>
-                                )}
-                            </div>
-
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
-                                <Mail size={14} /> {student.email}
-                            </div>
-
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '1.25rem', borderTop: '1px solid var(--border-color)' }}>
-                                <div style={{ display: 'flex', gap: '1rem' }}>
-                                    <span style={{ fontSize: '0.75rem', fontWeight: '800', color: 'var(--warning)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                                        <Flame size={13} color="#f59e0b" /> {student.streakCount || 0}
-                                    </span>
-                                </div>
-                                {(activeTab === 'coordinated' || user?.role === 'admin') && (
-                                    <button
-                                        onClick={() => setProfileStudentId(student._id)}
-                                        style={{ fontSize: '0.8rem', fontWeight: '800', color: 'var(--brand-primary)', background: 'transparent', border: 'none', cursor: 'pointer', padding: '0.5rem' }}
-                                    >
-                                        View Full Profile
-                                    </button>
-                                )}
-                            </div>
-                        </motion.div>
-                    )) : (
-                        <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '6rem', opacity: 0.3 }}>
-                            <Users size={48} style={{ margin: '0 auto 1rem' }} />
-                            <p>No student results matched your criteria.</p>
-                        </div>
-                    )}
+                {/* Sheet / Table Format */}
+                <div style={{ width: '100%', overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 0.5rem', textAlign: 'left' }}>
+                        <thead>
+                            <tr style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                <th style={{ padding: '0.75rem 1.25rem', fontWeight: '800' }}>#</th>
+                                <th style={{ padding: '0.75rem 1.25rem', fontWeight: '800' }}>Student Name</th>
+                                <th style={{ padding: '0.75rem 1.25rem', fontWeight: '800' }}>Roll Number</th>
+                                <th style={{ padding: '0.75rem 1.25rem', fontWeight: '800' }}>Email Address</th>
+                                <th style={{ padding: '0.75rem 1.25rem', fontWeight: '800' }}>Streak</th>
+                                {activeTab === 'subject' && <th style={{ padding: '0.75rem 1.25rem', fontWeight: '800' }}>Status</th>}
+                                {(activeTab === 'coordinated' || user?.role === 'admin') && <th style={{ padding: '0.75rem 1.25rem', fontWeight: '800', textAlign: 'right' }}>Actions</th>}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filteredStudents.length > 0 ? filteredStudents.map((student, idx) => (
+                                <motion.tr
+                                    layout
+                                    key={student._id}
+                                    style={{
+                                        background: 'var(--bg-secondary)',
+                                        borderRadius: '12px',
+                                        border: '1px solid var(--border-color)',
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                    whileHover={{ backgroundColor: 'rgba(91, 80, 230, 0.06)' }}
+                                >
+                                    <td style={{ padding: '1rem 1.25rem', borderRadius: '12px 0 0 12px', fontWeight: '700', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                                        {idx + 1}
+                                    </td>
+                                    <td style={{ padding: '1rem 1.25rem' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                                            <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(91, 80, 230, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                                <User size={20} className="text-brand-primary" />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontWeight: '800', fontSize: '0.95rem', color: 'var(--text-primary)' }}>{student.name}</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td style={{ padding: '1rem 1.25rem', fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-primary)' }}>
+                                        {student.rollNumber || 'N/A'}
+                                    </td>
+                                    <td style={{ padding: '1rem 1.25rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                            <Mail size={14} color="var(--brand-primary)" /> {student.email}
+                                        </div>
+                                    </td>
+                                    <td style={{ padding: '1rem 1.25rem' }}>
+                                        <span style={{ fontSize: '0.8rem', fontWeight: '800', color: '#f59e0b', background: 'rgba(245, 158, 11, 0.12)', padding: '0.25rem 0.6rem', borderRadius: '8px', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                                            <Flame size={14} color="#f59e0b" /> {student.streakCount || 0}
+                                        </span>
+                                    </td>
+                                    {activeTab === 'subject' && (
+                                        <td style={{ padding: '1rem 1.25rem' }}>
+                                            {student.attendanceStatus ? (
+                                                <span className={`badge badge-${student.attendanceStatus === 'present' ? 'success' : 'danger'}`} style={{ textTransform: 'uppercase', fontSize: '0.7rem', fontWeight: '800' }}>
+                                                    {student.attendanceStatus}
+                                                </span>
+                                            ) : (
+                                                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Unmarked</span>
+                                            )}
+                                        </td>
+                                    )}
+                                    {(activeTab === 'coordinated' || user?.role === 'admin') && (
+                                        <td style={{ padding: '1rem 1.25rem', borderRadius: '0 12px 12px 0', textAlign: 'right' }}>
+                                            <button
+                                                onClick={() => setProfileStudentId(student._id)}
+                                                style={{
+                                                    fontSize: '0.8rem',
+                                                    fontWeight: '800',
+                                                    color: 'var(--brand-primary)',
+                                                    background: 'rgba(91, 80, 230, 0.1)',
+                                                    border: 'none',
+                                                    borderRadius: '8px',
+                                                    cursor: 'pointer',
+                                                    padding: '0.4rem 0.85rem',
+                                                    transition: 'all 0.2s ease'
+                                                }}
+                                            >
+                                                View Profile
+                                            </button>
+                                        </td>
+                                    )}
+                                </motion.tr>
+                            )) : (
+                                <tr>
+                                    <td colSpan={7} style={{ textAlign: 'center', padding: '5rem', opacity: 0.5 }}>
+                                        <Users size={48} style={{ margin: '0 auto 1rem' }} />
+                                        <p style={{ fontWeight: '600' }}>No student records found.</p>
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
                 </div>
             </div>
 

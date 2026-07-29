@@ -11,6 +11,7 @@ const QuizResultsModal = ({ isOpen, onClose, quiz }) => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
+    const [attemptFilter, setAttemptFilter] = useState('all'); // 'all', 'best', 'latest'
 
     useEffect(() => {
         if (isOpen && quiz) {
@@ -133,6 +134,40 @@ const QuizResultsModal = ({ isOpen, onClose, quiz }) => {
                                 <>
                                     {activeTab === 'leaderboard' && (
                                         <div>
+                                            {/* Attempt View Management Filter Bar */}
+                                            {leaderboard.length > 0 && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', background: 'var(--bg-primary)', padding: '0.6rem 1rem', borderRadius: '12px', border: '1px solid var(--border-color)', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                                    <span style={{ fontSize: '0.78rem', fontWeight: '700', color: 'var(--text-secondary)' }}>
+                                                        Display Attempts:
+                                                    </span>
+                                                    <div style={{ display: 'flex', gap: '0.35rem' }}>
+                                                        {[
+                                                            { id: 'all', label: 'All Attempts' },
+                                                            { id: 'best', label: 'Best Attempt' },
+                                                            { id: 'latest', label: 'Latest Attempt' }
+                                                        ].map(f => (
+                                                            <button
+                                                                key={f.id}
+                                                                onClick={() => setAttemptFilter(f.id)}
+                                                                style={{
+                                                                    padding: '0.3rem 0.65rem',
+                                                                    fontSize: '0.75rem',
+                                                                    fontWeight: '700',
+                                                                    borderRadius: '6px',
+                                                                    border: attemptFilter === f.id ? 'none' : '1px solid var(--border-color)',
+                                                                    background: attemptFilter === f.id ? 'var(--brand-primary)' : 'var(--bg-secondary)',
+                                                                    color: attemptFilter === f.id ? 'white' : 'var(--text-secondary)',
+                                                                    cursor: 'pointer',
+                                                                    transition: 'all 0.15s ease'
+                                                                }}
+                                                            >
+                                                                {f.label}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
                                             {leaderboard.length === 0 ? (
                                                 <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-secondary)' }}>
                                                     <Trophy size={48} style={{ opacity: 0.2, marginBottom: '1rem' }} />
@@ -140,33 +175,64 @@ const QuizResultsModal = ({ isOpen, onClose, quiz }) => {
                                                 </div>
                                             ) : (
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                                                    {leaderboard.map((entry) => (
-                                                        <div key={entry.studentId} style={{
-                                                            display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem',
-                                                            background: entry.rank === 1 ? 'linear-gradient(135deg, rgba(234,179,8,0.1), rgba(234,179,8,0.05))' : 'var(--bg-primary)',
-                                                            border: entry.rank === 1 ? '1px solid rgba(234,179,8,0.3)' : '1px solid var(--border-color)',
-                                                            borderRadius: '12px'
-                                                        }}>
-                                                            <div style={{
-                                                                width: '36px', height: '36px', borderRadius: '50%',
-                                                                background: entry.rank === 1 ? '#eab308' : entry.rank === 2 ? '#9ca3af' : entry.rank === 3 ? '#b45309' : 'var(--bg-secondary)',
-                                                                color: entry.rank <= 3 ? 'white' : 'var(--text-secondary)',
-                                                                display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold'
+                                                    {(() => {
+                                                        let displayList = leaderboard;
+                                                        if (attemptFilter === 'best') {
+                                                            const bestMap = {};
+                                                            leaderboard.forEach(entry => {
+                                                                if (!bestMap[entry.studentId] || entry.percentage > bestMap[entry.studentId].percentage) {
+                                                                    bestMap[entry.studentId] = entry;
+                                                                }
+                                                            });
+                                                            displayList = Object.values(bestMap).sort((a, b) => b.percentage - a.percentage);
+                                                        } else if (attemptFilter === 'latest') {
+                                                            const latestMap = {};
+                                                            leaderboard.forEach(entry => {
+                                                                if (!latestMap[entry.studentId] || new Date(entry.createdAt) > new Date(latestMap[entry.studentId].createdAt)) {
+                                                                    latestMap[entry.studentId] = entry;
+                                                                }
+                                                            });
+                                                            displayList = Object.values(latestMap).sort((a, b) => b.percentage - a.percentage);
+                                                        }
+
+                                                        return displayList.map((entry, idx) => (
+                                                            <div key={entry.attemptId || `${entry.studentId}-${idx}`} style={{
+                                                                display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem',
+                                                                background: entry.rank === 1 ? 'linear-gradient(135deg, rgba(234,179,8,0.1), rgba(234,179,8,0.05))' : 'var(--bg-primary)',
+                                                                border: entry.rank === 1 ? '1px solid rgba(234,179,8,0.3)' : '1px solid var(--border-color)',
+                                                                borderRadius: '12px'
                                                             }}>
-                                                                {entry.rank <= 3 ? <Medal size={20} /> : entry.rank}
-                                                            </div>
-                                                            <div style={{ flex: 1 }}>
-                                                                <h4 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-primary)' }}>{entry.name} {entry.rank === 1 && <span style={{ fontSize: '0.75rem', background: '#eab308', color: 'white', padding: '2px 6px', borderRadius: '4px', marginLeft: '8px' }}>Winner</span>}</h4>
-                                                                <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{entry.rollNumber}</p>
-                                                            </div>
-                                                            <div style={{ textAlign: 'right' }}>
-                                                                <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{entry.percentage}%</div>
-                                                                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.25rem', justifyContent: 'flex-end' }}>
-                                                                    <Clock size={12} /> {formatTime(entry.timeTaken)}
+                                                                <div style={{
+                                                                    width: '36px', height: '36px', borderRadius: '50%',
+                                                                    background: entry.rank === 1 ? '#eab308' : entry.rank === 2 ? '#9ca3af' : entry.rank === 3 ? '#b45309' : 'var(--bg-secondary)',
+                                                                    color: entry.rank <= 3 ? 'white' : 'var(--text-secondary)',
+                                                                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold'
+                                                                }}>
+                                                                    {entry.rank <= 3 ? <Medal size={20} /> : entry.rank}
+                                                                </div>
+                                                                <div style={{ flex: 1 }}>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                                                        <h4 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-primary)', fontWeight: '700' }}>{entry.name}</h4>
+                                                                        {entry.rank === 1 && (
+                                                                            <span style={{ fontSize: '0.72rem', background: '#eab308', color: 'white', padding: '2px 6px', borderRadius: '4px', fontWeight: '800' }}>
+                                                                                Winner
+                                                                            </span>
+                                                                        )}
+                                                                        <span style={{ fontSize: '0.72rem', background: 'rgba(91, 80, 230, 0.12)', color: 'var(--brand-primary)', padding: '2px 7px', borderRadius: '6px', fontWeight: '800' }}>
+                                                                            Attempt #{entry.attemptNumber || 1}
+                                                                        </span>
+                                                                    </div>
+                                                                    <p style={{ margin: '3px 0 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{entry.rollNumber}</p>
+                                                                </div>
+                                                                <div style={{ textAlign: 'right' }}>
+                                                                    <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{entry.percentage}%</div>
+                                                                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.25rem', justifyContent: 'flex-end' }}>
+                                                                        <Clock size={12} /> {formatTime(entry.timeTaken)}
+                                                                    </div>
                                                                 </div>
                                                             </div>
-                                                        </div>
-                                                    ))}
+                                                        ));
+                                                    })()}
                                                 </div>
                                             )}
                                         </div>

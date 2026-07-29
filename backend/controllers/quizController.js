@@ -551,14 +551,36 @@ export const getLeaderboard = async (req, res) => {
         const result = await pool.query(`
             SELECT qa.*, u.name as student_name, u.roll_number
             FROM quiz_attempts qa
-            LEFT JOIN users u ON qa.student_id = u.id
+            LEFT JOIN users u ON u.id = qa.student_id
             WHERE qa.quiz_id = $1
-            ORDER BY qa.percentage DESC, qa.created_at ASC
+            ORDER BY qa.student_id, qa.created_at ASC
         `, [quizId]);
 
-        const leaderboard = result.rows.map((row, idx) => {
+        // Calculate attempt number per student chronologically
+        const studentAttemptCounts = {};
+        const rowsWithAttemptNum = result.rows.map(row => {
+            const sId = String(row.student_id);
+            studentAttemptCounts[sId] = (studentAttemptCounts[sId] || 0) + 1;
+            return {
+                ...row,
+                attemptNumber: studentAttemptCounts[sId]
+            };
+        });
+
+        // Sort by percentage DESC, duration ASC for ranking
+        rowsWithAttemptNum.sort((a, b) => {
+            if (parseFloat(b.percentage) !== parseFloat(a.percentage)) {
+                return parseFloat(b.percentage) - parseFloat(a.percentage);
+            }
+            const secsA = parseInt(a.duration_seconds || a.duration || 0, 10);
+            const secsB = parseInt(b.duration_seconds || b.duration || 0, 10);
+            return secsA - secsB;
+        });
+
+        const leaderboard = rowsWithAttemptNum.map((row, idx) => {
             const secs = parseInt(row.duration_seconds || row.duration || 0, 10);
             return {
+                attemptId: String(row.id),
                 studentId: String(row.student_id),
                 name: row.student_name || 'Student',
                 rollNumber: row.roll_number || '-',
@@ -566,6 +588,8 @@ export const getLeaderboard = async (req, res) => {
                 score: row.score || 0,
                 timeTaken: secs,
                 duration_seconds: secs,
+                attemptNumber: row.attemptNumber || 1,
+                createdAt: row.created_at,
                 rank: idx + 1
             };
         });
@@ -578,7 +602,7 @@ export const getLeaderboard = async (req, res) => {
             myEntry: myRankIdx >= 0 ? leaderboard[myRankIdx] : null
         });
     } catch (error) {
-        console.error('Error fetching leaderboard:', error);
+        console.error('Error fetching quiz leaderboard:', error);
         res.status(500).json({ message: error.message });
     }
 };

@@ -12,7 +12,7 @@ import QuizHub from '../quiz/QuizHub';
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { format } from 'date-fns';
-import { Activity, Calendar as CalendarIcon, Shield, Check, Menu, X, User, Mail, BookOpen, Building2, GraduationCap, Hash, ChevronDown, Flame, Trophy, Sparkles, Target, CheckCircle2, TrendingUp, AlertTriangle, TrendingDown, Sun, PlayCircle, CheckCircle, Clock } from 'lucide-react';
+import { Activity, Calendar as CalendarIcon, Shield, Check, Menu, X, User, Mail, BookOpen, Building2, GraduationCap, Hash, ChevronDown, Flame, Trophy, Sparkles, Target, CheckCircle2, TrendingUp, AlertTriangle, TrendingDown, Sun, PlayCircle, CheckCircle, Clock, Users } from 'lucide-react';
 import NotificationDropdown from '../../components/shared/NotificationDropdown';
 import ThemeToggle from '../../components/shared/ThemeToggle';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -374,16 +374,12 @@ const ProfileDropdown = ({ user }) => {
                             <InfoRow
                                 icon={Building2}
                                 label="Department"
-                                value={user?.departmentId?.departmentName || user?.departmentId?.name}
+                                value={user?.departmentName || user?.departmentId?.departmentName || user?.departmentId?.name || 'Computer Science'}
                             />
                             <InfoRow
-                                icon={GraduationCap}
-                                label="Class"
-                                value={
-                                    (user?.classId?.className || user?.classId?.name)
-                                        ? `${user?.classId?.className || user?.classId?.name}${user?.section ? ' — Section ' + user.section : ''}`
-                                        : user?.section ? `Section ${user.section}` : null
-                                }
+                                icon={Users}
+                                label="Section"
+                                value={user?.section ? `Section ${user.section}` : (user?.className ? `Section ${user.className.split('-')[1] || 'A'}` : 'Section A')}
                             />
                             <InfoRow icon={Hash} label="Roll Number" value={user?.rollNumber} />
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', paddingTop: '0.5rem' }}>

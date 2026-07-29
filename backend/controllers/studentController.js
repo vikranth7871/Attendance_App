@@ -1,13 +1,13 @@
 import { pool } from '../config/db.js';
-import User from '../models/User.js';
-import Attendance from '../models/Attendance.js';
-import Subject from '../models/Subject.js';
-import SubjectAllocation from '../models/SubjectAllocation.js';
 
 export const getMyStreak = async (req, res) => {
     try {
-        const student = await User.findById(req.user._id).select('streakCount bestStreak lastAttendanceDate');
-        res.json(student);
+        const userId = req.user.id || req.user._id;
+        const userRes = await pool.query(
+            'SELECT id, streak_count as "streakCount", best_streak as "bestStreak", last_attendance_date as "lastAttendanceDate" FROM users WHERE id = $1',
+            [userId]
+        );
+        res.json(userRes.rows[0] || { streakCount: 0, bestStreak: 0 });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -15,12 +15,26 @@ export const getMyStreak = async (req, res) => {
 
 export const getLeaderboard = async (req, res) => {
     try {
-        const leaderboard = await User.find({ role: 'student' })
-            .sort({ streakCount: -1 })
-            .limit(10)
-            .select('name streakCount bestStreak classId section');
+        const userId = req.user?.id || req.user?._id;
 
-        res.json(leaderboard);
+        const result = await pool.query(`
+            SELECT u.id as "_id", u.id, u.name, u.roll_number as "rollNumber",
+                   u.streak_count as "streakCount", u.best_streak as "bestStreak",
+                   u.section, c.name as "className"
+            FROM users u
+            LEFT JOIN classes c ON u.class_id = c.id
+            WHERE u.role = 'student'
+            ORDER BY u.streak_count DESC, u.best_streak DESC, u.name ASC
+            LIMIT 25
+        `);
+
+        const currentStudentRank = result.rows.findIndex(s => String(s.id) === String(userId)) + 1;
+
+        res.json({
+            leaderboard: result.rows,
+            userRank: currentStudentRank > 0 ? currentStudentRank : 1,
+            totalStudents: result.rows.length
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -28,26 +42,48 @@ export const getLeaderboard = async (req, res) => {
 
 export const getStudentOverview = async (req, res) => {
     try {
-        const userId = req.user._id;
+        const userId = req.user.id || req.user._id;
 
-        // Fetch aggregate statistics
-        let stats = { totalPresent: 0, totalAbsent: 0, totalClasses: 0, history: [], streakCount: 0, bestStreak: 0 };
+        // 1. Fetch student user from PostgreSQL
+        const userRes = await pool.query(
+            'SELECT streak_count, best_streak FROM users WHERE id = $1',
+            [userId]
+        );
 
-        const user = await User.findById(userId).select('streakCount bestStreak');
-        stats.streakCount = user?.streakCount || 0;
-        stats.bestStreak = user?.bestStreak || 0;
+        const streakCount = parseInt(userRes.rows[0]?.streak_count, 10) || 0;
+        const bestStreak = parseInt(userRes.rows[0]?.best_streak, 10) || 0;
 
-        const attendanceRecords = await Attendance.find({ studentId: userId })
-            .populate('subjectId', 'subjectName departmentId')
-            .sort({ date: -1 });
+        // 2. Fetch attendance records for this student from PostgreSQL
+        const attRes = await pool.query(`
+            SELECT a.id, a.status, a.date, a.created_at, s.name as subject_name
+            FROM attendance a
+            LEFT JOIN subjects s ON a.subject_id = s.id
+            WHERE a.student_id = $1
+            ORDER BY a.created_at DESC
+        `, [userId]);
 
-        stats.totalPresent = attendanceRecords.filter(a => a.status === 'present').length;
-        stats.totalAbsent = attendanceRecords.filter(a => a.status === 'absent').length;
-        stats.totalClasses = attendanceRecords.length;
-        stats.history = attendanceRecords;
+        const records = attRes.rows;
+        const totalPresent = records.filter(r => r.status === 'present').length;
+        const totalAbsent = records.filter(r => r.status === 'absent').length;
+        const totalClasses = records.length;
 
-        res.json(stats);
+        const history = records.map(r => ({
+            _id: String(r.id),
+            status: r.status,
+            date: r.date || r.created_at,
+            subjectId: { subjectName: r.subject_name || 'Subject' }
+        }));
+
+        res.json({
+            streakCount,
+            bestStreak,
+            totalPresent,
+            totalAbsent,
+            totalClasses,
+            history
+        });
     } catch (error) {
+        console.error('Error fetching student overview:', error);
         res.status(500).json({ message: error.message });
     }
 };

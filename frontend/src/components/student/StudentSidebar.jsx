@@ -28,8 +28,11 @@ const StudentSidebar = ({ isOpen, setIsOpen }) => {
                             <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'var(--brand-primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>S</div>
                             Student Hub
                         </h2>
-                        <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>{user?.name}</p>
-                        <span style={{ fontSize: '0.875rem', fontWeight: '600', color: 'var(--warning)', display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.25rem' }}><Flame size={16} color="#f59e0b" /> Streak: {user?.streakCount || 0}</span>
+                        <p style={{ fontSize: '0.875rem', fontWeight: '700', color: 'var(--text-primary)', marginTop: '0.25rem' }}>{user?.name}</p>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                            {user?.departmentName || user?.departmentId?.departmentName || user?.departmentId?.name || 'Computer Science'} • Sec {user?.section || (user?.className ? user.className.split('-')[1] || 'A' : 'A')}
+                        </div>
+                        <span style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--warning)', display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.35rem' }}><Flame size={15} color="#f59e0b" /> Streak: {user?.streakCount || 0}</span>
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                         <ThemeToggle />

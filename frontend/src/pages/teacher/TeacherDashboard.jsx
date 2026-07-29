@@ -7,7 +7,7 @@ import {
     BookOpen, Clock, Users, Shield, Check, X, Menu,
     Mail, Building2, GraduationCap, ChevronDown,
     FileBarChart2, Download, Filter, Loader2, AlertCircle,
-    CheckCircle2, XCircle, MinusCircle
+    CheckCircle2, XCircle, MinusCircle, Calendar, Search, User, Building, ShieldAlert, FileText
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import TeacherSidebar from '../../components/teacher/TeacherSidebar';
@@ -856,15 +856,21 @@ const StudentQuickInfo = ({ student }) => {
 };
 
 /* ──────────────────────────────────────────
-   Leave Approvals
+   Leave Approvals (Replicated from Teacher Leave Management Template)
 ────────────────────────────────────────── */
 const LeaveApprovals = () => {
+    const { user } = useAuth();
     const [leaves, setLeaves] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [filterStatus, setFilterStatus] = useState('all');
+    const [searchQuery, setSearchQuery] = useState('');
     const [actionLoading, setActionLoading] = useState(null);
+    const [rejectingLeaveId, setRejectingLeaveId] = useState(null);
+    const [rejectionReason, setRejectionReason] = useState('');
     const [previewDoc, setPreviewDoc] = useState(null);
 
     const fetchLeaves = async () => {
+        setLoading(true);
         try {
             const { data } = await axios.get('/leave/coordinator/all');
             setLeaves(data);
@@ -879,125 +885,299 @@ const LeaveApprovals = () => {
         fetchLeaves();
     }, []);
 
-    const handleAction = async (id, action, reason = '') => {
+    const handleApprove = async (id) => {
         setActionLoading(id);
         try {
-            await axios.put(`/leave/${action}/${id}`, { reason });
-            await fetchLeaves();
+            await axios.put(`/leave/approve/${id}`);
+            fetchLeaves();
         } catch (error) {
-            console.error(`[ERROR] Action ${action} failed for ${id}:`, error);
-            alert(error.response?.data?.message || `Failed to ${action} leave`);
+            alert(error.response?.data?.message || 'Failed to approve leave');
         } finally {
             setActionLoading(null);
         }
     };
 
-    if (loading) return <div className="glass-panel" style={{ padding: '2rem' }}>Loading leave requests...</div>;
+    const handleRejectSubmit = async (e) => {
+        e.preventDefault();
+        if (!rejectingLeaveId) return;
+
+        setActionLoading(rejectingLeaveId);
+        try {
+            await axios.put(`/leave/reject/${rejectingLeaveId}`, { reason: rejectionReason });
+            setRejectingLeaveId(null);
+            setRejectionReason('');
+            fetchLeaves();
+        } catch (error) {
+            alert(error.response?.data?.message || 'Failed to reject leave');
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const handleRevoke = async (id) => {
+        if (!window.confirm('Are you sure you want to revoke this approved leave?')) return;
+        setActionLoading(id);
+        try {
+            await axios.put(`/leave/revoke/${id}`, { reason: 'Revoked by Coordinator' });
+            fetchLeaves();
+        } catch (error) {
+            alert(error.response?.data?.message || 'Failed to revoke leave');
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const filteredLeaves = leaves.filter(l => {
+        const matchesStatus = filterStatus === 'all' || l.status === filterStatus;
+        const name = l.userId?.name || '';
+        const roll = l.userId?.rollNumber || '';
+        const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                              roll.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                              (l.reason && l.reason.toLowerCase().includes(searchQuery.toLowerCase()));
+        return matchesStatus && matchesSearch;
+    });
+
+    const getStatusBadge = (status) => {
+        switch (status) {
+            case 'approved':
+                return <span style={{ padding: '4px 12px', borderRadius: '20px', background: 'rgba(16,185,129,0.15)', color: '#10b981', fontSize: '0.8rem', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '4px' }}><CheckCircle2 size={14} /> Approved</span>;
+            case 'rejected':
+                return <span style={{ padding: '4px 12px', borderRadius: '20px', background: 'rgba(239,68,68,0.15)', color: '#ef4444', fontSize: '0.8rem', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '4px' }}><XCircle size={14} /> Rejected</span>;
+            case 'revoked':
+                return <span style={{ padding: '4px 12px', borderRadius: '20px', background: 'rgba(245,158,11,0.15)', color: '#f59e0b', fontSize: '0.8rem', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '4px' }}><AlertCircle size={14} /> Revoked</span>;
+            default:
+                return <span style={{ padding: '4px 12px', borderRadius: '20px', background: 'rgba(99,102,241,0.15)', color: '#6366f1', fontSize: '0.8rem', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '4px' }}><Clock size={14} /> Pending Review</span>;
+        }
+    };
+
+    const coordClass = user?.coordinatorClassName || 'CS101-A';
 
     return (
-        <div className="glass-panel animate-fade-in" style={{ padding: '2rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', maxWidth: '1200px', margin: '0 auto', paddingBottom: '3rem' }}>
             <DocumentModal url={previewDoc} onClose={() => setPreviewDoc(null)} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-                <h2 style={{ fontSize: '1.25rem', fontWeight: '600' }}>Leave Approvals</h2>
-                <span className="badge badge-primary">{leaves.length} Total Requests</span>
+
+            {/* Page Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+                <div>
+                    <h1 style={{ fontSize: '1.75rem', fontWeight: '700', color: 'var(--text-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <Calendar size={28} style={{ color: 'var(--brand-primary)' }} /> Class Leave Approvals ({coordClass} Coordinator)
+                    </h1>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '0.25rem' }}>
+                        Review, approve, or reject student leave requests submitted for your coordinated class ({coordClass}).
+                    </p>
+                </div>
             </div>
 
-            {leaves.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '3rem', opacity: 0.5 }}>
-                    <p>No leave requests found for your coordination scope.</p>
+            {/* Filter & Search Bar */}
+            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center', background: 'var(--bg-primary)', padding: '1rem', borderRadius: '16px', border: '1px solid var(--border-color)' }}>
+                <div style={{ flex: 1, minWidth: '240px', position: 'relative' }}>
+                    <Search size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
+                    <input
+                        type="text"
+                        placeholder="Search by student name, roll number, or reason..."
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        style={{ width: '100%', padding: '0.75rem 1rem 0.75rem 2.5rem', borderRadius: '10px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.9rem', outline: 'none' }}
+                    />
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <Filter size={16} style={{ color: 'var(--text-secondary)' }} />
+                    {['all', 'pending', 'approved', 'rejected', 'revoked'].map(status => (
+                        <button
+                            key={status}
+                            onClick={() => setFilterStatus(status)}
+                            style={{
+                                padding: '0.5rem 1rem', borderRadius: '10px', textTransform: 'capitalize',
+                                fontSize: '0.85rem', fontWeight: '600', cursor: 'pointer', border: 'none',
+                                background: filterStatus === status ? 'var(--brand-primary)' : 'var(--bg-secondary)',
+                                color: filterStatus === status ? 'white' : 'var(--text-secondary)',
+                                transition: 'all 0.2s ease'
+                            }}
+                        >
+                            {status}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {/* Leaves List */}
+            {loading ? (
+                <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-secondary)' }}>
+                    Loading student leave applications...
+                </div>
+            ) : filteredLeaves.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '4rem', background: 'var(--bg-primary)', borderRadius: '16px', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
+                    <Calendar size={48} style={{ opacity: 0.2, marginBottom: '1rem' }} />
+                    <h3>No student leave requests found</h3>
+                    <p style={{ fontSize: '0.9rem' }}>There are no applications matching your search or filter.</p>
                 </div>
             ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    {leaves.map((leave) => (
-                        <div key={leave._id} className="glass-panel" style={{ padding: '1.25rem', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1.25rem' }}>
+                    {filteredLeaves.map(leave => (
+                        <motion.div
+                            key={leave._id || leave.id}
+                            initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}
+                            style={{
+                                background: 'var(--bg-primary)', border: '1px solid var(--border-color)',
+                                borderRadius: '16px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem',
+                                boxShadow: '0 4px 15px rgba(0,0,0,0.03)'
+                            }}
+                        >
+                            {/* Card Header */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                 <div>
-                                    <h4 style={{ fontWeight: '700', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.2rem', flexWrap: 'wrap' }}>
-                                        {leave.userId?.name}
+                                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '700', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                        <User size={18} style={{ color: 'var(--brand-primary)' }} /> {leave.userId?.name || 'Student'}
                                         <StudentQuickInfo student={leave.userId} />
-                                        {leave.leaveType && (
-                                            <span style={{ fontSize: '0.65rem', padding: '0.15rem 0.5rem', borderRadius: '4px', background: 'rgba(99,102,241,0.15)', color: 'var(--brand-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                                {leave.leaveType}
-                                            </span>
-                                        )}
-                                        {leave.extensionFor && (
-                                            <span style={{ fontSize: '0.65rem', padding: '0.15rem 0.5rem', borderRadius: '4px', background: 'rgba(139,92,246,0.2)', color: '#a78bfa', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '800' }}>
-                                                EXTENSION
-                                            </span>
-                                        )}
-                                    </h4>
-                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Roll: {leave.userId?.rollNumber}</p>
+                                    </h3>
+                                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
+                                        Roll: <strong>{leave.userId?.rollNumber || 'N/A'}</strong>
+                                    </div>
                                 </div>
-                                <div className={`badge badge-${(new Date() > new Date(leave.endDate) && leave.status === 'approved') ? 'secondary' : leave.status === 'approved' ? 'success' : leave.status === 'pending' ? 'warning' : 'danger'}`}>
-                                    {(new Date() > new Date(leave.endDate) && leave.status === 'approved') ? 'LEAVE ENDED' : leave.status.toUpperCase()}
+                                {getStatusBadge(leave.status)}
+                            </div>
+
+                            {/* Details Box */}
+                            <div style={{ background: 'var(--bg-secondary)', padding: '0.85rem', borderRadius: '10px', fontSize: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: 'var(--text-secondary)' }}>Leave Type:</span>
+                                    <strong style={{ color: 'var(--text-primary)' }}>{leave.leaveType || 'General'}</strong>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: 'var(--text-secondary)' }}>Dates:</span>
+                                    <strong style={{ color: 'var(--text-primary)' }}>
+                                        {new Date(leave.startDate).toLocaleDateString()} — {new Date(leave.endDate).toLocaleDateString()}
+                                    </strong>
                                 </div>
                             </div>
 
-                            <div style={{ margin: '1rem 0', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '1rem', fontSize: '0.85rem' }}>
-                                <div>
-                                    <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Duration</label>
-                                    <p>{new Date(leave.startDate).toLocaleDateString()} - {new Date(leave.endDate).toLocaleDateString()}</p>
-                                </div>
-                                <div>
-                                    <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Reason</label>
-                                    <p>{leave.reason}</p>
-                                    {leave.documentUrl && (() => {
-                                        const docUrl = leave.documentUrl.trim();
-                                        const isAbsolute = /^https?:\/\//i.test(docUrl) || docUrl.startsWith('data:');
-                                        const apiBase = (import.meta.env.VITE_API_URL || axios.defaults.baseURL || '').replace('/api', '').replace(/\/$/, '');
-                                        const finalUrl = isAbsolute ? docUrl : `${apiBase}/${docUrl.replace(/^\//, '')}`;
-                                        return (
-                                            <button
-                                                type="button"
-                                                onClick={() => setPreviewDoc(finalUrl)}
-                                                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--brand-primary)', textDecoration: 'none', background: 'rgba(99,102,241,0.1)', padding: '0.35rem 0.75rem', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: '600' }}
-                                            >
-                                                <FileBarChart2 size={12} /> View Attached Document
-                                            </button>
-                                        );
-                                    })()}
-                                </div>
+                            <div>
+                                <span style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>REASON:</span>
+                                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-primary)', lineHeight: '1.4' }}>{leave.reason}</p>
                             </div>
 
-                            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+                            {leave.documentUrl && (() => {
+                                const docUrl = leave.documentUrl.trim();
+                                const isAbsolute = /^https?:\/\//i.test(docUrl) || docUrl.startsWith('data:');
+                                const apiBase = (import.meta.env.VITE_API_URL || axios.defaults.baseURL || '').replace('/api', '').replace(/\/$/, '');
+                                const finalUrl = isAbsolute ? docUrl : `${apiBase}/${docUrl.replace(/^\//, '')}`;
+
+                                return (
+                                    <button
+                                        type="button"
+                                        onClick={() => setPreviewDoc(finalUrl)}
+                                        style={{
+                                            fontSize: '0.8rem',
+                                            color: 'var(--brand-primary)',
+                                            background: 'rgba(91, 80, 230, 0.08)',
+                                            border: '1px solid rgba(91, 80, 230, 0.2)',
+                                            padding: '0.35rem 0.75rem',
+                                            borderRadius: '8px',
+                                            fontWeight: '600',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '0.3rem',
+                                            cursor: 'pointer',
+                                            width: 'fit-content'
+                                        }}
+                                    >
+                                        <FileText size={14} /> View Supporting Document
+                                    </button>
+                                );
+                            })()}
+
+                            {/* Action Buttons */}
+                            <div style={{ marginTop: 'auto', paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)', display: 'flex', gap: '0.75rem' }}>
                                 {leave.status === 'pending' && (
                                     <>
                                         <button
-                                            onClick={() => handleAction(leave._id, 'approve')}
-                                            disabled={actionLoading === leave._id}
-                                            className="btn btn-primary"
-                                            style={{ padding: '0.4rem 1rem', fontSize: '0.85rem' }}
+                                            onClick={() => handleApprove(leave._id || leave.id)}
+                                            disabled={actionLoading === (leave._id || leave.id)}
+                                            style={{
+                                                flex: 1, padding: '0.6rem', borderRadius: '8px', background: '#10b981', color: 'white',
+                                                border: 'none', fontWeight: '600', fontSize: '0.85rem', cursor: 'pointer', display: 'flex',
+                                                alignItems: 'center', justifyContent: 'center', gap: '0.4rem'
+                                            }}
                                         >
-                                            Approve
+                                            <Check size={16} /> Approve
                                         </button>
                                         <button
-                                            onClick={() => handleAction(leave._id, 'reject')}
-                                            disabled={actionLoading === leave._id}
-                                            className="btn btn-outline"
-                                            style={{ padding: '0.4rem 1rem', fontSize: '0.85rem', color: 'var(--danger)', borderColor: 'var(--danger)' }}
+                                            onClick={() => setRejectingLeaveId(leave._id || leave.id)}
+                                            disabled={actionLoading === (leave._id || leave.id)}
+                                            style={{
+                                                flex: 1, padding: '0.6rem', borderRadius: '8px', background: '#ef4444', color: 'white',
+                                                border: 'none', fontWeight: '600', fontSize: '0.85rem', cursor: 'pointer', display: 'flex',
+                                                alignItems: 'center', justifyContent: 'center', gap: '0.4rem'
+                                            }}
                                         >
-                                            Reject
+                                            <X size={16} /> Reject
                                         </button>
                                     </>
                                 )}
+
                                 {leave.status === 'approved' && (
                                     <button
-                                        onClick={() => {
-                                            const reason = prompt("Enter revocation reason:");
-                                            if (reason) handleAction(leave._id, 'revoke', reason);
+                                        onClick={() => handleRevoke(leave._id || leave.id)}
+                                        disabled={actionLoading === (leave._id || leave.id)}
+                                        style={{
+                                            width: '100%', padding: '0.6rem', borderRadius: '8px', background: 'rgba(245,158,11,0.15)', color: '#d97706',
+                                            border: '1px solid rgba(245,158,11,0.3)', fontWeight: '600', fontSize: '0.85rem', cursor: 'pointer', display: 'flex',
+                                            alignItems: 'center', justifyContent: 'center', gap: '0.4rem'
                                         }}
-                                        disabled={actionLoading === leave._id}
-                                        className="btn btn-outline"
-                                        style={{ padding: '0.4rem 1rem', fontSize: '0.85rem', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', borderColor: 'var(--danger)' }}
                                     >
-                                        Revoke Leave
+                                        <ShieldAlert size={16} /> Revoke Leave
                                     </button>
                                 )}
                             </div>
-                        </div>
+                        </motion.div>
                     ))}
                 </div>
             )}
+
+            {/* Rejection Reason Modal */}
+            <AnimatePresence>
+                {rejectingLeaveId && (
+                    <motion.div
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        style={{ position: 'fixed', inset: 0, zIndex: 99999, background: 'rgba(15,23,42,0.7)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
+                            style={{ background: 'var(--bg-primary)', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--border-color)', width: '100%', maxWidth: '450px' }}
+                        >
+                            <h3 style={{ marginTop: 0, color: 'var(--text-primary)' }}>Reject Leave Application</h3>
+                            <form onSubmit={handleRejectSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.4rem', color: 'var(--text-secondary)' }}>Reason for Rejection (Optional)</label>
+                                    <textarea
+                                        rows={3}
+                                        value={rejectionReason}
+                                        onChange={e => setRejectionReason(e.target.value)}
+                                        placeholder="State reason..."
+                                        style={{ width: '100%', padding: '0.75rem', borderRadius: '10px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', outline: 'none' }}
+                                    />
+                                </div>
+                                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setRejectingLeaveId(null)}
+                                        style={{ flex: 1, padding: '0.65rem', borderRadius: '8px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', cursor: 'pointer' }}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        style={{ flex: 1, padding: '0.65rem', borderRadius: '8px', background: '#ef4444', color: 'white', border: 'none', fontWeight: '600', cursor: 'pointer' }}
+                                    >
+                                        Confirm Reject
+                                    </button>
+                                </div>
+                            </form>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };
