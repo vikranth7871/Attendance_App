@@ -63,6 +63,13 @@ const AdminTeacherAttendance = () => {
         })));
     };
 
+    const handleMarkAllAbsent = () => {
+        setTeachers(prev => prev.map(t => ({
+            ...t,
+            status: t.onLeave ? 'leave' : 'absent'
+        })));
+    };
+
     const handleSave = async () => {
         if (date !== todayStr) {
             setToast('Faculty attendance can only be marked for today (current day alone).');
@@ -212,24 +219,45 @@ const AdminTeacherAttendance = () => {
 
             {/* Action Bar */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)', padding: '1rem 1.25rem', borderRadius: '12px', border: '1px solid var(--border-color)', flexWrap: 'wrap', gap: '1rem' }}>
-                <button
-                    onClick={handleMarkAllPresent}
-                    style={{
-                        padding: '0.5rem 1rem',
-                        borderRadius: '8px',
-                        border: '1px solid rgba(22,163,74,0.3)',
-                        background: 'rgba(22,163,74,0.1)',
-                        color: '#16a34a',
-                        fontWeight: '700',
-                        fontSize: '0.82rem',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.4rem'
-                    }}
-                >
-                    <CheckCircle size={15} /> Mark All Present
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <button
+                        onClick={handleMarkAllPresent}
+                        style={{
+                            padding: '0.5rem 1rem',
+                            borderRadius: '8px',
+                            border: '1px solid rgba(22,163,74,0.3)',
+                            background: 'rgba(22,163,74,0.1)',
+                            color: '#16a34a',
+                            fontWeight: '700',
+                            fontSize: '0.82rem',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.4rem'
+                        }}
+                    >
+                        <CheckCircle size={15} /> Mark All Present
+                    </button>
+
+                    <button
+                        onClick={handleMarkAllAbsent}
+                        style={{
+                            padding: '0.5rem 1rem',
+                            borderRadius: '8px',
+                            border: '1px solid rgba(220,38,38,0.3)',
+                            background: 'rgba(220,38,38,0.1)',
+                            color: '#dc2626',
+                            fontWeight: '700',
+                            fontSize: '0.82rem',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.4rem'
+                        }}
+                    >
+                        <XCircle size={15} /> Mark All Absent
+                    </button>
+                </div>
 
                 <button
                     onClick={handleSave}

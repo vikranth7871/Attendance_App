@@ -1040,6 +1040,13 @@ export const getDashboardStats = async (req, res) => {
         const classCount = await pool.query(`SELECT COUNT(*) FROM classes`);
         const subjCount = await pool.query(`SELECT COUNT(*) FROM subjects`);
 
+        const studentCount = parseInt(counts.rows[0].students) || 0;
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const todayDateStr = `${year}-${month}-${day}`;
+
         // 2. Today's Attendance Summary (Students)
         const todayAtt = await pool.query(`
             SELECT
@@ -1048,41 +1055,18 @@ export const getDashboardStats = async (req, res) => {
                 COUNT(*) FILTER (WHERE status = 'leave') AS leave,
                 COUNT(*) AS total
             FROM attendance
-            WHERE date >= $1 AND date < $2
-        `, [today, tomorrow]);
+            WHERE date::date = $1::date
+        `, [todayDateStr]);
 
-        let studentSummary = {
+        const studentSummary = {
             present: parseInt(todayAtt.rows[0].present) || 0,
             absent: parseInt(todayAtt.rows[0].absent) || 0,
             leave: parseInt(todayAtt.rows[0].leave) || 0,
-            total: parseInt(todayAtt.rows[0].total) || 0,
+            total: studentCount,
         };
-
-        if (studentSummary.total === 0) {
-            const overallAtt = await pool.query(`
-                SELECT
-                    COUNT(*) FILTER (WHERE status = 'present') AS present,
-                    COUNT(*) FILTER (WHERE status = 'absent') AS absent,
-                    COUNT(*) FILTER (WHERE status = 'leave') AS leave,
-                    COUNT(*) AS total
-                FROM attendance
-            `);
-            const tot = parseInt(overallAtt.rows[0].total) || 0;
-            if (tot > 0) {
-                studentSummary = {
-                    present: parseInt(overallAtt.rows[0].present) || 0,
-                    absent: parseInt(overallAtt.rows[0].absent) || 0,
-                    leave: parseInt(overallAtt.rows[0].leave) || 0,
-                    total: tot,
-                };
-            } else {
-                studentSummary.total = parseInt(counts.rows[0].students) || 0;
-            }
-        }
 
         // 2b. Teacher attendance summary from teacher_attendance table
         const teacherCount = parseInt(counts.rows[0].teachers) || 0;
-        const todayDateStr = today.toISOString().split('T')[0];
 
         const teacherAttQuery = await pool.query(`
             SELECT
@@ -1099,36 +1083,25 @@ export const getDashboardStats = async (req, res) => {
         let teacherLeaveCount = parseInt(teacherAttQuery.rows[0].leave) || 0;
         let teacherMarkedTotal = parseInt(teacherAttQuery.rows[0].total) || 0;
 
-        // If attendance has not been marked today in teacher_attendance, check most recent date or approved leaves
+        // If attendance has not been explicitly marked today, check active approved leaves for today
         if (teacherMarkedTotal === 0) {
-            const lastTeacherAtt = await pool.query(`
-                SELECT date FROM teacher_attendance ORDER BY date DESC LIMIT 1
-            `);
-            if (lastTeacherAtt.rows.length > 0) {
-                const latestDate = lastTeacherAtt.rows[0].date;
-                const latestTeacherAtt = await pool.query(`
-                    SELECT
-                        COUNT(*) FILTER (WHERE status = 'present') AS present,
-                        COUNT(*) FILTER (WHERE status = 'absent') AS absent,
-                        COUNT(*) FILTER (WHERE status = 'leave') AS leave,
-                        COUNT(*) AS total
-                    FROM teacher_attendance
-                    WHERE date = $1
-                `, [latestDate]);
-                teacherPresentCount = parseInt(latestTeacherAtt.rows[0].present) || 0;
-                teacherAbsentCount = parseInt(latestTeacherAtt.rows[0].absent) || 0;
-                teacherLeaveCount = parseInt(latestTeacherAtt.rows[0].leave) || 0;
-                teacherMarkedTotal = parseInt(latestTeacherAtt.rows[0].total) || 0;
-            } else {
-                teacherPresentCount = teacherCount; // fallback default
-            }
+            const activeLeaves = await pool.query(`
+                SELECT COUNT(DISTINCT user_id) as leave_count 
+                FROM leave_requests 
+                WHERE role = 'teacher' AND status = 'approved' 
+                  AND start_date <= $1 AND end_date >= $1
+            `, [todayDateStr]);
+            
+            teacherLeaveCount = parseInt(activeLeaves.rows[0].leave_count) || 0;
+            teacherPresentCount = 0;
+            teacherAbsentCount = Math.max(0, teacherCount - teacherLeaveCount);
         }
 
         const teacherSummary = {
             present: teacherPresentCount,
             absent: teacherAbsentCount,
             leave: teacherLeaveCount,
-            total: teacherCount > 0 ? teacherCount : teacherMarkedTotal
+            total: teacherCount,
         };
 
         // 3. 7-Day Attendance Trend
@@ -1359,7 +1332,7 @@ export const getTeacherAttendance = async (req, res) => {
             const att = attMap[t.id];
             const leave = leaveMap[t.id];
 
-            let status = 'present'; // default
+            let status = 'absent'; // default to absent so unmarked remain absent
             if (att) {
                 status = att.status;
             } else if (leave) {
