@@ -292,7 +292,7 @@ const ClassRoster = () => {
                                 <th style={{ padding: '0.75rem 1.25rem', fontWeight: '800' }}>Student Name</th>
                                 <th style={{ padding: '0.75rem 1.25rem', fontWeight: '800' }}>Roll Number</th>
                                 <th style={{ padding: '0.75rem 1.25rem', fontWeight: '800' }}>Email Address</th>
-                                <th style={{ padding: '0.75rem 1.25rem', fontWeight: '800' }}>Streak</th>
+                                <th style={{ padding: '0.75rem 1.25rem', fontWeight: '800' }}>Attendance %</th>
                                 {activeTab === 'subject' && <th style={{ padding: '0.75rem 1.25rem', fontWeight: '800' }}>Status</th>}
                                 {(activeTab === 'coordinated' || user?.role === 'admin') && <th style={{ padding: '0.75rem 1.25rem', fontWeight: '800', textAlign: 'right' }}>Actions</th>}
                             </tr>
@@ -332,8 +332,19 @@ const ClassRoster = () => {
                                         </div>
                                     </td>
                                     <td style={{ padding: '1rem 1.25rem' }}>
-                                        <span style={{ fontSize: '0.8rem', fontWeight: '800', color: '#f59e0b', background: 'rgba(245, 158, 11, 0.12)', padding: '0.25rem 0.6rem', borderRadius: '8px', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                                            <Flame size={14} color="#f59e0b" /> {student.streakCount || 0}
+                                        <span style={{
+                                            fontSize: '0.82rem',
+                                            fontWeight: '800',
+                                            color: (student.attendancePercentage || 0) >= 75 ? '#10b981' : '#ef4444',
+                                            background: (student.attendancePercentage || 0) >= 75 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                                            padding: '0.3rem 0.7rem',
+                                            borderRadius: '8px',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '0.35rem'
+                                        }}>
+                                            <BarChart2 size={14} color={(student.attendancePercentage || 0) >= 75 ? '#10b981' : '#ef4444'} />
+                                            {student.attendancePercentage !== undefined ? `${student.attendancePercentage}%` : '0%'}
                                         </span>
                                     </td>
                                     {activeTab === 'subject' && (

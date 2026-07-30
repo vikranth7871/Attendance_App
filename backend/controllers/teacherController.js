@@ -49,7 +49,11 @@ export const getMyRoster = async (req, res) => {
         const teacherId = req.user.id || req.user._id;
         const today = new Date().toISOString().split('T')[0];
 
-        // Fetch all subject allocations for teacher
+        // 1. Check if teacher is class coordinator for a class
+        const teacherUserRes = await pool.query('SELECT class_coordinator_for FROM users WHERE id = $1', [teacherId]);
+        const coordClassId = teacherUserRes.rows[0]?.class_coordinator_for;
+
+        // 2. Fetch all subject allocations for teacher
         const allocRes = await pool.query(`
             SELECT sa.id as allocation_id,
                    sa.day_of_week, sa.time_slot, sa.start_time, sa.end_time, sa.room_number,
@@ -90,25 +94,33 @@ export const getMyRoster = async (req, res) => {
 
         const roster = await Promise.all(Array.from(groupedMap.values()).map(async (group) => {
             const studentsRes = await pool.query(`
-                SELECT u.id, u.name, u.email, u.roll_number, u.streak_count,
-                       att.status as attendance_status
+                SELECT u.id, u.name, u.email, u.roll_number,
+                       COUNT(att.id) as total_sessions,
+                       COUNT(CASE WHEN att.status = 'present' THEN 1 END) as present_sessions,
+                       MAX(CASE WHEN att.date = $2 THEN att.status ELSE NULL END) as today_status
                 FROM users u
-                LEFT JOIN attendance att ON att.student_id = u.id 
-                     AND att.subject_id = $1 
-                     AND att.date = $2
+                LEFT JOIN attendance att ON att.student_id = u.id AND att.subject_id = $1
                 WHERE u.role = 'student' AND u.class_id = $3
+                GROUP BY u.id, u.name, u.email, u.roll_number
                 ORDER BY u.name ASC
             `, [group.subjectId, today, group.classId]);
 
-            const students = studentsRes.rows.map(s => ({
-                _id: String(s.id),
-                id: s.id,
-                name: s.name,
-                email: s.email,
-                rollNumber: s.roll_number,
-                streakCount: s.streak_count || 0,
-                attendanceStatus: s.attendance_status || null
-            }));
+            const students = studentsRes.rows.map(s => {
+                const tot = parseInt(s.total_sessions, 10) || 0;
+                const pres = parseInt(s.present_sessions, 10) || 0;
+                const pct = tot > 0 ? Math.round((pres / tot) * 100) : 0;
+                return {
+                    _id: String(s.id),
+                    id: s.id,
+                    name: s.name,
+                    email: s.email,
+                    rollNumber: s.roll_number,
+                    attendancePercentage: pct,
+                    totalSessions: tot,
+                    presentSessions: pres,
+                    attendanceStatus: s.today_status || null
+                };
+            });
 
             // Format schedule summary badge
             let scheduleBadge = 'Assigned';
@@ -128,9 +140,48 @@ export const getMyRoster = async (req, res) => {
             };
         }));
 
+        let coordinatedRoster = null;
+        if (coordClassId) {
+            const classRes = await pool.query('SELECT id, name FROM classes WHERE id = $1', [coordClassId]);
+            if (classRes.rows.length > 0) {
+                const cls = classRes.rows[0];
+                const coordStudentsRes = await pool.query(`
+                    SELECT u.id, u.name, u.email, u.roll_number,
+                           COUNT(att.id) as total_sessions,
+                           COUNT(CASE WHEN att.status = 'present' THEN 1 END) as present_sessions
+                    FROM users u
+                    LEFT JOIN attendance att ON att.student_id = u.id
+                    WHERE u.role = 'student' AND u.class_id = $1
+                    GROUP BY u.id, u.name, u.email, u.roll_number
+                    ORDER BY u.name ASC
+                `, [coordClassId]);
+
+                const coordStudents = coordStudentsRes.rows.map(s => {
+                    const tot = parseInt(s.total_sessions, 10) || 0;
+                    const pres = parseInt(s.present_sessions, 10) || 0;
+                    const pct = tot > 0 ? Math.round((pres / tot) * 100) : 0;
+                    return {
+                        _id: String(s.id),
+                        id: s.id,
+                        name: s.name,
+                        email: s.email,
+                        rollNumber: s.roll_number,
+                        attendancePercentage: pct,
+                        totalSessions: tot,
+                        presentSessions: pres
+                    };
+                });
+
+                coordinatedRoster = {
+                    class: { _id: String(cls.id), id: cls.id, className: cls.name, name: cls.name },
+                    students: coordStudents
+                };
+            }
+        }
+
         res.json({
             subjectRoster: roster,
-            coordinatedRoster: null
+            coordinatedRoster
         });
     } catch (error) {
         console.error('Error fetching teacher roster:', error);
