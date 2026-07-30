@@ -96,6 +96,11 @@ Desktop.ini
 docker-compose.override.yml
 
 # ========================
+# Agents & AI Configurations
+# ========================
+.agents/
+
+# ========================
 # Misc
 # ========================
 *.zip
@@ -103,3 +108,4 @@ docker-compose.override.yml
 *.bak
 *.tmp
 *.temp
+
