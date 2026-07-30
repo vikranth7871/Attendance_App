@@ -2,7 +2,7 @@ import express from 'express';
 import {
     createDepartment, getDepartments, createClass, getClasses,
     createUser, createUsersBulk, getStudents, getTeachers, getUserDetails, getTimetableByClass, updateStudent, deleteStudent, deleteUser,
-    createSubject, updateSubject, deleteSubject, assignSubject, assignClassCoordinator, revokeClassCoordinator, assignPermissions, updateUserPermissions, updateUser,
+    createSubject, updateSubject, deleteSubject, assignSubject, getTeacherAllocations, assignClassCoordinator, revokeClassCoordinator, assignPermissions, updateUserPermissions, updateUser,
     enrollSubject, updateEnrolledSubject, removeEnrolledSubject, getSubjects,
     updateSubjectAllocation, deleteSubjectAllocation, getParents, getSystemActivity, getDashboardStats,
     updateAdminProfile, getSystemSettings, updateSystemSettings,
@@ -49,6 +49,7 @@ router.post('/subjects', createSubject); // Formerly assignSubject
 router.put('/subjects/:id', updateSubject);
 router.delete('/subjects/:id', deleteSubject);
 router.post('/assign-subject', assignSubject);
+router.get('/teacher-allocations/:teacherId', getTeacherAllocations);
 router.put('/assign-subject/:id', updateSubjectAllocation);
 router.delete('/assign-subject/:id', deleteSubjectAllocation);
 router.post('/assign-class-coordinator', assignClassCoordinator);

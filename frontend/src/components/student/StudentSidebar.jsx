@@ -13,7 +13,6 @@ const StudentSidebar = ({ isOpen, setIsOpen }) => {
         ...(user?.permissions?.includes('viewAttendance') ? [
             { name: 'Attendance History', path: '/student/history', icon: <ClipboardList size={20} /> }
         ] : []),
-        { name: 'My Streaks', path: '/student/streaks', icon: <Flame size={20} /> },
         { name: 'Leave Application', path: '/student/leaves', icon: <CalendarOff size={20} /> },
         { name: 'Quiz Arena', path: '/student/quiz', icon: <Brain size={20} />, badge: 'NEW' },
     ];
@@ -32,7 +31,6 @@ const StudentSidebar = ({ isOpen, setIsOpen }) => {
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
                             {user?.departmentName || user?.departmentId?.departmentName || user?.departmentId?.name || 'Computer Science'} • Sec {user?.section || (user?.className ? user.className.split('-')[1] || 'A' : 'A')}
                         </div>
-                        <span style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--warning)', display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.35rem' }}><Flame size={15} color="#f59e0b" /> Streak: {user?.streakCount || 0}</span>
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                         <ThemeToggle />

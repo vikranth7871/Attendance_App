@@ -113,6 +113,7 @@ export const initSchema = async () => {
             subject_id INTEGER,
             class_id INTEGER,
             date DATE,
+            time_slot VARCHAR(100),
             status VARCHAR(50),
             marked_by INTEGER,
             method VARCHAR(50),
@@ -120,6 +121,8 @@ export const initSchema = async () => {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+
+        ALTER TABLE attendance ADD COLUMN IF NOT EXISTS time_slot VARCHAR(100);
 
         CREATE TABLE IF NOT EXISTS leave_requests (
             id SERIAL PRIMARY KEY,

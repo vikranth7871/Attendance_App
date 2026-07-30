@@ -501,10 +501,6 @@ const ManualAttendance = () => {
                                         </div>
                                         <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                                             <span>{student.email}</span>
-                                            <span>•</span>
-                                            <span style={{ color: '#f59e0b', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
-                                                <Flame size={13} color="#f59e0b" /> {student.streakCount || 0} Streak
-                                            </span>
                                             {isLeave && (
                                                 <span style={{ color: '#4f46e5', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '0.2rem', background: 'rgba(79,70,229,0.1)', padding: '0.1rem 0.5rem', borderRadius: '4px' }}>
                                                     <ShieldAlert size={12} /> Approved Leave

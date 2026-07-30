@@ -654,6 +654,30 @@ export const getTimetableByClass = async (req, res) => {
 };
 
 /**
+ * @desc    Get allocations for a specific teacher
+ * @route   GET /api/admin/teacher-allocations/:teacherId
+ * @access  Private (Admin)
+ */
+export const getTeacherAllocations = async (req, res) => {
+    try {
+        const { teacherId } = req.params;
+        const result = await pool.query(
+            `SELECT sa.*, s.name as subject_name, c.name as class_name, u.name as teacher_name
+             FROM subject_allocations sa
+             LEFT JOIN subjects s ON sa.subject_id = s.id
+             LEFT JOIN classes c ON sa.class_id = c.id
+             LEFT JOIN users u ON sa.teacher_id = u.id
+             WHERE sa.teacher_id = $1`,
+            [teacherId]
+        );
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error fetching teacher allocations:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+/**
  * @desc    Assign a teacher to a subject and class (Timetable entry)
  * @route   POST /api/admin/assign-subject
  * @access  Private (Admin)
@@ -670,8 +694,64 @@ export const assignSubject = async (req, res) => {
             ? slots
             : [{ dayOfWeek, timeSlot, startTime, endTime }];
 
-        const createdAllocations = [];
+        // 1. Conflict Validation Phase: Check all requested slots BEFORE creating allocations
+        for (const slot of slotList) {
+            let sTime = slot.startTime || '';
+            let eTime = slot.endTime || '';
+            let dayName = slot.dayOfWeek || dayOfWeek || null;
+            let slotStr = slot.timeSlot || (dayName ? `${dayName} ${sTime} - ${eTime}` : '');
 
+            if (!sTime && slotStr && slotStr.includes('-')) {
+                const parts = slotStr.split(' - ');
+                sTime = parts[0]?.replace(dayName || '', '').trim();
+                eTime = parts[1]?.trim();
+            }
+
+            // Check if FACULTY is already booked for this day and slot
+            const teacherConflict = await pool.query(
+                `SELECT sa.*, s.name as subject_name, c.name as class_name, u.name as teacher_name
+                 FROM subject_allocations sa
+                 LEFT JOIN subjects s ON sa.subject_id = s.id
+                 LEFT JOIN classes c ON sa.class_id = c.id
+                 LEFT JOIN users u ON sa.teacher_id = u.id
+                 WHERE sa.teacher_id = $1 
+                   AND LOWER(sa.day_of_week) = LOWER($2) 
+                   AND (sa.time_slot = $3 OR (sa.start_time = $4 AND sa.end_time = $5))
+                 LIMIT 1`,
+                [teacherId, dayName, slotStr, sTime || null, eTime || null]
+            );
+
+            if (teacherConflict.rows.length > 0) {
+                const conf = teacherConflict.rows[0];
+                return res.status(409).json({
+                    message: `⚠️ Faculty Schedule Conflict: ${conf.teacher_name || 'Faculty'} is ALREADY booked on ${dayName} (${slotStr}) for ${conf.subject_name || 'Subject'} (${conf.class_name || 'Class'}). Please select a different time slot or faculty member.`
+                });
+            }
+
+            // Check if CLASS is already scheduled for this day and slot
+            const classConflict = await pool.query(
+                `SELECT sa.*, s.name as subject_name, c.name as class_name, u.name as teacher_name
+                 FROM subject_allocations sa
+                 LEFT JOIN subjects s ON sa.subject_id = s.id
+                 LEFT JOIN classes c ON sa.class_id = c.id
+                 LEFT JOIN users u ON sa.teacher_id = u.id
+                 WHERE sa.class_id = $1 
+                   AND LOWER(sa.day_of_week) = LOWER($2) 
+                   AND (sa.time_slot = $3 OR (sa.start_time = $4 AND sa.end_time = $5))
+                 LIMIT 1`,
+                [classId, dayName, slotStr, sTime || null, eTime || null]
+            );
+
+            if (classConflict.rows.length > 0) {
+                const conf = classConflict.rows[0];
+                return res.status(409).json({
+                    message: `⚠️ Class Schedule Conflict: ${conf.class_name || 'Class'} ALREADY has a scheduled lecture on ${dayName} (${slotStr}) for ${conf.subject_name || 'Subject'} with ${conf.teacher_name || 'Faculty'}.`
+                });
+            }
+        }
+
+        // 2. Insertion Phase
+        const createdAllocations = [];
         for (const slot of slotList) {
             let sTime = slot.startTime || '';
             let eTime = slot.endTime || '';

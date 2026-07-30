@@ -12,7 +12,7 @@ import QuizHub from '../quiz/QuizHub';
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { format } from 'date-fns';
-import { Activity, Calendar as CalendarIcon, Shield, Check, Menu, X, User, Mail, BookOpen, Building2, GraduationCap, Hash, ChevronDown, Flame, Trophy, Sparkles, Target, CheckCircle2, TrendingUp, AlertTriangle, TrendingDown, Sun, PlayCircle, CheckCircle, Clock, Users } from 'lucide-react';
+import { Activity, Calendar as CalendarIcon, Shield, Check, Menu, X, User, Mail, BookOpen, Building2, GraduationCap, Hash, ChevronDown, Flame, Trophy, Sparkles, Target, CheckCircle2, TrendingUp, AlertTriangle, TrendingDown, Sun, PlayCircle, CheckCircle, Clock } from 'lucide-react';
 import NotificationDropdown from '../../components/shared/NotificationDropdown';
 import ThemeToggle from '../../components/shared/ThemeToggle';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -31,33 +31,33 @@ const AttendanceRing = ({ present, total }) => {
     // ≥90 Excellent | ≥75 Good | <75 Warning
     const tier =
         percentage >= 90 ? 'excellent' :
-        percentage >= 75 ? 'good' :
-        'warning';
+            percentage >= 75 ? 'good' :
+                'warning';
 
     const TIERS = {
         excellent: {
-            color:  '#16a34a',
-            glow:   'rgba(22,163,74,0.25)',
-            bg:     'rgba(22,163,74,0.1)',
+            color: '#16a34a',
+            glow: 'rgba(22,163,74,0.25)',
+            bg: 'rgba(22,163,74,0.1)',
             border: 'rgba(22,163,74,0.3)',
-            text:   '#16a34a',
-            label:  'Excellent',
+            text: '#16a34a',
+            label: 'Excellent',
         },
         good: {
-            color:  '#f59e0b',
-            glow:   'rgba(245,158,11,0.22)',
-            bg:     'rgba(245,158,11,0.1)',
+            color: '#f59e0b',
+            glow: 'rgba(245,158,11,0.22)',
+            bg: 'rgba(245,158,11,0.1)',
             border: 'rgba(245,158,11,0.3)',
-            text:   '#d97706',
-            label:  'Good',
+            text: '#d97706',
+            label: 'Good',
         },
         warning: {
-            color:  '#ef4444',
-            glow:   'rgba(239,68,68,0.22)',
-            bg:     'rgba(239,68,68,0.1)',
+            color: '#ef4444',
+            glow: 'rgba(239,68,68,0.22)',
+            bg: 'rgba(239,68,68,0.1)',
             border: 'rgba(239,68,68,0.3)',
-            text:   '#ef4444',
-            label:  'Warning',
+            text: '#ef4444',
+            label: 'Warning',
         }
     };
 
@@ -374,12 +374,16 @@ const ProfileDropdown = ({ user }) => {
                             <InfoRow
                                 icon={Building2}
                                 label="Department"
-                                value={user?.departmentName || user?.departmentId?.departmentName || user?.departmentId?.name || 'Computer Science'}
+                                value={user?.departmentId?.departmentName || user?.departmentId?.name}
                             />
                             <InfoRow
-                                icon={Users}
-                                label="Section"
-                                value={user?.section ? `Section ${user.section}` : (user?.className ? `Section ${user.className.split('-')[1] || 'A'}` : 'Section A')}
+                                icon={GraduationCap}
+                                label="Class"
+                                value={
+                                    (user?.classId?.className || user?.classId?.name)
+                                        ? `${user?.classId?.className || user?.classId?.name}${user?.section ? ' — Section ' + user.section : ''}`
+                                        : user?.section ? `Section ${user.section}` : null
+                                }
                             />
                             <InfoRow icon={Hash} label="Roll Number" value={user?.rollNumber} />
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', paddingTop: '0.5rem' }}>
@@ -459,44 +463,114 @@ const StudentOverview = () => {
                                 <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Attendance reporting is disabled for your account.</p>
                             </div>
                         ) : (
-                            <>
-                                {/* Streak Highlight */}
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
-                                    <div className="glass-panel" style={{ padding: '1.25rem', background: 'linear-gradient(135deg, #fff 0%, #fff7ed 100%)', border: '1px solid #ffedd5', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                        <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(245, 158, 11, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                            <Flame size={24} color="#f59e0b" />
-                                        </div>
-                                        <div style={{ textAlign: 'left' }}>
-                                            <div style={{ fontSize: '1.5rem', fontWeight: '800', color: '#ea580c' }}>{stats?.streakCount || 0}</div>
-                                            <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#9a3412', textTransform: 'uppercase' }}>Current Streak</div>
-                                        </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1, height: 'calc(100% - 3.5rem)' }}>
+                                {/* Centered Top Card: Total Sessions with Icon */}
+                                <div style={{
+                                    flex: '1 1 0%',
+                                    background: 'var(--bg-primary)',
+                                    padding: '1.25rem',
+                                    borderRadius: '0.75rem',
+                                    border: '1px solid var(--border-color)',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    justify: 'center',
+                                    textAlign: 'center',
+                                    gap: '0.35rem',
+                                    boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
+                                }}>
+                                    <div style={{
+                                        width: '42px',
+                                        height: '42px',
+                                        borderRadius: '50%',
+                                        background: 'rgba(99,102,241,0.15)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justify: 'center',
+                                        flexShrink: 0,
+                                        margin: '0 auto 0.2rem auto'
+                                    }}>
+                                        <BookOpen size={20} style={{ color: 'var(--brand-primary)', display: 'block', margin: 'auto' }} />
                                     </div>
-                                    <div className="glass-panel" style={{ padding: '1.25rem', background: 'linear-gradient(135deg, #fff 0%, #f0fdf4 100%)', border: '1px solid #dcfce7', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                        <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                            <Trophy size={24} color="#10b981" />
-                                        </div>
-                                        <div style={{ textAlign: 'left' }}>
-                                            <div style={{ fontSize: '1.5rem', fontWeight: '800', color: '#16a34a' }}>{stats?.bestStreak || 0}</div>
-                                            <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#166534', textTransform: 'uppercase' }}>Best Streak</div>
-                                        </div>
+                                    <div style={{ fontSize: '2.4rem', fontWeight: '900', color: 'var(--brand-primary)', lineHeight: 1 }}>
+                                        {stats?.totalClasses ?? 0}
+                                    </div>
+                                    <div style={{ fontSize: '0.8rem', fontWeight: '800', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                                        Total Sessions
                                     </div>
                                 </div>
 
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', textAlign: 'center' }}>
-                                    <div style={{ background: 'var(--bg-primary)', padding: '1.5rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)' }}>
-                                        <div style={{ fontSize: '2rem', fontWeight: 'bold', color: 'var(--brand-primary)' }}>{stats?.totalClasses ?? 0}</div>
-                                        <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>Total</div>
+                                {/* Bottom Cards: Present & Absent side-by-side with Icons */}
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', flex: '1 1 0%' }}>
+                                    {/* Present Card */}
+                                    <div style={{
+                                        background: 'rgba(22,163,74,0.06)',
+                                        padding: '1.25rem 0.75rem',
+                                        borderRadius: '0.75rem',
+                                        border: '1px solid rgba(22,163,74,0.25)',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        alignItems: 'center',
+                                        justify: 'center',
+                                        textAlign: 'center',
+                                        gap: '0.35rem'
+                                    }}>
+                                        <div style={{
+                                            width: '38px',
+                                            height: '38px',
+                                            borderRadius: '50%',
+                                            background: 'rgba(22,163,74,0.16)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justify: 'center',
+                                            flexShrink: 0,
+                                            margin: '0 auto 0.2rem auto'
+                                        }}>
+                                            <CheckCircle2 size={19} style={{ color: '#16a34a', display: 'block', margin: 'auto' }} />
+                                        </div>
+                                        <div style={{ fontSize: '2.4rem', fontWeight: '900', color: '#16a34a', lineHeight: 1 }}>
+                                            {stats?.totalPresent ?? 0}
+                                        </div>
+                                        <div style={{ fontSize: '0.82rem', fontWeight: '800', color: '#16a34a', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                                            Present
+                                        </div>
                                     </div>
-                                    <div style={{ background: 'var(--bg-primary)', padding: '1.5rem', borderRadius: '0.5rem', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
-                                        <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#16a34a' }}>{stats?.totalPresent ?? 0}</div>
-                                        <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>Present</div>
-                                    </div>
-                                    <div style={{ background: 'var(--bg-primary)', padding: '1.5rem', borderRadius: '0.5rem', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
-                                        <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#dc2626' }}>{stats?.totalAbsent ?? 0}</div>
-                                        <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>Absent</div>
+
+                                    {/* Absent Card */}
+                                    <div style={{
+                                        background: 'rgba(220,38,38,0.06)',
+                                        padding: '1.25rem 0.75rem',
+                                        borderRadius: '0.75rem',
+                                        border: '1px solid rgba(220,38,38,0.25)',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        alignItems: 'center',
+                                        justify: 'center',
+                                        textAlign: 'center',
+                                        gap: '0.35rem'
+                                    }}>
+                                        <div style={{
+                                            width: '38px',
+                                            height: '38px',
+                                            borderRadius: '50%',
+                                            background: 'rgba(220,38,38,0.16)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justify: 'center',
+                                            flexShrink: 0,
+                                            margin: '0 auto 0.2rem auto'
+                                        }}>
+                                            <AlertTriangle size={19} style={{ color: '#dc2626', display: 'block', margin: 'auto' }} />
+                                        </div>
+                                        <div style={{ fontSize: '2.4rem', fontWeight: '900', color: '#dc2626', lineHeight: 1 }}>
+                                            {stats?.totalAbsent ?? 0}
+                                        </div>
+                                        <div style={{ fontSize: '0.82rem', fontWeight: '800', color: '#dc2626', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                                            Absent
+                                        </div>
                                     </div>
                                 </div>
-                            </>
+                            </div>
                         )}
                     </div>
                 </div>

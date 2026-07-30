@@ -22,6 +22,7 @@ const Assignments = () => {
     const [classes, setClasses] = useState([]);
     const [subjects, setSubjects] = useState([]);
     const [teachers, setTeachers] = useState([]);
+    const [bookedFacultySlots, setBookedFacultySlots] = useState([]);
 
     // Form states
     const [subjectForm, setSubjectForm] = useState({ departmentId: '', classId: '', teacherId: '', subjectId: '', timeSlot: '', roomNumber: '', dayOfWeek: '', startTime: '', endTime: '' });
@@ -35,12 +36,44 @@ const Assignments = () => {
     const [activeDay, setActiveDay] = useState('Monday');
     const [selectedSlots, setSelectedSlots] = useState([]); // Array of { dayOfWeek, timeSlot, startTime, endTime }
 
+    // Fetch existing allocations when teacherId changes to highlight booked slots
+    useEffect(() => {
+        if (!subjectForm.teacherId) {
+            setBookedFacultySlots([]);
+            return;
+        }
+        axios.get(`/admin/teacher-allocations/${subjectForm.teacherId}`)
+            .then(res => setBookedFacultySlots(res.data || []))
+            .catch(() => setBookedFacultySlots([]));
+    }, [subjectForm.teacherId]);
+
+    const getFacultyBooking = (day, time) => {
+        if (!subjectForm.teacherId || !bookedFacultySlots.length) return null;
+        return bookedFacultySlots.find(alloc => {
+            const matchDay = (alloc.day_of_week || '').toLowerCase() === (day || '').toLowerCase();
+            const allocTime = alloc.time_slot || (alloc.start_time ? `${alloc.start_time} - ${alloc.end_time}` : '');
+            const matchSlot = allocTime.includes(time) || (alloc.start_time && time.includes(alloc.start_time));
+            return matchDay && matchSlot;
+        });
+    };
+
     const isSlotSelected = (day, time) => {
         return selectedSlots.some(s => s.dayOfWeek === day && s.timeSlot === time);
     };
 
     const toggleSlot = (day, time) => {
         if (!day) return;
+        const booking = getFacultyBooking(day, time);
+        if (booking) {
+            const selectedTeacher = teachers.find(t => String(t._id || t.id) === String(subjectForm.teacherId));
+            const teacherName = selectedTeacher?.name || 'Selected Faculty';
+            setMessage({
+                type: 'error',
+                text: `⚠️ Faculty Conflict: ${teacherName} is ALREADY booked on ${day} (${time}) for ${booking.subject_name || 'Subject'} (${booking.class_name || 'Class'}).`
+            });
+            return;
+        }
+
         const parts = time.split(' - ');
         const startTime = parts[0];
         const endTime = parts[1];
@@ -474,6 +507,12 @@ const Assignments = () => {
                                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.8rem' }}>
                                             {TIMES.map(time => {
                                                 const selected = isSlotSelected(activeDay, time);
+                                                const booking = getFacultyBooking(activeDay, time);
+
+                                                const borderColor = booking ? 'rgba(239,68,68,0.5)' : (selected ? 'var(--brand-primary)' : 'var(--border-color)');
+                                                const bg = booking ? 'rgba(239,68,68,0.08)' : (selected ? 'rgba(79, 70, 229, 0.12)' : 'var(--bg-primary)');
+                                                const textColor = booking ? '#dc2626' : (selected ? 'var(--brand-primary)' : 'var(--text-secondary)');
+
                                                 return (
                                                     <motion.button
                                                         key={time}
@@ -481,26 +520,43 @@ const Assignments = () => {
                                                         whileHover={{ y: -2 }}
                                                         onClick={() => toggleSlot(activeDay, time)}
                                                         style={{
-                                                            padding: '1rem',
+                                                            padding: '0.85rem 1rem',
                                                             borderRadius: '0.75rem',
                                                             border: '1.5px solid',
-                                                            borderColor: selected ? 'var(--brand-primary)' : 'var(--border-color)',
-                                                            background: selected ? 'rgba(79, 70, 229, 0.12)' : 'var(--bg-primary)',
-                                                            color: selected ? 'var(--brand-primary)' : 'var(--text-secondary)',
-                                                            fontWeight: selected ? '700' : '500',
+                                                            borderColor,
+                                                            background: bg,
+                                                            color: textColor,
+                                                            fontWeight: selected || booking ? '700' : '500',
                                                             fontSize: '0.85rem',
                                                             cursor: 'pointer',
                                                             display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'space-between',
-                                                            gap: '0.5rem'
+                                                            flexDirection: 'column',
+                                                            alignItems: 'flex-start',
+                                                            gap: '0.35rem',
+                                                            position: 'relative'
                                                         }}
                                                     >
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                            <Clock size={14} opacity={selected ? 1 : 0.5} />
-                                                            {time}
+                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                                <Clock size={14} opacity={selected || booking ? 1 : 0.5} />
+                                                                {time}
+                                                            </div>
+                                                            {booking ? (
+                                                                <span style={{ fontSize: '0.68rem', fontWeight: '800', background: 'rgba(239,68,68,0.2)', color: '#dc2626', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>
+                                                                    BOOKED
+                                                                </span>
+                                                            ) : selected ? (
+                                                                <Check size={16} color="var(--brand-primary)" />
+                                                            ) : (
+                                                                <Plus size={14} opacity={0.4} />
+                                                            )}
                                                         </div>
-                                                        {selected ? <Check size={16} color="var(--brand-primary)" /> : <Plus size={14} opacity={0.4} />}
+
+                                                        {booking && (
+                                                            <div style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: '600', textAlign: 'left' }}>
+                                                                ⚠️ {booking.subject_name || 'Subject'} ({booking.class_name || 'Class'})
+                                                            </div>
+                                                        )}
                                                     </motion.button>
                                                 );
                                             })}

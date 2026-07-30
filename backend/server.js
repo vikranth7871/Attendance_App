@@ -15,6 +15,7 @@ import teacherRoutes from './routes/teacherRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import quizRoutes from './routes/quizRoutes.js';
 import runWeeklyJob from './jobs/weeklyReportJob.js';
+import { initAttendanceScheduler } from './utils/attendanceScheduler.js';
 
 dotenv.config();
 
@@ -62,6 +63,7 @@ app.use('/api/quiz', quizRoutes);
 
 // Start Cron Jobs
 runWeeklyJob();
+initAttendanceScheduler();
 
 app.get('/api', (req, res) => {
     res.send('API is running...');

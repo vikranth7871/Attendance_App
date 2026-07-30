@@ -126,6 +126,46 @@ const SubjectsPage = () => {
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Subject Attendance Breakdown */}
+                            <div style={{
+                                padding: '0.85rem 1rem',
+                                background: 'var(--bg-primary)',
+                                borderRadius: '0.6rem',
+                                border: '1px solid var(--border-color)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '0.5rem'
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                        Subject Attendance
+                                    </span>
+                                    <span style={{
+                                        fontSize: '0.85rem', fontWeight: '800',
+                                        color: (subject.attendance?.percentage >= 75 || subject.attendance?.total === 0) ? '#16a34a' : '#ef4444'
+                                    }}>
+                                        {subject.attendance?.total > 0 ? `${subject.attendance.percentage}%` : 'No Classes Yet'}
+                                    </span>
+                                </div>
+
+                                {/* Progress Bar */}
+                                <div style={{ width: '100%', height: '6px', background: 'var(--border-color)', borderRadius: '999px', overflow: 'hidden' }}>
+                                    <div style={{
+                                        width: `${subject.attendance?.total > 0 ? subject.attendance.percentage : 0}%`,
+                                        height: '100%',
+                                        background: subject.attendance?.percentage >= 75 ? 'linear-gradient(90deg, #16a34a, #22c55e)' : 'linear-gradient(90deg, #ef4444, #f87171)',
+                                        borderRadius: '999px',
+                                        transition: 'width 0.6s ease'
+                                    }} />
+                                </div>
+
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                    <span>Present: <strong style={{ color: '#16a34a' }}>{subject.attendance?.present || 0}</strong></span>
+                                    <span>Absent: <strong style={{ color: '#ef4444' }}>{subject.attendance?.absent || 0}</strong></span>
+                                    <span>Total: <strong>{subject.attendance?.total || 0}</strong></span>
+                                </div>
+                            </div>
                         </motion.div>
                     ))}
                 </div>

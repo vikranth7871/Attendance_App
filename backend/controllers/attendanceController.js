@@ -7,15 +7,33 @@ import { pool } from '../config/db.js';
  */
 export const markManualAttendance = async (req, res) => {
     try {
-        const { studentId, subjectId, classId, status } = req.body;
+        const { studentId, subjectId, classId, status, timeSlot } = req.body;
         const teacherId = req.user.id || req.user._id;
 
         const today = new Date().toISOString().split('T')[0];
 
-        // 1. Check if attendance already marked today
+        // If timeSlot not passed, try to fetch current time slot from subject_allocations
+        let slot = timeSlot || null;
+        if (!slot && subjectId && classId) {
+            const alloc = await pool.query(
+                'SELECT time_slot, start_time, end_time FROM subject_allocations WHERE class_id = $1 AND subject_id = $2 LIMIT 1',
+                [classId, subjectId]
+            );
+            if (alloc.rows.length > 0) {
+                slot = alloc.rows[0].time_slot || (alloc.rows[0].start_time ? `${alloc.rows[0].start_time} - ${alloc.rows[0].end_time}` : null);
+            }
+        }
+
+        // 1. Check if attendance already marked for this specific time slot & date
         const existing = await pool.query(
-            'SELECT id FROM attendance WHERE student_id = $1 AND (subject_id = $2 OR $2 IS NULL) AND (class_id = $3 OR $3 IS NULL) AND date = $4 LIMIT 1',
-            [studentId, subjectId || null, classId || null, today]
+            `SELECT id FROM attendance 
+             WHERE student_id = $1 
+               AND (subject_id = $2 OR $2 IS NULL) 
+               AND (class_id = $3 OR $3 IS NULL) 
+               AND date = $4 
+               AND (time_slot = $5 OR ($5 IS NULL AND time_slot IS NULL))
+             LIMIT 1`,
+            [studentId, subjectId || null, classId || null, today, slot]
         );
 
         if (existing.rows.length > 0) {
@@ -29,9 +47,9 @@ export const markManualAttendance = async (req, res) => {
 
         // 2. Insert attendance record
         const insertRes = await pool.query(
-            `INSERT INTO attendance (student_id, subject_id, class_id, marked_by, method, status, date)
-             VALUES ($1, $2, $3, $4, 'manual', $5, $6) RETURNING *`,
-            [studentId, subjectId || null, classId || null, teacherId, status || 'present', today]
+            `INSERT INTO attendance (student_id, subject_id, class_id, marked_by, method, status, date, time_slot)
+             VALUES ($1, $2, $3, $4, 'manual', $5, $6, $7) RETURNING *`,
+            [studentId, subjectId || null, classId || null, teacherId, status || 'present', today, slot]
         );
 
         // 3. Update student streak count
@@ -103,6 +121,8 @@ export const getClassAttendance = async (req, res) => {
             },
             status: r.status,
             date: r.date,
+            timeSlot: r.time_slot,
+            time: r.time_slot || 'N/A',
             method: r.method
         }));
 
@@ -120,7 +140,7 @@ export const getClassAttendance = async (req, res) => {
  */
 export const bulkMarkManualAttendance = async (req, res) => {
     try {
-        const { attendanceData, subjectId, classId, date } = req.body;
+        const { attendanceData, subjectId, classId, date, timeSlot } = req.body;
         const teacherId = req.user.id || req.user._id;
 
         if (!attendanceData || !Array.isArray(attendanceData)) {
@@ -128,15 +148,34 @@ export const bulkMarkManualAttendance = async (req, res) => {
         }
 
         const targetDate = date || new Date().toISOString().split('T')[0];
+
+        // Fetch time slot if not passed
+        let slot = timeSlot || null;
+        if (!slot && subjectId && classId) {
+            const alloc = await pool.query(
+                'SELECT time_slot, start_time, end_time FROM subject_allocations WHERE class_id = $1 AND subject_id = $2 LIMIT 1',
+                [classId, subjectId]
+            );
+            if (alloc.rows.length > 0) {
+                slot = alloc.rows[0].time_slot || (alloc.rows[0].start_time ? `${alloc.rows[0].start_time} - ${alloc.rows[0].end_time}` : null);
+            }
+        }
+
         const results = [];
 
         for (const record of attendanceData) {
             const { studentId, status } = record;
 
-            // Check if existing attendance
+            // Check if existing attendance for this date & slot
             const existing = await pool.query(
-                'SELECT id FROM attendance WHERE student_id = $1 AND (subject_id = $2 OR $2 IS NULL) AND (class_id = $3 OR $3 IS NULL) AND date = $4 LIMIT 1',
-                [studentId, subjectId || null, classId || null, targetDate]
+                `SELECT id FROM attendance 
+                 WHERE student_id = $1 
+                   AND (subject_id = $2 OR $2 IS NULL) 
+                   AND (class_id = $3 OR $3 IS NULL) 
+                   AND date = $4
+                   AND (time_slot = $5 OR ($5 IS NULL AND time_slot IS NULL))
+                 LIMIT 1`,
+                [studentId, subjectId || null, classId || null, targetDate, slot]
             );
 
             if (existing.rows.length > 0) {
@@ -147,9 +186,9 @@ export const bulkMarkManualAttendance = async (req, res) => {
                 results.push(updated.rows[0]);
             } else {
                 const insertRes = await pool.query(
-                    `INSERT INTO attendance (student_id, subject_id, class_id, marked_by, method, status, date)
-                     VALUES ($1, $2, $3, $4, 'manual', $5, $6) RETURNING *`,
-                    [studentId, subjectId || null, classId || null, teacherId, status || 'present', targetDate]
+                    `INSERT INTO attendance (student_id, subject_id, class_id, marked_by, method, status, date, time_slot)
+                     VALUES ($1, $2, $3, $4, 'manual', $5, $6, $7) RETURNING *`,
+                    [studentId, subjectId || null, classId || null, teacherId, status || 'present', targetDate, slot]
                 );
                 results.push(insertRes.rows[0]);
             }
