@@ -81,16 +81,8 @@ const StudentProfileModal = ({ studentId, onClose }) => {
                                 <div style={{ fontSize: '2rem', fontWeight: '800', color: 'var(--success)' }}>{data.stats.attendancePercentage}%</div>
                             </div>
                             <div className="glass-panel" style={{ padding: '1.5rem', textAlign: 'center', border: '1px solid rgba(59,130,246,0.2)' }}>
-                                <div style={{ fontSize: '0.75rem', fontWeight: '800', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '0.5rem', letterSpacing: '0.05em' }}>Current Streak</div>
-                                <div style={{ fontSize: '2rem', fontWeight: '800', color: 'var(--brand-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                                    <Activity size={24} /> {data.student.streakCount}
-                                </div>
-                            </div>
-                            <div className="glass-panel" style={{ padding: '1.5rem', textAlign: 'center', border: '1px solid rgba(245,158,11,0.2)' }}>
-                                <div style={{ fontSize: '0.75rem', fontWeight: '800', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '0.5rem', letterSpacing: '0.05em' }}>Best Streak</div>
-                                <div style={{ fontSize: '2rem', fontWeight: '800', color: 'var(--warning)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                                    <Award size={24} /> {data.student.bestStreak}
-                                </div>
+                                <div style={{ fontSize: '0.75rem', fontWeight: '800', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '0.5rem', letterSpacing: '0.05em' }}>Total Conducted Sessions</div>
+                                <div style={{ fontSize: '2rem', fontWeight: '800', color: 'var(--brand-secondary)' }}>{data.stats.totalClasses || 0}</div>
                             </div>
                         </div>
 

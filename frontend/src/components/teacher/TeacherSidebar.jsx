@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { LogOut, Calendar, PenTool, Users, ShieldCheck, X, BookOpen, FileText } from 'lucide-react';
+import { LogOut, Calendar, PenTool, Users, ShieldCheck, X, BookOpen, FileText, Award, MessageSquare } from 'lucide-react';
 import ThemeToggle from '../shared/ThemeToggle';
 
 const TeacherSidebar = ({ isOpen, setIsOpen }) => {
@@ -11,6 +11,9 @@ const TeacherSidebar = ({ isOpen, setIsOpen }) => {
     const baseLinks = [
         { name: 'Weekly Timetable', path: '/teacher', icon: <Calendar size={20} /> },
         { name: 'Class Roster', path: '/teacher/roster', icon: <Users size={20} /> },
+        { name: 'Manage Assignments', path: '/teacher/assignments', icon: <BookOpen size={20} /> },
+        { name: 'Exams & Marks Entry', path: '/teacher/exams', icon: <Award size={20} /> },
+        { name: 'Parent Messages', path: '/teacher/messages', icon: <MessageSquare size={20} /> },
         { name: 'Manage Quizzes', path: '/teacher/quizzes', icon: <BookOpen size={20} /> },
         { name: 'Apply Leave', path: '/teacher/apply-leave', icon: <FileText size={20} /> },
         ...(user?.permissions?.includes('manualAttendance') || user?.permissions?.includes('markAttendance') ? [

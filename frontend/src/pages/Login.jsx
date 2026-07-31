@@ -2,61 +2,10 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertCircle, Eye, EyeOff, Mail, Lock, Flame, Smile, Frown } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff, Mail, Lock } from 'lucide-react';
 import './Login.css';
 import illustration from '../assets/login-illustration.png';
 import shieldIcon from '../assets/shield-check.png';
-
-const StreakPopup = ({ streak, bestStreak, onClose }) => {
-    let icon = <Frown size={64} color="#64748b" />;
-    let message = 'Keep trying! Your streak is low.';
-    if (streak >= 5) { icon = <Flame size={64} color="#f59e0b" />; message = 'You are on fire! Amazing streak!'; }
-    else if (streak >= 2) { icon = <Smile size={64} color="#10b981" />; message = 'Good job! Keep it up!'; }
-
-    return (
-        <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="streak-popup-overlay"
-            style={{
-                position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                zIndex: 100, display: 'flex', alignItems: 'center',
-                justifyContent: 'center', padding: '1rem',
-                backgroundColor: 'rgba(0, 0, 0, 0.6)',
-                backdropFilter: 'blur(8px)',
-                WebkitBackdropFilter: 'blur(8px)'
-            }}
-        >
-            <motion.div
-                initial={{ scale: 0.9, y: 20, opacity: 0 }}
-                animate={{ scale: 1, y: 0, opacity: 1 }}
-                exit={{ scale: 0.9, y: 20, opacity: 0 }}
-                className="glass-panel"
-                style={{ padding: '2.5rem', textAlign: 'center', maxWidth: '420px', width: '100%', border: '1px solid rgba(255, 255, 255, 0.2)' }}
-            >
-                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>{icon}</div>
-                <h2 style={{ fontSize: '1.75rem', fontWeight: 'bold', marginBottom: '0.75rem', color: 'var(--text-primary)' }}>Welcome Back!</h2>
-                <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem', fontSize: '1.1rem' }}>{message}</p>
-
-                <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '2rem', padding: '1.25rem', background: 'var(--bg-primary)', borderRadius: '16px' }}>
-                    <div>
-                        <div style={{ fontSize: '0.9rem', color: 'var(--text-light)', fontWeight: '500' }}>Current Streak</div>
-                        <div style={{ fontSize: '1.75rem', fontWeight: 'bold', color: 'var(--brand-primary)' }}>{streak}</div>
-                    </div>
-                    <div>
-                        <div style={{ fontSize: '0.9rem', color: 'var(--text-light)', fontWeight: '500' }}>Best Streak</div>
-                        <div style={{ fontSize: '1.75rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{bestStreak}</div>
-                    </div>
-                </div>
-
-                <button onClick={onClose} className="btn btn-primary" style={{ width: '100%' }}>
-                    Enter Dashboard
-                </button>
-            </motion.div>
-        </motion.div>
-    );
-};
 
 const Login = () => {
     const [email, setEmail] = useState('');
@@ -64,16 +13,15 @@ const Login = () => {
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const [showStreakPopup, setShowStreakPopup] = useState(false);
 
     const { login, user } = useAuth();
     const navigate = useNavigate();
 
     useEffect(() => {
-        if (user && !showStreakPopup) {
+        if (user) {
             redirectUser(user.role);
         }
-    }, [user, navigate, showStreakPopup]);
+    }, [user, navigate]);
 
     const redirectUser = (role) => {
         switch (role) {
@@ -95,13 +43,7 @@ const Login = () => {
             setIsLoading(false);
 
             if (res.success) {
-                // BUG-05/BUG-20 Fix: res.user was always undefined; user state is set by AuthContext
-                // Streak popup only makes sense for students
-                if (res.role === 'student') {
-                    setShowStreakPopup(true);
-                } else {
-                    redirectUser(res.role);
-                }
+                redirectUser(res.role);
             } else {
                 setError(res.message);
             }
@@ -113,19 +55,6 @@ const Login = () => {
 
     return (
         <div className="login-page">
-            <AnimatePresence>
-                {showStreakPopup && user && (
-                    <StreakPopup
-                        streak={user.streakCount || 0}
-                        bestStreak={user.bestStreak || 0}
-                        onClose={() => {
-                            setShowStreakPopup(false);
-                            redirectUser('student');
-                        }}
-                    />
-                )}
-            </AnimatePresence>
-
             <div className="login-container">
                 {/* Left Side: Illustration */}
                 <div className="login-illustration-section">

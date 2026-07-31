@@ -3,10 +3,11 @@ import StudentSidebar from '../../components/student/StudentSidebar';
 import { useAuth } from '../../context/AuthContext';
 
 import HistoryPage from './HistoryPage';
-import StreaksPage from './StreaksPage';
 import LeavePage from './LeavePage';
 import SubjectsPage from './SubjectsPage';
 import StudentTimetable from './StudentTimetable';
+import StudentAssignments from './StudentAssignments';
+import StudentResults from './StudentResults';
 import QuizHub from '../quiz/QuizHub';
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -385,17 +386,8 @@ const ProfileDropdown = ({ user }) => {
                                         : user?.section ? `Section ${user.section}` : null
                                 }
                             />
-                            <InfoRow icon={Hash} label="Roll Number" value={user?.rollNumber} />
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', paddingTop: '0.5rem' }}>
-                                <BookOpen size={14} style={{ color: 'var(--brand-primary)', flexShrink: 0 }} />
-                                <div>
-                                    <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Streak</div>
-                                    <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', fontWeight: '500', marginTop: '1px', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                                        <Flame size={14} color="#f59e0b" /> {user?.streakCount || 0} day{user?.streakCount !== 1 ? 's' : ''} current &nbsp;·&nbsp; <Trophy size={14} color="#10b981" /> {user?.bestStreak || 0} best
-                                    </div>
-                                </div>
+                                <InfoRow icon={Hash} label="Roll Number" value={user?.rollNumber} />
                             </div>
-                        </div>
                     </motion.div>
                 )}
             </AnimatePresence>
@@ -500,12 +492,12 @@ const StudentOverview = () => {
                                     </div>
                                 </div>
 
-                                {/* Bottom Cards: Present & Absent side-by-side with Icons */}
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', flex: '1 1 0%' }}>
+                                {/* Bottom Cards: Present, Absent, and Leave side-by-side with Icons */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: '0.75rem', flex: '1 1 0%' }}>
                                     {/* Present Card */}
                                     <div style={{
                                         background: 'rgba(22,163,74,0.06)',
-                                        padding: '1.25rem 0.75rem',
+                                        padding: '1.25rem 0.5rem',
                                         borderRadius: '0.75rem',
                                         border: '1px solid rgba(22,163,74,0.25)',
                                         display: 'flex',
@@ -516,8 +508,8 @@ const StudentOverview = () => {
                                         gap: '0.35rem'
                                     }}>
                                         <div style={{
-                                            width: '38px',
-                                            height: '38px',
+                                            width: '34px',
+                                            height: '34px',
                                             borderRadius: '50%',
                                             background: 'rgba(22,163,74,0.16)',
                                             display: 'flex',
@@ -526,12 +518,12 @@ const StudentOverview = () => {
                                             flexShrink: 0,
                                             margin: '0 auto 0.2rem auto'
                                         }}>
-                                            <CheckCircle2 size={19} style={{ color: '#16a34a', display: 'block', margin: 'auto' }} />
+                                            <CheckCircle2 size={17} style={{ color: '#16a34a', display: 'block', margin: 'auto' }} />
                                         </div>
-                                        <div style={{ fontSize: '2.4rem', fontWeight: '900', color: '#16a34a', lineHeight: 1 }}>
+                                        <div style={{ fontSize: '2.2rem', fontWeight: '900', color: '#16a34a', lineHeight: 1 }}>
                                             {stats?.totalPresent ?? 0}
                                         </div>
-                                        <div style={{ fontSize: '0.82rem', fontWeight: '800', color: '#16a34a', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                                        <div style={{ fontSize: '0.75rem', fontWeight: '800', color: '#16a34a', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                                             Present
                                         </div>
                                     </div>
@@ -539,7 +531,7 @@ const StudentOverview = () => {
                                     {/* Absent Card */}
                                     <div style={{
                                         background: 'rgba(220,38,38,0.06)',
-                                        padding: '1.25rem 0.75rem',
+                                        padding: '1.25rem 0.5rem',
                                         borderRadius: '0.75rem',
                                         border: '1px solid rgba(220,38,38,0.25)',
                                         display: 'flex',
@@ -550,8 +542,8 @@ const StudentOverview = () => {
                                         gap: '0.35rem'
                                     }}>
                                         <div style={{
-                                            width: '38px',
-                                            height: '38px',
+                                            width: '34px',
+                                            height: '34px',
                                             borderRadius: '50%',
                                             background: 'rgba(220,38,38,0.16)',
                                             display: 'flex',
@@ -560,13 +552,47 @@ const StudentOverview = () => {
                                             flexShrink: 0,
                                             margin: '0 auto 0.2rem auto'
                                         }}>
-                                            <AlertTriangle size={19} style={{ color: '#dc2626', display: 'block', margin: 'auto' }} />
+                                            <AlertTriangle size={17} style={{ color: '#dc2626', display: 'block', margin: 'auto' }} />
                                         </div>
-                                        <div style={{ fontSize: '2.4rem', fontWeight: '900', color: '#dc2626', lineHeight: 1 }}>
+                                        <div style={{ fontSize: '2.2rem', fontWeight: '900', color: '#dc2626', lineHeight: 1 }}>
                                             {stats?.totalAbsent ?? 0}
                                         </div>
-                                        <div style={{ fontSize: '0.82rem', fontWeight: '800', color: '#dc2626', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                                        <div style={{ fontSize: '0.75rem', fontWeight: '800', color: '#dc2626', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                                             Absent
+                                        </div>
+                                    </div>
+
+                                    {/* Leave Card */}
+                                    <div style={{
+                                        background: 'rgba(245,158,11,0.06)',
+                                        padding: '1.25rem 0.5rem',
+                                        borderRadius: '0.75rem',
+                                        border: '1px solid rgba(245,158,11,0.25)',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        alignItems: 'center',
+                                        justify: 'center',
+                                        textAlign: 'center',
+                                        gap: '0.35rem'
+                                    }}>
+                                        <div style={{
+                                            width: '34px',
+                                            height: '34px',
+                                            borderRadius: '50%',
+                                            background: 'rgba(245,158,11,0.16)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justify: 'center',
+                                            flexShrink: 0,
+                                            margin: '0 auto 0.2rem auto'
+                                        }}>
+                                            <Clock size={17} style={{ color: '#f59e0b', display: 'block', margin: 'auto' }} />
+                                        </div>
+                                        <div style={{ fontSize: '2.2rem', fontWeight: '900', color: '#f59e0b', lineHeight: 1 }}>
+                                            {stats?.totalLeave ?? 0}
+                                        </div>
+                                        <div style={{ fontSize: '0.75rem', fontWeight: '800', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                                            Leave
                                         </div>
                                     </div>
                                 </div>
@@ -789,10 +815,6 @@ const StudentDashboard = () => {
                                         <Check size={14} className="text-success" />
                                         <span style={{ fontWeight: '700' }}>Active Enrollment</span>
                                     </div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: user?.streakCount > 0 ? 'var(--text-primary)' : 'var(--text-light)' }}>
-                                        {user?.streakCount > 0 ? <Check size={14} className="text-success" /> : <X size={14} className="text-danger" />}
-                                        <span style={{ fontWeight: user?.streakCount > 0 ? '700' : '400' }}>Attendance Streak: {user?.streakCount || 0}d</span>
-                                    </div>
                                 </div>
                                 <style>{`.group:hover .permissions-tooltip { visibility: visible !important; opacity: 1 !important; transform: translateY(5px); }`}</style>
                             </div>
@@ -808,9 +830,10 @@ const StudentDashboard = () => {
                     <Routes>
                         <Route path="/" element={<StudentOverview />} />
                         <Route path="/history" element={user?.permissions?.includes('viewAttendance') ? <HistoryPage /> : <StudentOverview />} />
-                        <Route path="/streaks" element={<StreaksPage />} />
                         <Route path="/leaves" element={<LeavePage />} />
                         <Route path="/subjects" element={<SubjectsPage />} />
+                        <Route path="/assignments" element={<StudentAssignments />} />
+                        <Route path="/results" element={<StudentResults />} />
                         <Route path="/timetable" element={<StudentTimetable />} />
                         <Route path="/quiz/*" element={<QuizHub />} />
                     </Routes>

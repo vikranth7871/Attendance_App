@@ -20,6 +20,9 @@ import TimetableGrid from '../../components/shared/TimetableGrid';
 import ClassRoster from './ClassRoster';
 import TeacherQuizManage from './TeacherQuizManage';
 import TeacherApplyLeave from './TeacherApplyLeave';
+import TeacherAssignments from './TeacherAssignments';
+import TeacherExams from './TeacherExams';
+import TeacherMessages from './TeacherMessages';
 
 /* ──────────────────────────────────────────
    Teacher Profile Dropdown
@@ -1277,6 +1280,9 @@ const TeacherDashboard = () => {
                         <Route path="/leaves" element={<LeaveApprovals />} />
                         <Route path="/apply-leave" element={<TeacherApplyLeave />} />
                         <Route path="/roster" element={<ClassRoster />} />
+                        <Route path="/assignments" element={<TeacherAssignments />} />
+                        <Route path="/exams" element={<TeacherExams />} />
+                        <Route path="/messages" element={<TeacherMessages />} />
                         <Route path="/quizzes" element={<TeacherQuizManage />} />
                     </Routes>
                 </div>

@@ -73,6 +73,7 @@ export const getStudentOverview = async (req, res) => {
 
         const totalPresent = records.filter(r => r.status === 'present').length;
         const totalAbsent = records.filter(r => r.status === 'absent').length;
+        const totalLeave = records.filter(r => r.status === 'leave').length;
         const totalClasses = records.length;
 
         const history = records.map(r => ({
@@ -92,6 +93,7 @@ export const getStudentOverview = async (req, res) => {
             bestStreak,
             totalPresent,
             totalAbsent,
+            totalLeave,
             totalClasses,
             history
         });
@@ -206,6 +208,92 @@ export const getMySubjects = async (req, res) => {
         res.json(subjects);
     } catch (error) {
         console.error('CRITICAL ERROR in getMySubjects:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+export const getMyAssignments = async (req, res) => {
+    try {
+        const userId = req.user.id || req.user._id;
+
+        const userRes = await pool.query('SELECT class_id FROM users WHERE id = $1', [userId]);
+        const classId = userRes.rows[0]?.class_id || 1;
+
+        const assignRes = await pool.query(`
+            SELECT a.id, a.title, a.description, a.due_date, a.attachment_url,
+                   COALESCE(sub.name, 'General Subject') as subject_name, sub.code as subject_code,
+                   t.name as teacher_name,
+                   COALESCE(s.status, 'pending') as status,
+                   s.submission_date, s.teacher_comments, s.grade
+            FROM assignments a
+            LEFT JOIN subjects sub ON a.subject_id = sub.id
+            LEFT JOIN users t ON a.teacher_id = t.id
+            LEFT JOIN assignment_submissions s ON a.id = s.assignment_id AND s.student_id = $1
+            WHERE a.class_id = $2
+            ORDER BY a.due_date ASC
+        `, [userId, classId]);
+
+        res.json(assignRes.rows);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+export const submitAssignment = async (req, res) => {
+    try {
+        const userId = req.user.id || req.user._id;
+        const assignmentId = req.params.id;
+
+        await pool.query(`
+            INSERT INTO assignment_submissions (assignment_id, student_id, status, submission_date)
+            VALUES ($1, $2, 'completed', CURRENT_TIMESTAMP)
+            ON CONFLICT (id) DO UPDATE SET status = 'completed', submission_date = CURRENT_TIMESTAMP
+        `, [assignmentId, userId]);
+
+        res.json({ message: 'Assignment submitted successfully!', status: 'completed' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+export const getStudentResults = async (req, res) => {
+    try {
+        const studentId = req.user.id || req.user._id;
+
+        const studentRes = await pool.query(`
+            SELECT u.id, u.name, u.email, u.roll_number, c.name as class_name
+            FROM users u
+            LEFT JOIN classes c ON u.class_id = c.id
+            WHERE u.id = $1
+        `, [studentId]);
+
+        const student = studentRes.rows[0];
+
+        const resultsRes = await pool.query(`
+            SELECT er.id, er.marks_obtained, er.grade, er.remarks,
+                   es.exam_name, es.max_marks, es.exam_date,
+                   COALESCE(s.name, 'General Subject') as subject_name, s.code as subject_code
+            FROM exam_results er
+            LEFT JOIN exam_schedules es ON er.exam_schedule_id = es.id
+            LEFT JOIN subjects s ON er.subject_id = s.id
+            WHERE er.student_id = $1
+            ORDER BY er.id DESC
+        `, [studentId]);
+
+        const schedulesRes = await pool.query(`
+            SELECT es.id, es.exam_name, es.exam_date, es.time_slot, es.room_number, es.max_marks,
+                   COALESCE(s.name, 'General Subject') as subject_name, s.code as subject_code
+            FROM exam_schedules es
+            LEFT JOIN subjects s ON es.subject_id = s.id
+            ORDER BY es.exam_date ASC
+        `);
+
+        res.json({
+            student,
+            results: resultsRes.rows,
+            schedules: schedulesRes.rows
+        });
+    } catch (error) {
         res.status(500).json({ message: error.message });
     }
 };

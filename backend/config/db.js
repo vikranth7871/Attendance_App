@@ -10,7 +10,13 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 dotenv.config();
 
-const getConnectionString = () => process.env.DATABASE_URL || process.env.NEON_DATABASE_URL;
+const getConnectionString = () => {
+    let conn = process.env.DATABASE_URL || process.env.NEON_DATABASE_URL;
+    if (conn && conn.includes('-pooler.')) {
+        conn = conn.replace('-pooler.', '.');
+    }
+    return conn;
+};
 
 const connectionString = getConnectionString();
 
@@ -253,6 +259,82 @@ export const initSchema = async () => {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+
+        ALTER TABLE notifications ADD COLUMN IF NOT EXISTS link TEXT;
+
+        CREATE TABLE IF NOT EXISTS assignments (
+            id SERIAL PRIMARY KEY,
+            class_id INTEGER,
+            subject_id INTEGER,
+            teacher_id INTEGER,
+            title VARCHAR(255) NOT NULL,
+            description TEXT,
+            due_date DATE,
+            attachment_url TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS assignment_submissions (
+            id SERIAL PRIMARY KEY,
+            assignment_id INTEGER,
+            student_id INTEGER,
+            status VARCHAR(50) DEFAULT 'pending',
+            submission_date TIMESTAMP,
+            teacher_comments TEXT,
+            grade VARCHAR(10)
+        );
+
+        CREATE TABLE IF NOT EXISTS fee_details (
+            id SERIAL PRIMARY KEY,
+            student_id INTEGER UNIQUE,
+            total_amount NUMERIC(10,2) DEFAULT 45000.00,
+            paid_amount NUMERIC(10,2) DEFAULT 30000.00,
+            pending_amount NUMERIC(10,2) DEFAULT 15000.00,
+            due_date DATE DEFAULT CURRENT_DATE + INTERVAL '30 days',
+            status VARCHAR(50) DEFAULT 'partial'
+        );
+
+        CREATE TABLE IF NOT EXISTS fee_payments (
+            id SERIAL PRIMARY KEY,
+            student_id INTEGER,
+            receipt_no VARCHAR(100),
+            amount_paid NUMERIC(10,2),
+            payment_method VARCHAR(50),
+            payment_date DATE DEFAULT CURRENT_DATE,
+            transaction_ref VARCHAR(100)
+        );
+
+        CREATE TABLE IF NOT EXISTS exam_schedules (
+            id SERIAL PRIMARY KEY,
+            class_id INTEGER,
+            exam_name VARCHAR(100),
+            subject_id INTEGER,
+            exam_date DATE,
+            time_slot VARCHAR(100),
+            room_number VARCHAR(50),
+            max_marks INTEGER DEFAULT 100
+        );
+
+        CREATE TABLE IF NOT EXISTS exam_results (
+            id SERIAL PRIMARY KEY,
+            exam_schedule_id INTEGER,
+            student_id INTEGER,
+            subject_id INTEGER,
+            marks_obtained NUMERIC(5,2),
+            grade VARCHAR(10),
+            remarks TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS parent_messages (
+            id SERIAL PRIMARY KEY,
+            sender_id INTEGER NOT NULL,
+            receiver_id INTEGER NOT NULL,
+            student_id INTEGER,
+            subject VARCHAR(255),
+            message TEXT NOT NULL,
+            is_read BOOLEAN DEFAULT false,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
     `;
     try {
         await pool.query(createTablesSQL);
@@ -263,6 +345,65 @@ export const initSchema = async () => {
             await pool.query('INSERT INTO class_coordinators (teacher_id, class_id) VALUES (2, 1)');
         }
         await pool.query('UPDATE users SET class_coordinator_for = 1, department_id = 1 WHERE id = 2');
+
+        // Seed Fee Details for Student 5 (Jane Doe) and Student 3 (John Student) if not exists
+        const checkFees = await pool.query('SELECT * FROM fee_details WHERE student_id IN (3, 5)');
+        if (checkFees.rows.length === 0) {
+            await pool.query(`
+                INSERT INTO fee_details (student_id, total_amount, paid_amount, pending_amount, due_date, status)
+                VALUES 
+                    (5, 45000.00, 30000.00, 15000.00, CURRENT_DATE + INTERVAL '14 days', 'partial'),
+                    (3, 45000.00, 45000.00, 0.00, CURRENT_DATE - INTERVAL '10 days', 'paid')
+                ON CONFLICT (student_id) DO NOTHING;
+            `);
+
+            await pool.query(`
+                INSERT INTO fee_payments (student_id, receipt_no, amount_paid, payment_method, payment_date, transaction_ref)
+                VALUES 
+                    (5, 'REC-2026-001', 30000.00, 'UPI', CURRENT_DATE - INTERVAL '30 days', 'TXN99881122'),
+                    (3, 'REC-2026-002', 45000.00, 'NetBanking', CURRENT_DATE - INTERVAL '45 days', 'TXN88776655');
+            `);
+        }
+
+        // Seed Sample Assignments if empty
+        const checkAssignments = await pool.query('SELECT * FROM assignments LIMIT 1');
+        if (checkAssignments.rows.length === 0) {
+            await pool.query(`
+                INSERT INTO assignments (class_id, subject_id, teacher_id, title, description, due_date, attachment_url)
+                VALUES 
+                    (1, 1, 2, 'Data Structures Trees & Graphs Project', 'Implement Binary Search Tree and Dijkstra Algorithm in Python.', CURRENT_DATE + INTERVAL '5 days', '/uploads/assignment_ds.pdf'),
+                    (1, 2, 2, 'Database Normalization & SQL Triggers Worksheet', 'Solve 3NF normalization problem set and write PostgreSQL triggers.', CURRENT_DATE + INTERVAL '9 days', '/uploads/db_worksheet.pdf');
+            `);
+            
+            await pool.query(`
+                INSERT INTO assignment_submissions (assignment_id, student_id, status, submission_date, teacher_comments, grade)
+                VALUES 
+                    (1, 5, 'completed', CURRENT_DATE - INTERVAL '1 day', 'Excellent tree traversal implementation!', 'A+'),
+                    (2, 5, 'pending', NULL, NULL, NULL),
+                    (1, 3, 'completed', CURRENT_DATE - INTERVAL '2 days', 'Well structured SQL functions.', 'A');
+            `);
+        }
+
+        // Seed Sample Exam Schedules and Exam Results if empty
+        const checkExams = await pool.query('SELECT * FROM exam_schedules LIMIT 1');
+        if (checkExams.rows.length === 0) {
+            await pool.query(`
+                INSERT INTO exam_schedules (class_id, exam_name, subject_id, exam_date, time_slot, room_number, max_marks)
+                VALUES 
+                    (1, 'Mid-Term Examination 2026', 1, CURRENT_DATE - INTERVAL '15 days', '10:00 AM - 12:00 PM', 'Lab 301', 100),
+                    (1, 'Mid-Term Examination 2026', 2, CURRENT_DATE - INTERVAL '13 days', '02:00 PM - 04:00 PM', 'Lab 302', 100),
+                    (1, 'Final Semester Examination 2026', 1, CURRENT_DATE + INTERVAL '20 days', '10:00 AM - 01:00 PM', 'Auditorium A', 100);
+            `);
+
+            await pool.query(`
+                INSERT INTO exam_results (exam_schedule_id, student_id, subject_id, marks_obtained, grade, remarks)
+                VALUES 
+                    (1, 5, 1, 92.50, 'A+', 'Outstanding performance in algorithms'),
+                    (2, 5, 2, 88.00, 'A', 'Strong SQL optimization skills'),
+                    (1, 3, 1, 85.00, 'A', 'Good conceptual clarity'),
+                    (2, 3, 2, 90.00, 'A+', 'Perfect database design');
+            `);
+        }
 
         console.log('Neon DB tables schema initialized successfully');
     } catch (err) {

@@ -79,10 +79,6 @@ const runWeeklyJob = () => {
                     <div class="stat-label">Attendance Rate</div>
                     <div class="stat-value">${percentage}%</div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-label">Current Streak</div>
-                    <div class="stat-value">${student.streakCount} Days</div>
-                </div>
             </div>
 
             <div style="text-align: center;">

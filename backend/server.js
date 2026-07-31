@@ -27,7 +27,7 @@ const app = express();
 // Middleware
 const allowedOrigins = process.env.NODE_ENV === 'production' 
     ? (process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',').map(o => o.trim()) : [])
-    : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:8081', 'http://localhost:19006'];
+    : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002', 'http://localhost:5173', 'http://localhost:8081', 'http://localhost:19006'];
 
 const corsOptions = {
     origin: function (origin, callback) {

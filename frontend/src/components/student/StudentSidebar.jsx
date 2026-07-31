@@ -10,6 +10,8 @@ const StudentSidebar = ({ isOpen, setIsOpen }) => {
         { name: 'Dashboard', path: '/student', icon: <LayoutDashboard size={20} /> },
         { name: 'My Timetable', path: '/student/timetable', icon: <Calendar size={20} /> },
         { name: 'My Subjects', path: '/student/subjects', icon: <BookOpen size={20} /> },
+        { name: 'Homework & Assignments', path: '/student/assignments', icon: <BookOpen size={20} /> },
+        { name: 'Exam Results', path: '/student/results', icon: <Brain size={20} /> },
         ...(user?.permissions?.includes('viewAttendance') ? [
             { name: 'Attendance History', path: '/student/history', icon: <ClipboardList size={20} /> }
         ] : []),
