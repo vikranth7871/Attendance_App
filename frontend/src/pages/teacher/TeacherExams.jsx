@@ -131,12 +131,47 @@ const TeacherExams = () => {
 
     const { schedules, students, results } = data;
 
+    const isExamExpired = (examDateStr, timeSlotStr) => {
+        if (!examDateStr) return false;
+        const examDate = new Date(examDateStr);
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const examDay = new Date(examDate.getFullYear(), examDate.getMonth(), examDate.getDate());
+
+        if (examDay < today) return true;
+
+        if (examDay.getTime() === today.getTime() && timeSlotStr) {
+            try {
+                const parts = timeSlotStr.split('-');
+                if (parts.length > 1) {
+                    const endTimeStr = parts[1].trim();
+                    const match = endTimeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
+                    if (match) {
+                        let hours = parseInt(match[1], 10);
+                        const minutes = parseInt(match[2], 10);
+                        const ampm = match[3].toUpperCase();
+                        if (ampm === 'PM' && hours < 12) hours += 12;
+                        if (ampm === 'AM' && hours === 12) hours = 0;
+
+                        const examEndTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0);
+                        if (now > examEndTime) return true;
+                    }
+                }
+            } catch (e) {
+                console.error('Error parsing time slot:', e);
+            }
+        }
+        return false;
+    };
+
+    const activeSchedules = schedules.filter(sc => !isExamExpired(sc.examDate, sc.timeSlot));
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
                 <div>
                     <h1 style={{ fontSize: '1.75rem', fontWeight: 'bold', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                        <Award size={28} className="text-brand-secondary" /> Examination & Marks Management
+                        <Award size={28} className="text-brand-primary" /> Examination & Marks Management
                     </h1>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '0.25rem' }}>
                         Schedule examinations and input student grades. Results auto-sync to Student and Parent portals.
@@ -166,10 +201,10 @@ const TeacherExams = () => {
             <div>
                 <h3 style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--text-primary)', marginBottom: '1rem' }}>Scheduled Examinations</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
-                    {schedules.length === 0 ? (
-                        <div className="glass-panel" style={{ padding: '2rem', textAlign: 'center', gridColumn: '1/-1', color: 'var(--text-secondary)' }}>No exams scheduled. Click "Schedule Exam" to add one.</div>
+                    {activeSchedules.length === 0 ? (
+                        <div className="glass-panel" style={{ padding: '2rem', textAlign: 'center', gridColumn: '1/-1', color: 'var(--text-secondary)' }}>No active upcoming exams scheduled. Click "Schedule Exam" to add one.</div>
                     ) : (
-                        schedules.map(sc => (
+                        activeSchedules.map(sc => (
                             <div key={sc.id} className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                                 <div style={{ fontSize: '0.75rem', fontWeight: '800', color: 'var(--brand-secondary)', textTransform: 'uppercase' }}>
                                     {sc.subjectName || 'Python'} • {sc.className || 'CS101-A'}

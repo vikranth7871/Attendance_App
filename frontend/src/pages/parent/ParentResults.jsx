@@ -59,6 +59,41 @@ const ParentResults = ({ selectedChildId }) => {
     const upcomingExams = resultsData?.upcomingExams || [];
     const student = resultsData?.student || {};
 
+    const isExamExpired = (examDateStr, timeSlotStr) => {
+        if (!examDateStr) return false;
+        const examDate = new Date(examDateStr);
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const examDay = new Date(examDate.getFullYear(), examDate.getMonth(), examDate.getDate());
+
+        if (examDay < today) return true;
+
+        if (examDay.getTime() === today.getTime() && timeSlotStr) {
+            try {
+                const parts = timeSlotStr.split('-');
+                if (parts.length > 1) {
+                    const endTimeStr = parts[1].trim();
+                    const match = endTimeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
+                    if (match) {
+                        let hours = parseInt(match[1], 10);
+                        const minutes = parseInt(match[2], 10);
+                        const ampm = match[3].toUpperCase();
+                        if (ampm === 'PM' && hours < 12) hours += 12;
+                        if (ampm === 'AM' && hours === 12) hours = 0;
+
+                        const examEndTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0);
+                        if (now > examEndTime) return true;
+                    }
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+        return false;
+    };
+
+    const activeUpcomingExams = upcomingExams.filter(exam => !isExamExpired(exam.exam_date, exam.time_slot));
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
@@ -117,19 +152,23 @@ const ParentResults = ({ selectedChildId }) => {
                 </h3>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    {upcomingExams.map((exam, idx) => (
-                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)', padding: '1.25rem', borderRadius: '0.85rem', flexWrap: 'wrap', gap: '0.75rem' }}>
-                            <div>
-                                <div style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--text-primary)' }}>{exam.exam_name} — {exam.subject_name}</div>
-                                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-                                    📅 {new Date(exam.exam_date).toLocaleDateString()} &nbsp;•&nbsp; 🕒 {exam.time_slot} &nbsp;•&nbsp; 📍 Room {exam.room_number}
+                    {activeUpcomingExams.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-secondary)' }}>No active upcoming exams scheduled.</div>
+                    ) : (
+                        activeUpcomingExams.map((exam, idx) => (
+                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)', padding: '1.25rem', borderRadius: '0.85rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                                <div>
+                                    <div style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--text-primary)' }}>{exam.exam_name} — {exam.subject_name}</div>
+                                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                                        📅 {new Date(exam.exam_date).toLocaleDateString()} &nbsp;•&nbsp; 🕒 {exam.time_slot} &nbsp;•&nbsp; 📍 Room {exam.room_number}
+                                    </div>
                                 </div>
+                                <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--brand-primary)', background: 'rgba(99,102,241,0.1)', padding: '0.35rem 0.85rem', borderRadius: '999px' }}>
+                                    Max Marks: {exam.max_marks}
+                                </span>
                             </div>
-                            <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--brand-primary)', background: 'rgba(99,102,241,0.1)', padding: '0.35rem 0.85rem', borderRadius: '999px' }}>
-                                Max Marks: {exam.max_marks}
-                            </span>
-                        </div>
-                    ))}
+                        ))
+                    )}
                 </div>
             </div>
         </div>

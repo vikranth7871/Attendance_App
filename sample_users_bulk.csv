@@ -1,0 +1,6 @@
+name,email,password,role,department,className,section,rollNumber,parentEmail
+Alex Turner,alex.turner@example.com,Student123!,student,Computer Science,CS101-A,A,CS2026001,sarah.turner@example.com
+Sarah Turner,sarah.turner@example.com,Parent123!,parent,,,,,
+Dr. Marcus Vance,marcus.vance@example.com,Teacher123!,teacher,Computer Science,,,,
+Elena Rostova,elena.rostova@example.com,Student123!,student,Electrical Engineering,ECE201-B,B,ECE2026002,dmitri.rostov@example.com
+Dmitri Rostov,dmitri.rostov@example.com,Parent123!,parent,,,,,
