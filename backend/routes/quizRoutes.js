@@ -12,7 +12,8 @@ import {
     getMyAttempts,
     getMyCertificates,
     deleteQuiz,
-    getQuizCertificates
+    getQuizCertificates,
+    updateQuiz
 } from '../controllers/quizController.js';
 import upload from '../middleware/uploadMiddleware.js';
 
@@ -36,6 +37,7 @@ router.get('/:id', getQuizById);                                                
 router.post('/:id/attempt', authorizeRoles('student'), submitAttempt);               // Submit attempt
 router.get('/:id/leaderboard', getLeaderboard);                                      // Quiz leaderboard
 router.put('/:id/publish', authorizeRoles('admin', 'teacher'), togglePublishQuiz);   // Publish / unpublish
+router.put('/:id', authorizeRoles('admin', 'teacher'), updateQuiz);                   // Update quiz details & questions
 router.delete('/:id', authorizeRoles('admin', 'teacher'), deleteQuiz);               // Delete quiz
 router.get('/:id/certificates', authorizeRoles('admin', 'teacher'), getQuizCertificates); // Get certificates for a quiz
 

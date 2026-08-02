@@ -230,6 +230,45 @@ export const getStudentProfile = async (req, res) => {
     }
 };
 
+export const updateStudentByCoordinator = async (req, res) => {
+    try {
+        const { studentId } = req.params;
+        const { name, rollNumber, email } = req.body;
+
+        if (!name || !email) {
+            return res.status(400).json({ message: 'Name and Email are required.' });
+        }
+
+        // Check if email belongs to another user
+        const existing = await pool.query(
+            'SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND id != $2',
+            [email.trim(), studentId]
+        );
+        if (existing.rows.length > 0) {
+            return res.status(400).json({ message: 'Email address is already in use by another user.' });
+        }
+
+        const updated = await pool.query(`
+            UPDATE users
+            SET name = $1,
+                roll_number = $2,
+                email = $3,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $4 AND role = 'student'
+            RETURNING id, name, email, roll_number as "rollNumber"
+        `, [name.trim(), rollNumber ? rollNumber.trim() : null, email.trim().toLowerCase(), studentId]);
+
+        if (updated.rows.length === 0) {
+            return res.status(404).json({ message: 'Student not found.' });
+        }
+
+        res.json({ message: 'Student details updated successfully!', student: updated.rows[0] });
+    } catch (error) {
+        console.error('Error updating student profile:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
 export const getAttendanceReport = async (req, res) => {
     try {
         const teacherId = req.user.id || req.user._id;
@@ -252,8 +291,86 @@ export const getAttendanceReport = async (req, res) => {
             date: r.date
         }));
 
-        res.json({ report, classes: [], subjects: [] });
+        res.json({ message: 'Exam marks published successfully!' });
     } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+export const submitBulkTeacherExamMarks = async (req, res) => {
+    try {
+        const { examScheduleId, subjectId, marksData } = req.body;
+
+        if (!Array.isArray(marksData) || marksData.length === 0) {
+            return res.status(400).json({ message: 'No student marks data provided' });
+        }
+
+        const validExamScheduleId = parseInt(examScheduleId, 10) || 1;
+        const validSubjectId = parseInt(subjectId, 10) || 1;
+
+        let successCount = 0;
+
+        for (const item of marksData) {
+            const { studentId, marksObtained, grade, remarks } = item;
+            if (studentId === undefined || marksObtained === undefined || marksObtained === '') continue;
+
+            const validStudentId = parseInt(studentId, 10);
+            const m = parseFloat(marksObtained);
+
+            let calcGrade = grade;
+            if (!calcGrade) {
+                if (m >= 90) calcGrade = 'A+';
+                else if (m >= 80) calcGrade = 'A';
+                else if (m >= 70) calcGrade = 'B';
+                else if (m >= 60) calcGrade = 'C';
+                else if (m >= 50) calcGrade = 'D';
+                else calcGrade = 'F';
+            }
+
+            const existing = await pool.query(
+                'SELECT id FROM exam_results WHERE student_id = $1 AND exam_schedule_id = $2',
+                [validStudentId, validExamScheduleId]
+            );
+
+            if (existing.rows.length > 0) {
+                await pool.query(`
+                    UPDATE exam_results
+                    SET marks_obtained = $1, grade = $2, remarks = $3, subject_id = $4
+                    WHERE id = $5
+                `, [m, calcGrade, remarks || '', validSubjectId, existing.rows[0].id]);
+            } else {
+                await pool.query(`
+                    INSERT INTO exam_results (exam_schedule_id, student_id, subject_id, marks_obtained, grade, remarks)
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                `, [validExamScheduleId, validStudentId, validSubjectId, m, calcGrade, remarks || '']);
+            }
+
+            // Real-time notifications for student & parent
+            try {
+                const stRes = await pool.query('SELECT name, parent_id FROM users WHERE id = $1', [validStudentId]);
+                const studentObj = stRes.rows[0];
+
+                await pool.query(`
+                    INSERT INTO notifications (recipient_id, title, message, type, link)
+                    VALUES ($1, $2, $3, 'info', '/student/results')
+                `, [validStudentId, '🏆 Exam Result Published', `Your exam score of ${m}/100 [Grade: ${calcGrade}] has been published.`]);
+
+                if (studentObj?.parent_id) {
+                    await pool.query(`
+                        INSERT INTO notifications (recipient_id, title, message, type, link)
+                        VALUES ($1, $2, $3, 'info', '/parent/results')
+                    `, [studentObj.parent_id, '🏆 Exam Result Published', `${studentObj.name}'s exam score of ${m}/100 [Grade: ${calcGrade}] has been updated.`]);
+                }
+            } catch (notifErr) {
+                console.error('Non-blocking notification error:', notifErr.message);
+            }
+
+            successCount++;
+        }
+
+        res.json({ message: `Successfully published marks for ${successCount} students!` });
+    } catch (error) {
+        console.error('Error submitting bulk exam marks:', error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -322,16 +439,132 @@ export const createTeacherAssignment = async (req, res) => {
     }
 };
 
+export const updateTeacherAssignment = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { title, description, dueDate, attachmentUrl, classId, subjectId } = req.body;
+
+        if (!title || !dueDate) {
+            return res.status(400).json({ message: 'Title and Due Date are required' });
+        }
+
+        const updated = await pool.query(`
+            UPDATE assignments
+            SET title = $1,
+                description = $2,
+                due_date = $3,
+                attachment_url = $4,
+                class_id = COALESCE($5, class_id),
+                subject_id = COALESCE($6, subject_id)
+            WHERE id = $7
+            RETURNING *
+        `, [title, description || '', dueDate, attachmentUrl || null, classId || null, subjectId || null, id]);
+
+        if (updated.rows.length === 0) {
+            return res.status(404).json({ message: 'Assignment not found' });
+        }
+
+        res.json({ message: 'Assignment updated successfully', assignment: updated.rows[0] });
+    } catch (error) {
+        console.error('Error updating assignment:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+export const getAssignmentSubmissions = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const assignRes = await pool.query('SELECT * FROM assignments WHERE id = $1', [id]);
+        if (assignRes.rows.length === 0) return res.status(404).json({ message: 'Assignment not found' });
+        const assignment = assignRes.rows[0];
+
+        const result = await pool.query(`
+            SELECT u.id as student_id, u.name as student_name, u.roll_number, u.email,
+                   sub.id as submission_id, COALESCE(sub.status, 'pending') as status,
+                   sub.submission_date, sub.teacher_comments, sub.grade
+            FROM users u
+            LEFT JOIN assignment_submissions sub ON sub.assignment_id = $1 AND sub.student_id = u.id
+            WHERE u.class_id = $2 AND u.role = 'student'
+            ORDER BY u.name ASC
+        `, [id, assignment.class_id]);
+
+        res.json({
+            assignment,
+            submissions: result.rows
+        });
+    } catch (error) {
+        console.error('Error fetching assignment submissions:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+export const gradeAssignmentSubmission = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { studentId, grade, teacherComments } = req.body;
+
+        const checkSub = await pool.query('SELECT id FROM assignment_submissions WHERE assignment_id = $1 AND student_id = $2', [id, studentId]);
+
+        if (checkSub.rows.length > 0) {
+            await pool.query(`
+                UPDATE assignment_submissions
+                SET status = 'graded',
+                    grade = $1,
+                    teacher_comments = $2
+                WHERE assignment_id = $3 AND student_id = $4
+            `, [grade, teacherComments, id, studentId]);
+        } else {
+            await pool.query(`
+                INSERT INTO assignment_submissions (assignment_id, student_id, status, submission_date, grade, teacher_comments)
+                VALUES ($1, $2, 'graded', CURRENT_TIMESTAMP, $3, $4)
+            `, [id, studentId, grade, teacherComments]);
+        }
+
+        try {
+            await pool.query(`
+                INSERT INTO notifications (recipient_id, title, message, type, link)
+                VALUES ($1, '📝 Homework Graded', $2, 'success', '/student/assignments')
+            `, [studentId, `Your homework submission has been evaluated: ${grade || 'Graded'}`]);
+        } catch (e) {
+            console.error('Notification insertion error:', e);
+        }
+
+        res.json({ message: 'Submission graded successfully!' });
+    } catch (error) {
+        console.error('Error grading submission:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+export const deleteTeacherAssignment = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        await pool.query('DELETE FROM assignment_submissions WHERE assignment_id = $1', [id]);
+        const deleted = await pool.query('DELETE FROM assignments WHERE id = $1 RETURNING *', [id]);
+
+        if (deleted.rows.length === 0) {
+            return res.status(404).json({ message: 'Assignment not found' });
+        }
+
+        res.json({ message: 'Homework assignment deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting assignment:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
 export const getTeacherExams = async (req, res) => {
     try {
         const schedulesRes = await pool.query(`
-            SELECT es.id, es.exam_name as "examName", es.exam_date as "examDate", es.time_slot as "timeSlot",
+            SELECT es.id, COALESCE(es.term, es.exam_name) as term, es.exam_name as "examName", es.exam_date as "examDate", es.time_slot as "timeSlot",
                    es.room_number as "roomNumber", es.max_marks as "maxMarks", es.class_id as "classId", es.subject_id as "subjectId",
                    s.name as "subjectName", c.name as "className"
             FROM exam_schedules es
             LEFT JOIN subjects s ON es.subject_id = s.id
             LEFT JOIN classes c ON es.class_id = c.id
-            ORDER BY es.exam_date DESC
+            ORDER BY es.exam_date ASC, es.time_slot ASC
         `);
 
         const rosterRes = await pool.query(`
@@ -355,19 +588,70 @@ export const getTeacherExams = async (req, res) => {
 
 export const createTeacherExam = async (req, res) => {
     try {
-        const { examName, classId, subjectId, examDate, timeSlot, roomNumber, maxMarks } = req.body;
+        const { term, examName, classId, subjectId, examDate, timeSlot, roomNumber, maxMarks } = req.body;
 
-        if (!examName || !examDate) {
-            return res.status(400).json({ message: 'Exam name and date are required' });
+        const nameToUse = examName || term;
+        if (!nameToUse || !examDate) {
+            return res.status(400).json({ message: 'Exam name/term and date are required' });
         }
 
         const result = await pool.query(`
-            INSERT INTO exam_schedules (exam_name, class_id, subject_id, exam_date, time_slot, room_number, max_marks)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO exam_schedules (term, exam_name, class_id, subject_id, exam_date, time_slot, room_number, max_marks)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING *
-        `, [examName, classId || 1, subjectId || 1, examDate, timeSlot || '10:00 AM - 12:00 PM', roomNumber || 'Lab 301', maxMarks || 100]);
+        `, [nameToUse, nameToUse, classId || 1, subjectId || 1, examDate, timeSlot || '10:00 AM - 12:00 PM', roomNumber || 'Lab 301', maxMarks || 100]);
 
         res.status(201).json(result.rows[0]);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+export const updateTeacherExam = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { term, examName, subjectId, examDate, timeSlot, roomNumber, maxMarks } = req.body;
+
+        const nameToUse = examName || term;
+        if (!nameToUse || !examDate) {
+            return res.status(400).json({ message: 'Exam name/term and date are required' });
+        }
+
+        const result = await pool.query(`
+            UPDATE exam_schedules
+            SET term = $1,
+                exam_name = $2,
+                subject_id = $3,
+                exam_date = $4,
+                time_slot = $5,
+                room_number = $6,
+                max_marks = $7
+            WHERE id = $8
+            RETURNING *
+        `, [nameToUse, nameToUse, subjectId || 1, examDate, timeSlot || '10:00 AM - 12:00 PM', roomNumber || 'Lab 301', maxMarks || 100, id]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'Exam schedule not found' });
+        }
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+export const deleteTeacherExam = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        await pool.query('DELETE FROM exam_results WHERE exam_schedule_id = $1', [id]);
+        const result = await pool.query('DELETE FROM exam_schedules WHERE id = $1 RETURNING *', [id]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'Exam schedule not found' });
+        }
+
+        res.json({ message: 'Exam schedule deleted successfully' });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

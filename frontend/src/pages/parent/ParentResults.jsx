@@ -92,7 +92,9 @@ const ParentResults = ({ selectedChildId }) => {
         return false;
     };
 
-    const activeUpcomingExams = upcomingExams.filter(exam => !isExamExpired(exam.exam_date, exam.time_slot));
+    const activeUpcomingExams = [...upcomingExams]
+        .filter(exam => !isExamExpired(exam.exam_date, exam.time_slot))
+        .sort((a, b) => new Date(a.exam_date) - new Date(b.exam_date));
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>

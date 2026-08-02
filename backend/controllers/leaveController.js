@@ -121,6 +121,7 @@ export const getMyLeaves = async (req, res) => {
             startDate: r.start_date,
             endDate: r.end_date,
             reason: r.reason,
+            rejectionReason: r.rejection_reason,
             status: r.status,
             documentUrl: r.document_url,
             createdAt: r.created_at
@@ -192,6 +193,7 @@ export const getCoordinatorLeaves = async (req, res) => {
             startDate: r.start_date,
             endDate: r.end_date,
             reason: r.reason,
+            rejectionReason: r.rejection_reason,
             status: r.status,
             documentUrl: r.document_url,
             createdAt: r.created_at,
@@ -233,6 +235,7 @@ export const getAdminTeacherLeaves = async (req, res) => {
             startDate: r.start_date,
             endDate: r.end_date,
             reason: r.reason,
+            rejectionReason: r.rejection_reason,
             status: r.status,
             documentUrl: r.document_url,
             createdAt: r.created_at,
@@ -319,7 +322,7 @@ export const rejectLeave = async (req, res) => {
             [
                 leave.user_id,
                 'Leave Rejected',
-                `❌ Your leave request (${new Date(leave.start_date).toLocaleDateString()} – ${new Date(leave.end_date).toLocaleDateString()}) has been REJECTED.`,
+                `❌ Your leave request (${new Date(leave.start_date).toLocaleDateString()} – ${new Date(leave.end_date).toLocaleDateString()}) has been REJECTED. Reason: "${reason || 'Not specified'}"`,
                 'leave_rejected'
             ]
         );
@@ -343,7 +346,7 @@ export const revokeLeave = async (req, res) => {
 
         const result = await pool.query(
             `UPDATE leave_requests SET status = 'revoked', reviewed_by = $1, rejection_reason = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *`,
-            [reviewerId, reason || 'Revoked by Admin', id]
+            [reviewerId, reason || 'Revoked by Coordinator', id]
         );
 
         if (result.rows.length === 0) {
@@ -359,7 +362,7 @@ export const revokeLeave = async (req, res) => {
             [
                 leave.user_id,
                 'Leave Revoked',
-                `⚠️ Your approved leave (${new Date(leave.start_date).toLocaleDateString()} – ${new Date(leave.end_date).toLocaleDateString()}) has been REVOKED.`,
+                `⚠️ Your approved leave (${new Date(leave.start_date).toLocaleDateString()} – ${new Date(leave.end_date).toLocaleDateString()}) has been REVOKED. Reason: "${reason || 'Revoked by Coordinator'}"`,
                 'leave_revoked'
             ]
         );

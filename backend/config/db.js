@@ -307,6 +307,7 @@ export const initSchema = async () => {
         CREATE TABLE IF NOT EXISTS exam_schedules (
             id SERIAL PRIMARY KEY,
             class_id INTEGER,
+            term VARCHAR(50),
             exam_name VARCHAR(100),
             subject_id INTEGER,
             exam_date DATE,
@@ -314,6 +315,9 @@ export const initSchema = async () => {
             room_number VARCHAR(50),
             max_marks INTEGER DEFAULT 100
         );
+
+        ALTER TABLE exam_schedules ADD COLUMN IF NOT EXISTS term VARCHAR(50);
+        UPDATE exam_schedules SET term = exam_name WHERE term = '1st Term' OR term IS NULL OR term = '';
 
         CREATE TABLE IF NOT EXISTS exam_results (
             id SERIAL PRIMARY KEY,

@@ -47,12 +47,12 @@ const QuizCard = ({ quiz, onStart, idx }) => {
             transition={{ delay: idx * 0.06 }}
             style={{
                 background: 'var(--bg-secondary)',
-                border: `1px solid ${hasPassed ? 'rgba(22,163,74,0.3)' : isUniversity ? 'rgba(99,102,241,0.25)' : 'var(--border-color)'}`,
+                border: `1px solid ${hasPassed ? 'rgba(22,163,74,0.35)' : isUniversity ? 'rgba(99,102,241,0.25)' : 'var(--border-color)'}`,
                 borderRadius: '16px',
-                padding: '1.5rem',
+                padding: '1.25rem 1.5rem 1.5rem',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '1rem',
+                height: '100%',
                 position: 'relative',
                 overflow: 'hidden',
                 transition: 'transform 0.2s, box-shadow 0.2s',
@@ -60,130 +60,167 @@ const QuizCard = ({ quiz, onStart, idx }) => {
             }}
             whileHover={{ y: -3, boxShadow: '0 12px 32px rgba(0,0,0,0.15)' }}
         >
-            {/* University badge */}
-            {isUniversity && (
+            {/* Top Right Quiz Type Badge */}
+            {isUniversity ? (
                 <div style={{
                     position: 'absolute', top: 0, right: 0,
                     background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
                     color: 'white', fontSize: '0.6rem', fontWeight: '800',
                     textTransform: 'uppercase', letterSpacing: '0.08em',
                     padding: '0.25rem 0.75rem', borderRadius: '0 16px 0 12px',
-                    display: 'flex', alignItems: 'center', gap: '3px'
-                }}><Building size={11} /> University</div>
-            )}
-
-            {/* Passed badge */}
-            {hasPassed && (
-                <div style={{
-                    position: 'absolute', top: 12, left: 12,
-                    background: 'rgba(22,163,74,0.15)', color: '#16a34a',
-                    border: '1px solid rgba(22,163,74,0.3)',
-                    fontSize: '0.6rem', fontWeight: '800', padding: '0.2rem 0.5rem',
-                    borderRadius: '999px', display: 'flex', alignItems: 'center', gap: '3px'
+                    display: 'flex', alignItems: 'center', gap: '3px', zIndex: 1
                 }}>
-                    <CheckCircle size={10} /> Passed
+                    <Building size={11} /> University
+                </div>
+            ) : (
+                <div style={{
+                    position: 'absolute', top: 0, right: 0,
+                    background: 'linear-gradient(135deg, #0ea5e9, #0284c7)',
+                    color: 'white', fontSize: '0.6rem', fontWeight: '800',
+                    textTransform: 'uppercase', letterSpacing: '0.08em',
+                    padding: '0.25rem 0.75rem', borderRadius: '0 16px 0 12px',
+                    display: 'flex', alignItems: 'center', gap: '3px', zIndex: 1
+                }}>
+                    <Brain size={11} /> Practice
                 </div>
             )}
 
-            {/* Header */}
-            <div style={{ paddingTop: hasPassed ? '1.2rem' : '0' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '0.5rem' }}>
+            {/* Status Badge (Passed / Incomplete) */}
+            {hasPassed ? (
+                <div style={{
+                    position: 'absolute', top: 10, left: 12,
+                    background: 'rgba(22,163,74,0.15)', color: '#16a34a',
+                    border: '1px solid rgba(22,163,74,0.3)',
+                    fontSize: '0.6rem', fontWeight: '800', padding: '0.18rem 0.5rem',
+                    borderRadius: '999px', display: 'flex', alignItems: 'center', gap: '3px', zIndex: 1
+                }}>
+                    <CheckCircle size={10} /> Passed
+                </div>
+            ) : (
+                <div style={{
+                    position: 'absolute', top: 10, left: 12,
+                    background: 'rgba(245,158,11,0.15)', color: '#f59e0b',
+                    border: '1px solid rgba(245,158,11,0.3)',
+                    fontSize: '0.6rem', fontWeight: '800', padding: '0.18rem 0.5rem',
+                    borderRadius: '999px', display: 'flex', alignItems: 'center', gap: '3px', zIndex: 1
+                }}>
+                    <Clock size={10} /> Incomplete
+                </div>
+            )}
+
+            {/* Header Content — Uniform top padding across all cards */}
+            <div style={{ paddingTop: '1.2rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.75rem' }}>
                     <div style={{
-                        width: '44px', height: '44px', borderRadius: '12px', flexShrink: 0,
+                        width: '42px', height: '42px', borderRadius: '12px', flexShrink: 0,
                         background: isUniversity
                             ? 'linear-gradient(135deg, #4f46e5, #7c3aed)'
                             : 'linear-gradient(135deg, var(--brand-primary), var(--brand-secondary))',
                         display: 'flex', alignItems: 'center', justifyContent: 'center'
                     }}>
-                        {isUniversity ? <Trophy size={22} color="white" /> : <Brain size={22} color="white" />}
+                        {isUniversity ? <Trophy size={20} color="white" /> : <Brain size={20} color="white" />}
                     </div>
                     <DifficultyBadge difficulty={quiz.difficulty} />
                 </div>
-                <h3 style={{ fontSize: '1rem', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '0.25rem', lineHeight: 1.3 }}>
-                    {quiz.title}
-                </h3>
-                {quiz.description && (
-                    <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                        {quiz.description.length > 80 ? quiz.description.slice(0, 80) + '…' : quiz.description}
-                    </p>
-                )}
-            </div>
 
-            {/* Subject tag */}
-            {quiz.subjectId?.subjectName && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <BookOpen size={13} style={{ color: 'var(--brand-primary)' }} />
-                    <span style={{ fontSize: '0.72rem', color: 'var(--brand-primary)', fontWeight: '600' }}>
-                        {quiz.subjectId.subjectName}
-                    </span>
-                </div>
-            )}
-
-            {/* Stats row */}
-            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                {[
-                    { icon: <BookOpen size={13} />, label: `${quiz.questionCount} Qs` },
-                    ...(isUniversity ? [{ icon: <Clock size={13} />, label: `${quiz.timeLimit}m` }] : []),
-                    { icon: <RefreshCw size={13} />, label: `${quiz.studentAttempts}/${quiz.maxAttempts} tries` }
-                ].map((s, i) => (
-                    <div key={i} style={{
-                        display: 'flex', alignItems: 'center', gap: '0.3rem',
-                        fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: '500'
-                    }}>
-                        <span style={{ color: 'var(--text-light)' }}>{s.icon}</span>
-                        {s.label}
-                    </div>
-                ))}
-            </div>
-
-            {/* Best score bar */}
-            {bestScore !== null && (
                 <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem', fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
-                        <span>Best Score</span>
-                        <span style={{ fontWeight: '700', color: bestScore >= quiz.passingScore ? '#16a34a' : '#dc2626' }}>
-                            {bestScore}%
-                        </span>
-                    </div>
-                    <div style={{ height: '5px', background: 'var(--border-color)', borderRadius: '3px', overflow: 'hidden' }}>
-                        <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${bestScore}%` }}
-                            transition={{ delay: idx * 0.06 + 0.3, duration: 0.6 }}
-                            style={{
-                                height: '100%', borderRadius: '3px',
-                                background: bestScore >= quiz.passingScore
-                                    ? 'linear-gradient(90deg, #16a34a, #22c55e)'
-                                    : 'linear-gradient(90deg, #dc2626, #f87171)'
-                            }}
-                        />
+                    <h3 style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-primary)', margin: 0, lineHeight: 1.3 }}>
+                        {quiz.title}
+                    </h3>
+                    {quiz.description ? (
+                        <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.4, marginTop: '0.35rem', margin: '0.35rem 0 0' }}>
+                            {quiz.description.length > 70 ? quiz.description.slice(0, 70) + '…' : quiz.description}
+                        </p>
+                    ) : (
+                        <div style={{ height: '0.35rem' }} />
+                    )}
+                </div>
+
+                {/* Subject tag & Stats */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: 'auto' }}>
+                    {quiz.subjectId?.subjectName && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            <BookOpen size={13} style={{ color: 'var(--brand-primary)' }} />
+                            <span style={{ fontSize: '0.75rem', color: 'var(--brand-primary)', fontWeight: '600' }}>
+                                {quiz.subjectId.subjectName}
+                            </span>
+                        </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '0.85rem', flexWrap: 'wrap' }}>
+                        {[
+                            { icon: <BookOpen size={13} />, label: `${quiz.questionCount} Qs` },
+                            ...(isUniversity ? [{ icon: <Clock size={13} />, label: `${quiz.timeLimit}m` }] : []),
+                            { icon: <RefreshCw size={13} />, label: `${quiz.studentAttempts}/${quiz.maxAttempts} tries` }
+                        ].map((s, i) => (
+                            <div key={i} style={{
+                                display: 'flex', alignItems: 'center', gap: '0.3rem',
+                                fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: '500'
+                            }}>
+                                <span style={{ color: 'var(--text-light)' }}>{s.icon}</span>
+                                {s.label}
+                            </div>
+                        ))}
                     </div>
                 </div>
-            )}
+            </div>
 
-            {/* CTA Button */}
-            <button
-                onClick={() => canAttempt && onStart(quiz)}
-                disabled={!canAttempt}
-                style={{
-                    width: '100%', padding: '0.65rem',
-                    background: !canAttempt
-                        ? 'var(--bg-primary)'
-                        : 'linear-gradient(135deg, var(--brand-primary), var(--brand-secondary))',
-                    color: !canAttempt ? 'var(--text-light)' : 'white',
-                    border: `1px solid ${!canAttempt ? 'var(--border-color)' : 'transparent'}`,
-                    borderRadius: '10px', fontWeight: '600', fontSize: '0.85rem',
-                    cursor: canAttempt ? 'pointer' : 'not-allowed',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
-                    transition: 'all 0.2s'
-                }}
-            >
-                {!canAttempt ? (
-                    <><Lock size={15} /> Attempts Exhausted</>
-                ) : (
-                    <><Play size={15} /> {quiz.studentAttempts === 0 ? 'Start Quiz' : 'Retry Quiz'}</>
-                )}
-            </button>
+            {/* Bottom Footer Section — Fixed Height Slot & Pinned Button */}
+            <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {/* Score Bar Slot (Uniform height reserved across all cards) */}
+                <div style={{ minHeight: '28px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                    {bestScore !== null ? (
+                        <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem', fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+                                <span>Best Score</span>
+                                <span style={{ fontWeight: '700', color: bestScore >= quiz.passingScore ? '#16a34a' : '#dc2626' }}>
+                                    {bestScore}%
+                                </span>
+                            </div>
+                            <div style={{ height: '5px', background: 'var(--border-color)', borderRadius: '3px', overflow: 'hidden' }}>
+                                <motion.div
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${bestScore}%` }}
+                                    transition={{ delay: idx * 0.06 + 0.2, duration: 0.5 }}
+                                    style={{
+                                        height: '100%', borderRadius: '3px',
+                                        background: bestScore >= quiz.passingScore
+                                            ? 'linear-gradient(90deg, #16a34a, #22c55e)'
+                                            : 'linear-gradient(90deg, #dc2626, #f87171)'
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    ) : (
+                        <div style={{ height: '5px' }} />
+                    )}
+                </div>
+
+                {/* CTA Button */}
+                <button
+                    onClick={() => canAttempt && onStart(quiz)}
+                    disabled={!canAttempt}
+                    style={{
+                        width: '100%', height: '40px',
+                        background: !canAttempt
+                            ? 'var(--bg-primary)'
+                            : 'linear-gradient(135deg, var(--brand-primary), var(--brand-secondary))',
+                        color: !canAttempt ? 'var(--text-light)' : 'white',
+                        border: `1px solid ${!canAttempt ? 'var(--border-color)' : 'transparent'}`,
+                        borderRadius: '10px', fontWeight: '600', fontSize: '0.85rem',
+                        cursor: canAttempt ? 'pointer' : 'not-allowed',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+                        transition: 'all 0.2s',
+                        flexShrink: 0
+                    }}
+                >
+                    {!canAttempt ? (
+                        <><Lock size={15} /> Attempts Exhausted</>
+                    ) : (
+                        <><Play size={15} /> {quiz.studentAttempts === 0 ? 'Start Quiz' : 'Retry Quiz'}</>
+                    )}
+                </button>
+            </div>
         </motion.div>
     );
 };

@@ -57,6 +57,9 @@ const HistoryPage = () => {
     const totalFiltered = filtered.length;
     const presentFiltered = filtered.filter(r => r.status === 'present').length;
     const absentFiltered = filtered.filter(r => r.status === 'absent').length;
+    const leaveFiltered = filtered.filter(r => r.status === 'leave').length;
+    const attendancePct = totalFiltered > 0 ? Math.round((presentFiltered / totalFiltered) * 100) : 0;
+    const pctColor = attendancePct >= 75 ? '#10b981' : attendancePct >= 60 ? '#f59e0b' : '#ef4444';
     const isFiltering = startDate || endDate || selectedSubject !== 'ALL';
 
     const handleReset = () => {
@@ -186,14 +189,36 @@ const HistoryPage = () => {
                     </motion.button>
                 )}
 
-                {/* Filter summary chips */}
-                {isFiltering && (
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
-                        <SummaryChip label="Total" value={totalFiltered} color="var(--brand-primary)" />
-                        <SummaryChip label="Present" value={presentFiltered} color="#16a34a" />
-                        <SummaryChip label="Absent" value={absentFiltered} color="#dc2626" />
+                {/* Attendance Percentage Badge — always visible */}
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    {/* % pill */}
+                    <div style={{
+                        display: 'flex', alignItems: 'center', gap: '0.5rem',
+                        padding: '0.45rem 1rem', borderRadius: '999px',
+                        background: `${pctColor}18`,
+                        border: `1.5px solid ${pctColor}50`
+                    }}>
+                        <div style={{
+                            width: '32px', height: '32px', borderRadius: '50%', position: 'relative',
+                            background: `conic-gradient(${pctColor} ${attendancePct * 3.6}deg, var(--border-color) 0deg)`,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        }}>
+                            <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: 'var(--bg-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <span style={{ fontSize: '0.5rem', fontWeight: '800', color: pctColor }}>{attendancePct}%</span>
+                            </div>
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '1rem', fontWeight: '800', color: pctColor, lineHeight: 1 }}>{attendancePct}%</div>
+                            <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Attendance</div>
+                        </div>
                     </div>
-                )}
+
+                    {/* Summary chips */}
+                    <SummaryChip label="Total" value={totalFiltered} color="var(--brand-primary)" />
+                    <SummaryChip label="Present" value={presentFiltered} color="#16a34a" />
+                    <SummaryChip label="Absent" value={absentFiltered} color="#dc2626" />
+                    {leaveFiltered > 0 && <SummaryChip label="Leave" value={leaveFiltered} color="var(--brand-primary)" />}
+                </div>
             </div>
 
             {/* ── Active-filter notice ── */}

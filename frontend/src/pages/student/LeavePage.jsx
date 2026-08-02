@@ -401,12 +401,14 @@ const LeavePage = () => {
                                                     {item.reason}
                                                 </div>
 
-                                                {item.status === 'revoked' && (
-                                                    <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'rgba(239,68,68,0.05)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(239,68,68,0.1)', display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
-                                                        <AlertCircle size={14} style={{ color: 'var(--danger)', marginTop: '2px' }} />
+                                                {(item.status === 'rejected' || item.status === 'revoked') && (item.rejectionReason || item.revocationReason) && (
+                                                    <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: item.status === 'rejected' ? 'rgba(239,68,68,0.05)' : 'rgba(245,158,11,0.05)', borderRadius: 'var(--radius-md)', border: `1px solid ${item.status === 'rejected' ? 'rgba(239,68,68,0.2)' : 'rgba(245,158,11,0.2)'}`, display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+                                                        <AlertCircle size={14} style={{ color: item.status === 'rejected' ? 'var(--danger)' : '#f59e0b', marginTop: '2px', flexShrink: 0 }} />
                                                         <div>
-                                                            <span style={{ display: 'block', fontSize: '0.7rem', fontWeight: '800', color: 'var(--danger)', textTransform: 'uppercase', marginBottom: '0.15rem' }}>Revocation Reason</span>
-                                                            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{item.revocationReason}</p>
+                                                            <span style={{ display: 'block', fontSize: '0.7rem', fontWeight: '800', color: item.status === 'rejected' ? 'var(--danger)' : '#f59e0b', textTransform: 'uppercase', marginBottom: '0.15rem' }}>
+                                                                {item.status === 'rejected' ? 'Rejection Reason' : 'Revocation Reason'}
+                                                            </span>
+                                                            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: 0 }}>{item.rejectionReason || item.revocationReason}</p>
                                                         </div>
                                                     </div>
                                                 )}

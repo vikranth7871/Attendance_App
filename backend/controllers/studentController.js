@@ -261,7 +261,7 @@ export const getStudentResults = async (req, res) => {
         const studentId = req.user.id || req.user._id;
 
         const studentRes = await pool.query(`
-            SELECT u.id, u.name, u.email, u.roll_number, c.name as class_name
+            SELECT u.id, u.name, u.email, u.roll_number, c.name as class_name, u.class_id
             FROM users u
             LEFT JOIN classes c ON u.class_id = c.id
             WHERE u.id = $1
@@ -271,22 +271,23 @@ export const getStudentResults = async (req, res) => {
 
         const resultsRes = await pool.query(`
             SELECT er.id, er.marks_obtained, er.grade, er.remarks,
-                   es.exam_name, es.max_marks, es.exam_date,
+                   es.exam_name, es.term, es.max_marks, es.exam_date,
                    COALESCE(s.name, 'General Subject') as subject_name, s.code as subject_code
             FROM exam_results er
             LEFT JOIN exam_schedules es ON er.exam_schedule_id = es.id
             LEFT JOIN subjects s ON er.subject_id = s.id
             WHERE er.student_id = $1
-            ORDER BY er.id DESC
+            ORDER BY es.exam_date ASC, s.name ASC
         `, [studentId]);
 
         const schedulesRes = await pool.query(`
-            SELECT es.id, es.exam_name, es.exam_date, es.time_slot, es.room_number, es.max_marks,
+            SELECT es.id, es.exam_name, es.term, es.exam_date, es.time_slot, es.room_number, es.max_marks,
                    COALESCE(s.name, 'General Subject') as subject_name, s.code as subject_code
             FROM exam_schedules es
             LEFT JOIN subjects s ON es.subject_id = s.id
+            WHERE es.class_id = $1
             ORDER BY es.exam_date ASC
-        `);
+        `, [student?.class_id]);
 
         res.json({
             student,
@@ -297,3 +298,121 @@ export const getStudentResults = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 };
+
+/**
+ * @desc    Get detailed info for a single subject (attendance, exams, upcoming, assignments)
+ * @route   GET /api/student/subjects/:subjectId/details
+ * @access  Private (Student)
+ */
+export const getSubjectDetails = async (req, res) => {
+    try {
+        const studentId = req.user.id || req.user._id;
+        const { subjectId } = req.params;
+
+        // 1. Subject info + teacher + schedule slots
+        const subjectRes = await pool.query(`
+            SELECT s.id, s.name as subject_name, s.code,
+                   u.id as teacher_id, u.name as teacher_name, u.email as teacher_email,
+                   sa.day_of_week, sa.time_slot, sa.start_time, sa.end_time, sa.room_number
+            FROM subjects s
+            LEFT JOIN subject_allocations sa ON sa.subject_id = s.id
+            LEFT JOIN users u ON sa.teacher_id = u.id
+            WHERE s.id = $1
+            ORDER BY sa.day_of_week, sa.time_slot
+        `, [subjectId]);
+
+        if (subjectRes.rows.length === 0) {
+            return res.status(404).json({ message: 'Subject not found' });
+        }
+
+        const firstRow = subjectRes.rows[0];
+        const slots = subjectRes.rows
+            .filter(r => r.day_of_week)
+            .map(r => ({ day: r.day_of_week, timeSlot: r.time_slot, startTime: r.start_time, endTime: r.end_time, room: r.room_number }));
+
+        // 2. Attendance for this subject
+        const attRes = await pool.query(`
+            SELECT id, status, date, time_slot
+            FROM attendance
+            WHERE student_id = $1 AND subject_id = $2
+            ORDER BY date DESC
+            LIMIT 30
+        `, [studentId, subjectId]);
+
+        const attRows = attRes.rows;
+        const present = attRows.filter(r => r.status === 'present').length;
+        const absent = attRows.filter(r => r.status === 'absent').length;
+        const leave = attRows.filter(r => r.status === 'leave').length;
+        const total = attRows.length;
+        const percentage = total > 0 ? Math.round((present / total) * 100) : 0;
+
+        // 3. Past exam results for this subject
+        const resultsRes = await pool.query(`
+            SELECT er.id, er.marks_obtained, er.grade, er.remarks,
+                   es.exam_name, es.max_marks, es.exam_date, es.time_slot as exam_time
+            FROM exam_results er
+            LEFT JOIN exam_schedules es ON er.exam_schedule_id = es.id
+            WHERE er.student_id = $1 AND er.subject_id = $2
+            ORDER BY es.exam_date DESC
+        `, [studentId, subjectId]);
+
+        // 4. Upcoming exams for this subject
+        const upcomingRes = await pool.query(`
+            SELECT es.id, es.exam_name, es.exam_date, es.time_slot, es.room_number, es.max_marks
+            FROM exam_schedules es
+            WHERE es.subject_id = $1 AND es.exam_date >= CURRENT_DATE
+            ORDER BY es.exam_date ASC
+            LIMIT 10
+        `, [subjectId]);
+
+        // 5. Assignments for this subject
+        const userRes = await pool.query('SELECT class_id FROM users WHERE id = $1', [studentId]);
+        const classId = userRes.rows[0]?.class_id || 1;
+
+        const assignRes = await pool.query(`
+            SELECT a.id, a.title, a.description, a.due_date, a.attachment_url,
+                   t.name as teacher_name,
+                   COALESCE(sub.status, 'pending') as status,
+                   sub.submission_date, sub.grade, sub.teacher_comments
+            FROM assignments a
+            LEFT JOIN users t ON a.teacher_id = t.id
+            LEFT JOIN assignment_submissions sub ON a.id = sub.assignment_id AND sub.student_id = $1
+            WHERE a.class_id = $2 AND a.subject_id = $3
+            ORDER BY a.due_date ASC
+        `, [studentId, classId, subjectId]);
+
+        res.json({
+            subject: {
+                id: firstRow.id,
+                name: firstRow.subject_name,
+                code: firstRow.code,
+                teacher: {
+                    id: firstRow.teacher_id,
+                    name: firstRow.teacher_name,
+                    email: firstRow.teacher_email
+                },
+                slots
+            },
+            attendance: {
+                present,
+                absent,
+                leave,
+                total,
+                percentage,
+                recentHistory: attRows.map(r => ({
+                    id: String(r.id),
+                    status: r.status,
+                    date: r.date,
+                    timeSlot: r.time_slot
+                }))
+            },
+            results: resultsRes.rows,
+            upcomingExams: upcomingRes.rows,
+            assignments: assignRes.rows
+        });
+    } catch (error) {
+        console.error('Error in getSubjectDetails:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
