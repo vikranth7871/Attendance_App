@@ -65,15 +65,24 @@ export const markManualAttendance = async (req, res) => {
             await pool.query('UPDATE users SET streak_count = 0 WHERE id = $1', [studentId]);
         }
 
-        // 4. Notify parent if absent or on leave
+        // 4. Notify parent AND student if absent or on leave
         const studentRes = await pool.query('SELECT parent_id, name FROM users WHERE id = $1', [studentId]);
-        if (studentRes.rows.length > 0 && studentRes.rows[0].parent_id && (status === 'absent' || status === 'leave')) {
+        if (studentRes.rows.length > 0 && (status === 'absent' || status === 'leave')) {
             const student = studentRes.rows[0];
             const statusLabel = status === 'absent' ? 'ABSENT 🔴' : 'on LEAVE 📋';
+            // Notify parent
+            if (student.parent_id) {
+                await pool.query(
+                    `INSERT INTO notifications (recipient_id, title, message, type, link)
+                     VALUES ($1, $2, $3, 'warning', '/parent/attendance')`,
+                    [student.parent_id, 'Attendance Alert', `⚠️ ${student.name} was marked ${statusLabel} today.`]
+                );
+            }
+            // Notify student
             await pool.query(
-                `INSERT INTO notifications (recipient_id, title, message, type)
-                 VALUES ($1, $2, $3, 'info')`,
-                [student.parent_id, 'Attendance Alert', `⚠️ Attendance Alert: ${student.name} was marked ${statusLabel} today.`]
+                `INSERT INTO notifications (recipient_id, title, message, type, link)
+                 VALUES ($1, $2, $3, 'warning', '/student/attendance')`,
+                [studentId, 'Attendance Marked', `⚠️ You were marked ${statusLabel} today.`]
             );
         }
 

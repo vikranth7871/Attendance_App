@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Mail, BookOpen, Shield, Activity, Calendar as CalendarIcon, User as UserIcon, Check, X as XIcon, ChevronLeft, ChevronRight, X, Settings } from 'lucide-react';
+import { ArrowLeft, Mail, BookOpen, Shield, Activity, Calendar as CalendarIcon, User as UserIcon, Check, X as XIcon, ChevronLeft, ChevronRight, X, Settings, ShieldCheck } from 'lucide-react';
 import axios from 'axios';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameMonth, isSameDay, addDays } from 'date-fns';
 
@@ -27,7 +27,7 @@ const ALL_SYSTEM_PERMISSIONS = [
  * @param {Object} props.user - The user object to view/edit
  * @param {Function} props.onBack - Callback function for going back
  */
-const UserProfileView = ({ user, onBack }) => {
+const UserProfileView = ({ user, onBack, initialEditMode = false }) => {
     const [profileData, setProfileData] = useState(null);
     const [stats, setStats] = useState(null);
     const [subjects, setSubjects] = useState([]);
@@ -48,7 +48,7 @@ const UserProfileView = ({ user, onBack }) => {
     const [editingAllocation, setEditingAllocation] = useState(null);
     const [updatingParams, setUpdatingParams] = useState(false);
     const [activeTab, setActiveTab] = useState('profile'); // profile, attendance, permissions, settings
-    const [editMode, setEditMode] = useState(false);
+    const [editMode, setEditMode] = useState(initialEditMode);
     const [editForm, setEditForm] = useState({
         name: user.name || '',
         email: user.email || '',
@@ -537,7 +537,7 @@ const UserProfileView = ({ user, onBack }) => {
                                     background: 'linear-gradient(135deg, #ec4899, #8b5cf6)',
                                     color: 'white'
                                 }}>
-                                    ⭐ Class Coordinator
+                                    <ShieldCheck size={14} /> Class Coordinator
                                 </span>
                             )}
                         </div>
@@ -642,8 +642,8 @@ const UserProfileView = ({ user, onBack }) => {
                                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
                                                                 <div>
                                                                     <span style={{ fontSize: '0.75rem', color: 'var(--text-light)', display: 'block', marginBottom: '0.2rem' }}>Class Coordinator For</span>
-                                                                    <strong style={{ color: '#8b5cf6', fontSize: '0.95rem' }}>
-                                                                        ⭐ {typeof profileData.classCoordinatorFor === 'object'
+                                                                    <strong style={{ color: '#8b5cf6', fontSize: '0.95rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                                                                        <ShieldCheck size={16} /> {typeof profileData.classCoordinatorFor === 'object'
                                                                             ? (profileData.classCoordinatorFor.className || 'Assigned Class')
                                                                             : 'Assigned Class'}
                                                                     </strong>

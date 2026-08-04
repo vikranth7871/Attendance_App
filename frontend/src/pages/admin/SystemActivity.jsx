@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Activity, Users, BookOpen, Clock, ChevronRight, User, Search, Filter, Calendar, GraduationCap, ChevronLeft, ArrowRight, CheckCircle, AlertCircle, Info } from 'lucide-react';
+import { Activity, Users, BookOpen, Clock, ChevronRight, User, Search, Filter, Calendar, GraduationCap, ChevronLeft, ArrowRight, CheckCircle, AlertCircle, Info, ShieldCheck } from 'lucide-react';
 
 const SystemActivity = () => {
     // Explorer State
@@ -126,7 +126,13 @@ const SystemActivity = () => {
                     <div>
                         <h2 style={{ fontSize: '1.5rem', fontWeight: '800' }}>{selectedUser.name}</h2>
                         <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                            {selectedUser.role.toUpperCase()} | {selectedUser.department?.departmentName} {selectedUser.class && `| ${selectedUser.class.className}`}
+                            {selectedUser.role.toUpperCase()} | {selectedUser.department?.departmentName || selectedUser.departmentId?.departmentName || 'Department'}
+                            {selectedUser.class && ` | ${selectedUser.class.className}`}
+                            {(selectedUser.coordinatorClassName || selectedUser.classCoordinatorFor?.className) && (
+                                <span style={{ color: 'var(--brand-primary)', fontWeight: '700', marginLeft: '0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                                    | <ShieldCheck size={14} /> Class Coordinator for {selectedUser.coordinatorClassName || selectedUser.classCoordinatorFor?.className}
+                                </span>
+                            )}
                         </p>
                     </div>
                 </div>
@@ -158,6 +164,14 @@ const SystemActivity = () => {
                                 <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Assigned Subjects</div>
                                 <div style={{ fontSize: '1.5rem', fontWeight: '800' }}>{userSubjects?.length || 0}</div>
                             </div>
+                            {(selectedUser.coordinatorClassName || selectedUser.classCoordinatorFor?.className) && (
+                                <div className="glass-panel" style={{ padding: '1.5rem', background: 'rgba(79, 70, 229, 0.08)', border: '1px solid rgba(79, 70, 229, 0.2)' }}>
+                                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Class Coordinator Role</div>
+                                    <div style={{ fontSize: '1.2rem', fontWeight: '800', color: 'var(--brand-primary)', marginTop: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                        <ShieldCheck size={18} /> {selectedUser.coordinatorClassName || selectedUser.classCoordinatorFor?.className}
+                                    </div>
+                                </div>
+                            )}
                         </>
                     )}
                 </div>
@@ -395,7 +409,25 @@ const SystemActivity = () => {
                                     <User size={20} />
                                 </div>
                                 <div style={{ flex: 1 }}>
-                                    <div style={{ fontWeight: '700', fontSize: '0.95rem' }}>{u.name}</div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                        <span style={{ fontWeight: '700', fontSize: '0.95rem' }}>{u.name}</span>
+                                        {(u.coordinatorClassName || u.classCoordinatorFor?.className || u.class_coordinator_for) && (
+                                            <span style={{
+                                                background: 'rgba(79, 70, 229, 0.15)',
+                                                color: 'var(--brand-primary)',
+                                                border: '1px solid rgba(79, 70, 229, 0.3)',
+                                                padding: '0.15rem 0.5rem',
+                                                borderRadius: '1rem',
+                                                fontSize: '0.7rem',
+                                                fontWeight: '700',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '0.2rem'
+                                            }}>
+                                                <ShieldCheck size={12} /> Coordinator ({u.coordinatorClassName || u.classCoordinatorFor?.className || 'Assigned Class'})
+                                            </span>
+                                        )}
+                                    </div>
                                     <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{u.email}</div>
                                 </div>
                                 <ChevronRight size={18} style={{ opacity: 0.3 }} />

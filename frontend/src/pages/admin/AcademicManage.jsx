@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { motion } from 'framer-motion';
-import { Plus, Trash2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Plus, Trash2, Pencil, X, Save } from 'lucide-react';
 
 const AcademicManage = () => {
     const [departments, setDepartments] = useState([]);
@@ -9,6 +9,10 @@ const AcademicManage = () => {
 
     const [newDept, setNewDept] = useState('');
     const [newClass, setNewClass] = useState({ className: '', departmentId: '', year: new Date().getFullYear() });
+
+    // Edit modal state
+    const [editingClass, setEditingClass] = useState(null);
+    const [editForm, setEditForm] = useState({ className: '', departmentId: '', year: '' });
 
     useEffect(() => {
         fetchData();
@@ -46,6 +50,28 @@ const AcademicManage = () => {
             fetchData();
         } catch (err) {
             alert('Error creating class: ' + (err.response?.data?.message || err.message));
+        }
+    };
+
+    const handleOpenEditClass = (c) => {
+        const deptId = c.departmentId?._id || c.departmentId?.id || c.departmentId || '';
+        setEditingClass(c);
+        setEditForm({
+            className: c.className || c.name || '',
+            departmentId: String(deptId),
+            year: c.academicYear || c.year || new Date().getFullYear()
+        });
+    };
+
+    const handleUpdateClass = async (e) => {
+        e.preventDefault();
+        if (!editingClass) return;
+        try {
+            await axios.put(`/admin/class/${editingClass._id || editingClass.id}`, editForm);
+            setEditingClass(null);
+            fetchData();
+        } catch (err) {
+            alert('Error updating class: ' + (err.response?.data?.message || err.message));
         }
     };
 
@@ -142,18 +168,30 @@ const AcademicManage = () => {
                         <tbody>
                             {classes.map((c) => (
                                 <tr key={c._id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                    <td style={{ padding: '0.75rem', fontWeight: '500' }}>{c.className}</td>
-                                    <td style={{ padding: '0.75rem' }}>{c.departmentId?.departmentName || 'N/A'}</td>
-                                    <td style={{ padding: '0.75rem' }}>{c.year}</td>
+                                    <td style={{ padding: '0.75rem', fontWeight: '500' }}>{c.className || c.name}</td>
+                                    <td style={{ padding: '0.75rem' }}>{c.departmentId?.departmentName || c.departmentId?.name || 'N/A'}</td>
+                                    <td style={{ padding: '0.75rem' }}>{c.academicYear || c.year}</td>
                                     <td style={{ padding: '0.75rem', textAlign: 'right' }}>
-                                        <button
-                                            onClick={() => handleDeleteClass(c._id, c.className)}
-                                            style={{ background: 'none', border: 'none', color: 'var(--danger-color)', cursor: 'pointer', opacity: 0.6, transition: 'opacity 0.2s' }}
-                                            onMouseEnter={e => e.currentTarget.style.opacity = 1}
-                                            onMouseLeave={e => e.currentTarget.style.opacity = 0.6}
-                                        >
-                                            <Trash2 size={18} />
-                                        </button>
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', alignItems: 'center' }}>
+                                            <button
+                                                onClick={() => handleOpenEditClass(c)}
+                                                title="Edit Class"
+                                                style={{ background: 'none', border: 'none', color: 'var(--brand-primary)', cursor: 'pointer', opacity: 0.8, transition: 'opacity 0.2s' }}
+                                                onMouseEnter={e => e.currentTarget.style.opacity = 1}
+                                                onMouseLeave={e => e.currentTarget.style.opacity = 0.8}
+                                            >
+                                                <Pencil size={18} />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeleteClass(c._id, c.className || c.name)}
+                                                title="Delete Class"
+                                                style={{ background: 'none', border: 'none', color: 'var(--danger-color)', cursor: 'pointer', opacity: 0.6, transition: 'opacity 0.2s' }}
+                                                onMouseEnter={e => e.currentTarget.style.opacity = 1}
+                                                onMouseLeave={e => e.currentTarget.style.opacity = 0.6}
+                                            >
+                                                <Trash2 size={18} />
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
@@ -165,7 +203,109 @@ const AcademicManage = () => {
                 </div>
             </motion.div>
 
-        </div >
+            {/* ── Edit Class Modal ── */}
+            <AnimatePresence>
+                {editingClass && (
+                    <div style={{
+                        position: 'fixed', inset: 0, zIndex: 9998,
+                        background: 'rgba(0, 0, 0, 0.6)', backdropFilter: 'blur(5px)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                    }}>
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.94 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.94 }}
+                            style={{
+                                width: 'min(480px, 92vw)',
+                                background: 'var(--bg-primary)',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: '16px',
+                                padding: '1.75rem',
+                                boxShadow: '0 20px 50px rgba(0,0,0,0.4)',
+                                display: 'flex', flexDirection: 'column', gap: '1.25rem'
+                            }}
+                        >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: '700', color: 'var(--text-primary)' }}>
+                                    Edit Class Details
+                                </h3>
+                                <button
+                                    onClick={() => setEditingClass(null)}
+                                    style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            <form onSubmit={handleUpdateClass} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.825rem', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontWeight: '600' }}>
+                                        Class Name (e.g. CS101-A)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        className="input-field"
+                                        value={editForm.className}
+                                        onChange={e => setEditForm({ ...editForm, className: e.target.value })}
+                                        required
+                                        placeholder="Name & Section"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.825rem', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontWeight: '600' }}>
+                                        Department
+                                    </label>
+                                    <select
+                                        className="input-field"
+                                        value={editForm.departmentId}
+                                        onChange={e => setEditForm({ ...editForm, departmentId: e.target.value })}
+                                        required
+                                    >
+                                        <option value="">Select Department</option>
+                                        {departments.map(d => (
+                                            <option key={d._id} value={d._id}>{d.departmentName}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.825rem', marginBottom: '0.4rem', color: 'var(--text-secondary)', fontWeight: '600' }}>
+                                        Academic Year
+                                    </label>
+                                    <input
+                                        type="number"
+                                        className="input-field"
+                                        value={editForm.year}
+                                        onChange={e => setEditForm({ ...editForm, year: parseInt(e.target.value) || '' })}
+                                        required
+                                    />
+                                </div>
+
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+                                    <button
+                                        type="button"
+                                        className="btn"
+                                        onClick={() => setEditingClass(null)}
+                                        style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        className="btn btn-primary"
+                                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                                    >
+                                        <Save size={16} /> Save Changes
+                                    </button>
+                                </div>
+                            </form>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+        </div>
     );
 };
 

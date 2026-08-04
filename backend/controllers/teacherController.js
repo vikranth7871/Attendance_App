@@ -522,10 +522,19 @@ export const gradeAssignmentSubmission = async (req, res) => {
         }
 
         try {
+            // Notify student
+            const studentInfo = await pool.query('SELECT parent_id FROM users WHERE id = $1', [studentId]);
             await pool.query(`
                 INSERT INTO notifications (recipient_id, title, message, type, link)
                 VALUES ($1, '📝 Homework Graded', $2, 'success', '/student/assignments')
-            `, [studentId, `Your homework submission has been evaluated: ${grade || 'Graded'}`]);
+            `, [studentId, `Your homework submission has been graded: ${grade || 'Graded'}`]);
+            // Notify parent if linked
+            if (studentInfo.rows[0]?.parent_id) {
+                await pool.query(`
+                    INSERT INTO notifications (recipient_id, title, message, type, link)
+                    VALUES ($1, '📝 Homework Graded', $2, 'success', '/parent/assignments')
+                `, [studentInfo.rows[0].parent_id, `Your child's homework submission has been graded: ${grade || 'Graded'}`]);
+            }
         } catch (e) {
             console.error('Notification insertion error:', e);
         }
@@ -601,7 +610,36 @@ export const createTeacherExam = async (req, res) => {
             RETURNING *
         `, [nameToUse, nameToUse, classId || 1, subjectId || 1, examDate, timeSlot || '10:00 AM - 12:00 PM', roomNumber || 'Lab 301', maxMarks || 100]);
 
-        res.status(201).json(result.rows[0]);
+        const exam = result.rows[0];
+
+        // Notify all students in the class + their parents
+        try {
+            const studentsRes = await pool.query(
+                `SELECT id, name, parent_id FROM users WHERE class_id = $1 AND role = 'student'`,
+                [classId || 1]
+            );
+            const subjectRes = await pool.query('SELECT name FROM subjects WHERE id = $1', [subjectId || 1]);
+            const subjectName = subjectRes.rows[0]?.name || 'Exam';
+            const examDateStr = new Date(examDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+
+            for (const st of studentsRes.rows) {
+                await pool.query(`
+                    INSERT INTO notifications (recipient_id, title, message, type, link)
+                    VALUES ($1, '📅 Exam Scheduled', $2, 'exam', '/student/results')
+                `, [st.id, `${nameToUse} for ${subjectName} scheduled on ${examDateStr} at ${timeSlot || '10:00 AM - 12:00 PM'}, Room ${roomNumber || 'Lab 301'}.`]);
+
+                if (st.parent_id) {
+                    await pool.query(`
+                        INSERT INTO notifications (recipient_id, title, message, type, link)
+                        VALUES ($1, '📅 Exam Scheduled', $2, 'exam', '/parent/results')
+                    `, [st.parent_id, `${nameToUse} for ${subjectName} scheduled on ${examDateStr} at ${timeSlot || '10:00 AM - 12:00 PM'}, Room ${roomNumber || 'Lab 301'}.`]);
+                }
+            }
+        } catch (notifErr) {
+            console.error('Exam schedule notification error:', notifErr.message);
+        }
+
+        res.status(201).json(exam);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -769,8 +807,8 @@ export const replyParentMessage = async (req, res) => {
 
         await pool.query(`
             INSERT INTO notifications (recipient_id, title, message, type, link)
-            VALUES ($1, $2, $3, 'info', '/parent/messages')
-        `, [parseInt(receiverId, 10), '💬 Reply from Teacher', `${teacherName}: "${message.substring(0, 45)}..."`]);
+            VALUES ($1, $2, $3, 'message', '/parent/messages')
+        `, [parseInt(receiverId, 10), '💬 Reply from Teacher', `${teacherName}: "${message.substring(0, 60)}..."`]);
 
         res.status(201).json(newMsg.rows[0]);
     } catch (error) {

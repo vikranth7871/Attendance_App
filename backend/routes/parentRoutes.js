@@ -12,6 +12,7 @@ import {
     getStudentFees,
     getParentMessages,
     sendParentMessage,
+    markMessagesRead,
     updateParentProfile,
     changeParentPassword
 } from '../controllers/parentController.js';
@@ -34,6 +35,7 @@ router.get('/student-results', getStudentResults);
 router.get('/student-fees', getStudentFees);
 router.get('/messages', getParentMessages);
 router.post('/messages', sendParentMessage);
+router.put('/messages/read/:teacherId', markMessagesRead);
 router.put('/profile', updateParentProfile);
 router.put('/change-password', changeParentPassword);
 

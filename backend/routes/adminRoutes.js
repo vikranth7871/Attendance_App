@@ -1,12 +1,12 @@
 import express from 'express';
 import {
     createDepartment, getDepartments, createClass, getClasses,
-    createUser, createUsersBulk, getStudents, getTeachers, getUserDetails, getTimetableByClass, updateStudent, deleteStudent, deleteUser,
-    createSubject, updateSubject, deleteSubject, assignSubject, getTeacherAllocations, assignClassCoordinator, revokeClassCoordinator, assignPermissions, updateUserPermissions, updateUser,
+    createUser, createUsersBulk, getStudents, getTeachers, getUserDetails, getTimetableByClass, getTimetableConflicts, updateStudent, deleteStudent, deleteUser,
+    createSubject, updateSubject, deleteSubject, assignSubject, getTeacherAllocations, assignClassCoordinator, revokeClassCoordinator, getCoordinators, assignPermissions, updateUserPermissions, updateUser,
     enrollSubject, updateEnrolledSubject, removeEnrolledSubject, getSubjects,
     updateSubjectAllocation, deleteSubjectAllocation, getParents, getSystemActivity, getDashboardStats,
     updateAdminProfile, getSystemSettings, updateSystemSettings,
-    deleteDepartment, deleteClass, getTeacherAttendance, markTeacherAttendance
+    deleteDepartment, deleteClass, updateClass, getTeacherAttendance, markTeacherAttendance, exportTeacherAttendanceReport
 } from '../controllers/adminController.js';
 import { protect, authorizeRoles } from '../middleware/authMiddleware.js';
 
@@ -21,6 +21,8 @@ router.delete('/department/:id', deleteDepartment);
 
 router.post('/create-class', createClass);
 router.get('/classes', getClasses);
+router.put('/class/:id', updateClass);
+router.put('/update-class/:id', updateClass);
 router.delete('/class/:id', deleteClass);
 
 router.post('/create-student', (req, res, next) => { req.body.role = 'student'; next(); }, createUser);
@@ -34,6 +36,7 @@ router.get('/parents', getParents);
 router.get('/user/:id', getUserDetails);
 router.get('/user-details/:id', getUserDetails);
 router.get('/timetable/:classId', getTimetableByClass);
+router.get('/timetable-conflicts', getTimetableConflicts);
 router.get('/subjects', getSubjects);
 
 router.put('/update-student/:id', updateStudent);
@@ -53,7 +56,9 @@ router.get('/teacher-allocations/:teacherId', getTeacherAllocations);
 router.put('/assign-subject/:id', updateSubjectAllocation);
 router.delete('/assign-subject/:id', deleteSubjectAllocation);
 router.post('/assign-class-coordinator', assignClassCoordinator);
+router.get('/coordinators', getCoordinators);
 router.delete('/revoke-coordinator/:teacherId', revokeClassCoordinator);
+router.post('/revoke-class-coordinator', revokeClassCoordinator);
 router.post('/assign-permissions', assignPermissions);
 router.get('/activity', getSystemActivity);
 router.get('/dashboard-stats', getDashboardStats);
@@ -65,6 +70,7 @@ router.get('/settings', getSystemSettings);
 router.put('/settings', updateSystemSettings);
 
 // Teacher Attendance
+router.get('/teacher-attendance/export', exportTeacherAttendanceReport);
 router.get('/teacher-attendance', getTeacherAttendance);
 router.post('/teacher-attendance', markTeacherAttendance);
 

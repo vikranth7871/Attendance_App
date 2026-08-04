@@ -23,6 +23,12 @@ const Assignments = () => {
     const [subjects, setSubjects] = useState([]);
     const [teachers, setTeachers] = useState([]);
     const [bookedFacultySlots, setBookedFacultySlots] = useState([]);
+    const [coordinators, setCoordinators] = useState([]);
+
+    // Coordinator Filter states
+    const [coordFilterDept, setCoordFilterDept] = useState('');
+    const [coordFilterClass, setCoordFilterClass] = useState('');
+    const [coordSearch, setCoordSearch] = useState('');
 
     // Form states
     const [subjectForm, setSubjectForm] = useState({ departmentId: '', classId: '', teacherId: '', subjectId: '', timeSlot: '', roomNumber: '', dayOfWeek: '', startTime: '', endTime: '' });
@@ -38,23 +44,57 @@ const Assignments = () => {
 
     // Fetch existing allocations when teacherId changes to highlight booked slots
     useEffect(() => {
-        if (!subjectForm.teacherId) {
+        if (!subjectForm.classId && !subjectForm.teacherId) {
             setBookedFacultySlots([]);
             return;
         }
-        axios.get(`/admin/teacher-allocations/${subjectForm.teacherId}`)
+        axios.get(`/admin/timetable-conflicts?classId=${subjectForm.classId || ''}&teacherId=${subjectForm.teacherId || ''}`)
             .then(res => setBookedFacultySlots(res.data || []))
             .catch(() => setBookedFacultySlots([]));
-    }, [subjectForm.teacherId]);
+    }, [subjectForm.classId, subjectForm.teacherId]);
 
     const getFacultyBooking = (day, time) => {
-        if (!subjectForm.teacherId || !bookedFacultySlots.length) return null;
-        return bookedFacultySlots.find(alloc => {
-            const matchDay = (alloc.day_of_week || '').toLowerCase() === (day || '').toLowerCase();
-            const allocTime = alloc.time_slot || (alloc.start_time ? `${alloc.start_time} - ${alloc.end_time}` : '');
-            const matchSlot = allocTime.includes(time) || (alloc.start_time && time.includes(alloc.start_time));
-            return matchDay && matchSlot;
+        if (!bookedFacultySlots.length) return null;
+        const matchingAlloc = bookedFacultySlots.find(alloc => {
+            const matchDay = (alloc.day_of_week || '').toLowerCase().trim() === (day || '').toLowerCase().trim();
+            if (!matchDay) return false;
+
+            const targetTime = time.trim().toLowerCase();
+            const allocTimeSlot = (alloc.time_slot || '').trim().toLowerCase();
+            const allocStartTime = (alloc.start_time || '').trim().toLowerCase();
+            const allocEndTime = (alloc.end_time || '').trim().toLowerCase();
+
+            // 1. Exact match on time_slot string (e.g. "10:00 am - 11:00 am")
+            if (allocTimeSlot && allocTimeSlot === targetTime) return true;
+
+            // 2. Exact match on start_time and end_time formatted as "start - end"
+            if (allocStartTime && allocEndTime) {
+                const formattedAlloc = `${allocStartTime} - ${allocEndTime}`;
+                if (formattedAlloc === targetTime) return true;
+            }
+
+            // 3. Exact match on start_time alone matching target start time
+            if (allocStartTime) {
+                const targetStart = targetTime.split('-')[0].trim();
+                if (allocStartTime === targetStart) return true;
+            }
+
+            return false;
         });
+
+        if (!matchingAlloc) return null;
+
+        const isClassConflict = String(matchingAlloc.class_id) === String(subjectForm.classId);
+        const isTeacherConflict = String(matchingAlloc.teacher_id) === String(subjectForm.teacherId);
+
+        let conflictType = 'class';
+        if (isClassConflict && isTeacherConflict) conflictType = 'both';
+        else if (isTeacherConflict) conflictType = 'teacher';
+
+        return {
+            ...matchingAlloc,
+            conflictType
+        };
     };
 
     const isSlotSelected = (day, time) => {
@@ -65,12 +105,15 @@ const Assignments = () => {
         if (!day) return;
         const booking = getFacultyBooking(day, time);
         if (booking) {
-            const selectedTeacher = teachers.find(t => String(t._id || t.id) === String(subjectForm.teacherId));
-            const teacherName = selectedTeacher?.name || 'Selected Faculty';
-            setMessage({
-                type: 'error',
-                text: `⚠️ Faculty Conflict: ${teacherName} is ALREADY booked on ${day} (${time}) for ${booking.subject_name || 'Subject'} (${booking.class_name || 'Class'}).`
-            });
+            let conflictMsg = '';
+            if (booking.conflictType === 'class') {
+                conflictMsg = `⚠️ Class Slot Occupied: This class already has ${booking.subject_name || 'a subject'} (${booking.teacher_name || 'Faculty'}) scheduled on ${day} (${time}).`;
+            } else if (booking.conflictType === 'teacher') {
+                conflictMsg = `⚠️ Faculty Conflict: ${booking.teacher_name || 'Selected Faculty'} is already teaching ${booking.subject_name || 'Subject'} (${booking.class_name || 'Class'}) on ${day} (${time}).`;
+            } else {
+                conflictMsg = `⚠️ Already Assigned: ${booking.subject_name || 'Subject'} is already allocated for ${day} (${time}).`;
+            }
+            setMessage({ type: 'error', text: conflictMsg });
             return;
         }
 
@@ -128,6 +171,7 @@ const Assignments = () => {
 
     useEffect(() => {
         fetchInitialData();
+        fetchCoordinators();
     }, []);
 
     const fetchInitialData = async () => {
@@ -143,6 +187,15 @@ const Assignments = () => {
         } catch (error) {
             console.error("Failed to fetch initial data", error);
             setFetchError(error.response?.data?.message || error.message || "Failed to load data");
+        }
+    };
+
+    const fetchCoordinators = async () => {
+        try {
+            const res = await axios.get('/admin/coordinators');
+            setCoordinators(res.data || []);
+        } catch (error) {
+            console.error("Failed to fetch coordinators", error);
         }
     };
 
@@ -178,8 +231,12 @@ const Assignments = () => {
         try {
             await axios.post('/admin/assign-subject', payload);
             setMessage({ type: 'success', text: `Successfully assigned subject for ${selectedSlots.length} schedule slot(s)!` });
-            setSubjectForm({ ...subjectForm, subjectId: '', teacherId: '' }); // keep dept/class
+            setSubjectForm(prev => ({ ...prev, subjectId: '', teacherId: '', roomNumber: '' }));
             setSelectedSlots([]);
+            if (subjectForm.classId || subjectForm.teacherId) {
+                const conflictRes = await axios.get(`/admin/timetable-conflicts?classId=${subjectForm.classId || ''}&teacherId=${subjectForm.teacherId || ''}`);
+                setBookedFacultySlots(conflictRes.data || []);
+            }
         } catch (error) {
             setMessage({ type: 'error', text: error.response?.data?.message || 'Failed to assign subject' });
         } finally {
@@ -195,12 +252,41 @@ const Assignments = () => {
             await axios.post('/admin/assign-class-coordinator', coordinatorForm);
             setMessage({ type: 'success', text: 'Class Coordinator appointed successfully!' });
             setCoordinatorForm({ ...coordinatorForm, teacherId: '' });
+            fetchCoordinators();
+            fetchInitialData();
         } catch (error) {
             setMessage({ type: 'error', text: error.response?.data?.message || 'Failed to appoint coordinator' });
         } finally {
             setLoading(false);
         }
     };
+
+    const handleRevokeCoordinator = async (teacherId, teacherName, className) => {
+        if (!window.confirm(`Are you sure you want to revoke ${teacherName} as Class Coordinator for ${className}?`)) return;
+        setLoading(true);
+        try {
+            await axios.post('/admin/revoke-class-coordinator', { teacherId });
+            setMessage({ type: 'success', text: `Successfully revoked ${teacherName}'s coordinator status for ${className}.` });
+            fetchCoordinators();
+            fetchInitialData();
+        } catch (error) {
+            setMessage({ type: 'error', text: error.response?.data?.message || 'Failed to revoke coordinator' });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const filteredCoordinators = coordinators.filter(c => {
+        const matchSearch = !coordSearch || 
+            (c.teacher_name || '').toLowerCase().includes(coordSearch.toLowerCase()) ||
+            (c.teacher_email || '').toLowerCase().includes(coordSearch.toLowerCase()) ||
+            (c.class_name || '').toLowerCase().includes(coordSearch.toLowerCase());
+        
+        const matchDept = !coordFilterDept || String(c.department_id) === String(coordFilterDept);
+        const matchClass = !coordFilterClass || String(c.class_id) === String(coordFilterClass);
+
+        return matchSearch && matchDept && matchClass;
+    });
 
     return (
         <div className="animate-fade-in" style={{ padding: '2rem', maxWidth: '1000px', margin: '0 auto' }}>
@@ -395,9 +481,22 @@ const Assignments = () => {
                                     </FormGroup>
                                 </div>
 
+                                {/* Section 2: Teacher Assignment */}
+                                <FormGroup label="Faculty Assignment" icon={<UserCheck size={16} />}>
+                                    <select
+                                        className="form-input" required
+                                        value={subjectForm.teacherId}
+                                        onChange={(e) => setSubjectForm({ ...subjectForm, teacherId: e.target.value })}
+                                        style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '0.75rem', padding: '0.8rem 1rem' }}
+                                    >
+                                        <option value="">Select Faculty Member</option>
+                                        {teachers.map(t => <option key={t._id} value={t._id}>{t.name} ({t.email})</option>)}
+                                    </select>
+                                </FormGroup>
+
                                 <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)', margin: '0.5rem 0' }} />
 
-                                {/* Section 2: Schedule Picker */}
+                                {/* Section 3: Schedule Picker */}
                                 <div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
                                         <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
@@ -501,6 +600,19 @@ const Assignments = () => {
                                             >
                                                 Copy {activeDay} Slots to Everyday
                                             </button>
+
+                                            {/* Schedule Status Legend */}
+                                            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center', fontSize: '0.8rem', color: 'var(--text-secondary)', padding: '0.5rem 0.75rem', background: 'var(--bg-primary)', borderRadius: '0.5rem', border: '1px solid var(--border-color)' }}>
+                                                <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontWeight: '600' }}>
+                                                    <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--brand-primary)' }}></span> Selected
+                                                </span>
+                                                <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontWeight: '600', color: '#ef4444' }}>
+                                                    <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#ef4444' }}></span> Class Occupied
+                                                </span>
+                                                <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontWeight: '600', color: '#f59e0b' }}>
+                                                    <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#f59e0b' }}></span> Faculty Busy
+                                                </span>
+                                            </div>
                                         </div>
 
                                         {/* Time Grid */}
@@ -509,9 +621,37 @@ const Assignments = () => {
                                                 const selected = isSlotSelected(activeDay, time);
                                                 const booking = getFacultyBooking(activeDay, time);
 
-                                                const borderColor = booking ? 'rgba(239,68,68,0.5)' : (selected ? 'var(--brand-primary)' : 'var(--border-color)');
-                                                const bg = booking ? 'rgba(239,68,68,0.08)' : (selected ? 'rgba(79, 70, 229, 0.12)' : 'var(--bg-primary)');
-                                                const textColor = booking ? '#dc2626' : (selected ? 'var(--brand-primary)' : 'var(--text-secondary)');
+                                                let borderColor = selected ? 'var(--brand-primary)' : 'var(--border-color)';
+                                                let bg = selected ? 'rgba(79, 70, 229, 0.12)' : 'var(--bg-primary)';
+                                                let textColor = selected ? 'var(--brand-primary)' : 'var(--text-secondary)';
+                                                let badgeText = '';
+                                                let badgeBg = 'rgba(239,68,68,0.2)';
+                                                let badgeColor = '#dc2626';
+
+                                                if (booking) {
+                                                    if (booking.conflictType === 'class') {
+                                                        badgeText = 'CLASS BOOKED';
+                                                        borderColor = 'rgba(239,68,68,0.6)';
+                                                        bg = 'rgba(239,68,68,0.08)';
+                                                        textColor = '#dc2626';
+                                                        badgeBg = 'rgba(239,68,68,0.2)';
+                                                        badgeColor = '#dc2626';
+                                                    } else if (booking.conflictType === 'teacher') {
+                                                        badgeText = 'FACULTY BUSY';
+                                                        borderColor = 'rgba(245, 158, 11, 0.6)';
+                                                        bg = 'rgba(245, 158, 11, 0.08)';
+                                                        textColor = '#d97706';
+                                                        badgeBg = 'rgba(245, 158, 11, 0.2)';
+                                                        badgeColor = '#b45309';
+                                                    } else {
+                                                        badgeText = 'SLOT OCCUPIED';
+                                                        borderColor = 'rgba(239,68,68,0.6)';
+                                                        bg = 'rgba(239,68,68,0.08)';
+                                                        textColor = '#dc2626';
+                                                        badgeBg = 'rgba(239,68,68,0.2)';
+                                                        badgeColor = '#dc2626';
+                                                    }
+                                                }
 
                                                 return (
                                                     <motion.button
@@ -528,7 +668,7 @@ const Assignments = () => {
                                                             color: textColor,
                                                             fontWeight: selected || booking ? '700' : '500',
                                                             fontSize: '0.85rem',
-                                                            cursor: 'pointer',
+                                                            cursor: booking ? 'not-allowed' : 'pointer',
                                                             display: 'flex',
                                                             flexDirection: 'column',
                                                             alignItems: 'flex-start',
@@ -542,8 +682,8 @@ const Assignments = () => {
                                                                 {time}
                                                             </div>
                                                             {booking ? (
-                                                                <span style={{ fontSize: '0.68rem', fontWeight: '800', background: 'rgba(239,68,68,0.2)', color: '#dc2626', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>
-                                                                    BOOKED
+                                                                <span style={{ fontSize: '0.62rem', fontWeight: '800', background: badgeBg, color: badgeColor, padding: '0.12rem 0.4rem', borderRadius: '4px', textTransform: 'uppercase' }}>
+                                                                    {badgeText}
                                                                 </span>
                                                             ) : selected ? (
                                                                 <Check size={16} color="var(--brand-primary)" />
@@ -553,8 +693,14 @@ const Assignments = () => {
                                                         </div>
 
                                                         {booking && (
-                                                            <div style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: '600', textAlign: 'left' }}>
-                                                                ⚠️ {booking.subject_name || 'Subject'} ({booking.class_name || 'Class'})
+                                                            <div style={{ fontSize: '0.72rem', color: badgeColor, fontWeight: '600', textAlign: 'left', marginTop: '0.1rem' }}>
+                                                                {booking.conflictType === 'class' ? (
+                                                                    <>⚠️ {booking.subject_name || 'Subject'} ({booking.teacher_name || 'Faculty'})</>
+                                                                ) : booking.conflictType === 'teacher' ? (
+                                                                    <>⚠️ {booking.subject_name || 'Subject'} ({booking.class_name || 'Class'})</>
+                                                                ) : (
+                                                                    <>⚠️ {booking.subject_name || 'Subject'}</>
+                                                                )}
                                                             </div>
                                                         )}
                                                     </motion.button>
@@ -615,21 +761,6 @@ const Assignments = () => {
                                         </AnimatePresence>
                                     </div>
                                 </div>
-
-                                <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)', margin: '0.5rem 0' }} />
-
-                                {/* Section 3: Teacher Assignment */}
-                                <FormGroup label="Faculty Assignment" icon={<UserCheck size={16} />}>
-                                    <select
-                                        className="form-input" required
-                                        value={subjectForm.teacherId}
-                                        onChange={(e) => setSubjectForm({ ...subjectForm, teacherId: e.target.value })}
-                                        style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '0.75rem', padding: '0.8rem 1rem' }}
-                                    >
-                                        <option value="">Select Faculty Member</option>
-                                        {teachers.map(t => <option key={t._id} value={t._id}>{t.name} ({t.email})</option>)}
-                                    </select>
-                                </FormGroup>
 
                                 <motion.button
                                     type="submit"
@@ -749,6 +880,128 @@ const Assignments = () => {
                                     {loading ? 'Appointing...' : <><UserCheck size={22} /> Appoint Coordinator</>}
                                 </motion.button>
                             </form>
+
+                            {/* Active Coordinators Directory */}
+                            <div style={{ marginTop: '3.5rem', paddingTop: '2.5rem', borderTop: '1px solid var(--border-color)' }}>
+                                <div style={{ marginBottom: '1.5rem' }}>
+                                    <h3 style={{ fontSize: '1.4rem', fontWeight: '700', color: 'var(--text-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <UserCheck size={22} color="var(--brand-primary)" /> Active Class Coordinators ({filteredCoordinators.length})
+                                    </h3>
+                                    <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', margin: '0.3rem 0 0 0' }}>
+                                        Overview of faculty members appointed to manage specific classes.
+                                    </p>
+                                </div>
+
+                                {/* Filter Toolbar */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem', background: 'var(--bg-secondary)', padding: '1rem', borderRadius: '0.75rem', border: '1px solid var(--border-color)' }}>
+                                    {/* Search */}
+                                    <input
+                                        type="text"
+                                        className="form-input"
+                                        placeholder="Search Faculty / Email / Class..."
+                                        value={coordSearch}
+                                        onChange={e => setCoordSearch(e.target.value)}
+                                        style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', padding: '0.6rem 0.8rem', fontSize: '0.85rem' }}
+                                    />
+
+                                    {/* Dept Filter */}
+                                    <select
+                                        className="form-input"
+                                        value={coordFilterDept}
+                                        onChange={e => { setCoordFilterDept(e.target.value); setCoordFilterClass(''); }}
+                                        style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', padding: '0.6rem 0.8rem', fontSize: '0.85rem' }}
+                                    >
+                                        <option value="">All Departments</option>
+                                        {departments.map(d => (
+                                            <option key={d._id || d.id} value={d._id || d.id}>{d.departmentName || d.name}</option>
+                                        ))}
+                                    </select>
+
+                                    {/* Class Filter */}
+                                    <select
+                                        className="form-input"
+                                        value={coordFilterClass}
+                                        onChange={e => setCoordFilterClass(e.target.value)}
+                                        style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', padding: '0.6rem 0.8rem', fontSize: '0.85rem' }}
+                                    >
+                                        <option value="">All Classes</option>
+                                        {classes
+                                            .filter(c => !coordFilterDept || String(c.departmentId?._id || c.departmentId) === String(coordFilterDept))
+                                            .map(c => (
+                                                <option key={c._id || c.id} value={c._id || c.id}>{c.className || c.name}</option>
+                                            ))}
+                                    </select>
+
+                                    {/* Reset button */}
+                                    {(coordFilterDept || coordFilterClass || coordSearch) && (
+                                        <button
+                                            type="button"
+                                            onClick={() => { setCoordFilterDept(''); setCoordFilterClass(''); setCoordSearch(''); }}
+                                            style={{ fontSize: '0.8rem', background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '0.5rem', color: 'var(--text-secondary)', cursor: 'pointer', fontWeight: '600' }}
+                                        >
+                                            Reset Filters
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Table */}
+                                <div className="table-responsive" style={{ background: 'var(--bg-secondary)', borderRadius: '0.75rem', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+                                        <thead>
+                                            <tr style={{ borderBottom: '2px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-secondary)' }}>
+                                                <th style={{ padding: '1rem 1.2rem' }}>Faculty Member</th>
+                                                <th style={{ padding: '1rem 1.2rem' }}>Department</th>
+                                                <th style={{ padding: '1rem 1.2rem' }}>Coordinating Class</th>
+                                                <th style={{ padding: '1rem 1.2rem', textAlign: 'right' }}>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {filteredCoordinators.map(c => (
+                                                <tr key={c.teacher_id} style={{ borderBottom: '1px solid var(--border-color)', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-primary)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                                                    <td style={{ padding: '1rem 1.2rem', fontWeight: '600', color: 'var(--text-primary)' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                                            <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg, var(--brand-primary), #6366f1)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '0.9rem' }}>
+                                                                {c.teacher_name ? c.teacher_name.charAt(0).toUpperCase() : 'T'}
+                                                            </div>
+                                                            <div>
+                                                                <div style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{c.teacher_name}</div>
+                                                                <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{c.teacher_email}</div>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ padding: '1rem 1.2rem' }}>
+                                                        <span style={{ padding: '0.3rem 0.65rem', borderRadius: '6px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', fontSize: '0.8rem', fontWeight: '600' }}>
+                                                            {c.department_name || '-'}
+                                                        </span>
+                                                    </td>
+                                                    <td style={{ padding: '1rem 1.2rem' }}>
+                                                        <span style={{ padding: '0.35rem 0.75rem', borderRadius: '2rem', background: 'rgba(79, 70, 229, 0.15)', color: 'var(--brand-primary)', border: '1px solid rgba(79, 70, 229, 0.3)', fontSize: '0.82rem', fontWeight: '700' }}>
+                                                            🏫 {c.class_name}
+                                                        </span>
+                                                    </td>
+                                                    <td style={{ padding: '1rem 1.2rem', textAlign: 'right' }}>
+                                                        <button
+                                                            className="btn"
+                                                            style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem', background: 'rgba(239, 68, 68, 0.15)', color: '#dc2626', border: '1px solid rgba(239, 68, 68, 0.3)', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '0.35rem', borderRadius: '6px', cursor: 'pointer' }}
+                                                            onClick={() => handleRevokeCoordinator(c.teacher_id, c.teacher_name, c.class_name)}
+                                                            title="Revoke Coordinator Status"
+                                                        >
+                                                            <X size={14} /> Revoke
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                            {filteredCoordinators.length === 0 && (
+                                                <tr>
+                                                    <td colSpan="4" style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                                        No active class coordinators found matching your filters.
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
                         </motion.div>
                     )}
                 </AnimatePresence>

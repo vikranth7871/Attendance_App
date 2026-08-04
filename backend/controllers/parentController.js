@@ -476,6 +476,7 @@ export const getStudentFees = async (req, res) => {
 export const getParentMessages = async (req, res) => {
     try {
         const parentId = req.user.id || req.user._id;
+        const { studentId } = req.query;
 
         // Fetch messages
         const msgsRes = await pool.query(`
@@ -487,10 +488,59 @@ export const getParentMessages = async (req, res) => {
             ORDER BY m.created_at ASC
         `, [parentId]);
 
-        // Fetch available teachers
-        const teachersRes = await pool.query(`
-            SELECT id, name, email FROM users WHERE role = 'teacher' ORDER BY name ASC
-        `);
+        // Determine target student's class_id
+        let targetClassId = null;
+
+        if (studentId) {
+            // Use the provided studentId to get their class
+            const studentRes = await pool.query(
+                `SELECT class_id FROM users WHERE id = $1 AND role = 'student'`,
+                [parseInt(studentId, 10)]
+            );
+            if (studentRes.rows.length > 0) {
+                targetClassId = studentRes.rows[0].class_id;
+            }
+        }
+
+        if (!targetClassId) {
+            // Fall back to first child of this parent (parent_id = parentId in users table)
+            const childRes = await pool.query(
+                `SELECT class_id FROM users WHERE parent_id = $1 AND role = 'student' ORDER BY id ASC LIMIT 1`,
+                [parentId]
+            );
+            if (childRes.rows.length > 0) {
+                targetClassId = childRes.rows[0].class_id;
+            }
+        }
+
+        let teachersRes;
+        if (targetClassId) {
+            // Return only teachers who teach subjects for this class, with subject details
+            teachersRes = await pool.query(`
+                SELECT DISTINCT
+                    u.id,
+                    u.name,
+                    u.email,
+                    STRING_AGG(
+                        DISTINCT sub.name || COALESCE(' (' || sub.code || ')', ''),
+                        ', '
+                        ORDER BY sub.name || COALESCE(' (' || sub.code || ')', '')
+                    ) AS subjects
+                FROM users u
+                JOIN subject_allocations sa ON sa.teacher_id = u.id
+                JOIN subjects sub ON sa.subject_id = sub.id
+                WHERE u.role = 'teacher'
+                  AND sa.class_id = $1
+                GROUP BY u.id, u.name, u.email
+                ORDER BY u.name ASC
+            `, [targetClassId]);
+        } else {
+            // Fallback: all teachers (no child linked)
+            teachersRes = await pool.query(`
+                SELECT id, name, email, NULL as subjects
+                FROM users WHERE role = 'teacher' ORDER BY name ASC
+            `);
+        }
 
         res.json({
             messages: msgsRes.rows,
@@ -500,6 +550,9 @@ export const getParentMessages = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 };
+
+
+
 
 export const sendParentMessage = async (req, res) => {
     try {
@@ -524,12 +577,33 @@ export const sendParentMessage = async (req, res) => {
         // Real-time Notification for Teacher
         await pool.query(`
             INSERT INTO notifications (recipient_id, title, message, type, link)
-            VALUES ($1, $2, $3, 'info', '/teacher/messages')
-        `, [targetTeacherId, '💬 New Message from Parent', `Message from ${parentName}: "${message.substring(0, 45)}..."`]);
+            VALUES ($1, $2, $3, 'message', '/teacher/messages')
+        `, [targetTeacherId, '💬 New Message from Parent', `Message from ${parentName}: "${message.substring(0, 60)}..."`]);
 
         res.status(201).json(newMsg.rows[0]);
     } catch (error) {
         console.error('Error sending parent message:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// 11b. PUT /api/parent/messages/read/:teacherId
+export const markMessagesRead = async (req, res) => {
+    try {
+        const parentId = req.user.id || req.user._id;
+        const teacherId = parseInt(req.params.teacherId, 10);
+
+        if (!teacherId) return res.status(400).json({ message: 'teacherId required' });
+
+        // Mark all messages FROM this teacher TO this parent as read
+        await pool.query(
+            `UPDATE parent_messages SET is_read = true
+             WHERE sender_id = $1 AND receiver_id = $2 AND is_read = false`,
+            [teacherId, parentId]
+        );
+
+        res.json({ success: true });
+    } catch (error) {
         res.status(500).json({ message: error.message });
     }
 };

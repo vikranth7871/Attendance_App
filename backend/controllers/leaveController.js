@@ -60,13 +60,14 @@ export const applyLeave = async (req, res) => {
             const admins = await pool.query(`SELECT id FROM users WHERE role = 'admin'`);
             for (const admin of admins.rows) {
                 await pool.query(
-                    `INSERT INTO notifications (recipient_id, title, message, type)
-                     VALUES ($1, $2, $3, $4)`,
+                    `INSERT INTO notifications (recipient_id, title, message, type, link)
+                     VALUES ($1, $2, $3, $4, $5)`,
                     [
                         admin.id,
                         'Teacher Leave Application',
                         `📋 New leave application from Teacher ${req.user.name} (${new Date(startDate).toLocaleDateString()} – ${new Date(endDate).toLocaleDateString()}): "${reason}"`,
-                        'teacher_leave_request'
+                        'teacher_leave_request',
+                        '/admin/teacher-leaves'
                     ]
                 );
             }
@@ -83,13 +84,14 @@ export const applyLeave = async (req, res) => {
             );
             if (coordRes.rows.length > 0) {
                 await pool.query(
-                    `INSERT INTO notifications (recipient_id, title, message, type)
-                     VALUES ($1, $2, $3, $4)`,
+                    `INSERT INTO notifications (recipient_id, title, message, type, link)
+                     VALUES ($1, $2, $3, $4, $5)`,
                     [
                         coordRes.rows[0].id,
                         'Student Leave Request',
                         `📋 New leave request from ${req.user.name} (${new Date(startDate).toLocaleDateString()} – ${new Date(endDate).toLocaleDateString()})`,
-                        'leave_request'
+                        'leave_request',
+                        '/teacher/leaves'
                     ]
                 );
             }
@@ -99,6 +101,43 @@ export const applyLeave = async (req, res) => {
     } catch (error) {
         console.error('Apply leave error:', error);
         res.status(400).json({ message: error.message });
+    }
+};
+
+const formatDocumentUrl = (id, docUrl) => {
+    if (!docUrl) return null;
+    if (docUrl.startsWith('data:')) {
+        return `/api/leave/document/${id}`;
+    }
+    return docUrl;
+};
+
+/**
+ * @desc    Get leave document content by ID
+ * @route   GET /api/leave/document/:id
+ * @access  Private
+ */
+export const getLeaveDocument = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query(`SELECT document_url FROM leave_requests WHERE id = $1`, [id]);
+        if (result.rows.length === 0 || !result.rows[0].document_url) {
+            return res.status(404).json({ message: 'Document not found' });
+        }
+        const docUrl = result.rows[0].document_url;
+        if (docUrl.startsWith('data:')) {
+            const matches = docUrl.match(/^data:(.+?);base64,(.+)$/s);
+            if (matches) {
+                const contentType = matches[1];
+                const buffer = Buffer.from(matches[2], 'base64');
+                res.setHeader('Content-Type', contentType);
+                return res.send(buffer);
+            }
+        }
+        res.redirect(docUrl);
+    } catch (error) {
+        console.error('Error serving leave document:', error);
+        res.status(500).json({ message: 'Failed to retrieve document' });
     }
 };
 
@@ -123,7 +162,7 @@ export const getMyLeaves = async (req, res) => {
             reason: r.reason,
             rejectionReason: r.rejection_reason,
             status: r.status,
-            documentUrl: r.document_url,
+            documentUrl: formatDocumentUrl(r.id, r.document_url),
             createdAt: r.created_at
         }));
         res.json(leaves);
@@ -195,7 +234,7 @@ export const getCoordinatorLeaves = async (req, res) => {
             reason: r.reason,
             rejectionReason: r.rejection_reason,
             status: r.status,
-            documentUrl: r.document_url,
+            documentUrl: formatDocumentUrl(r.id, r.document_url),
             createdAt: r.created_at,
             userId: {
                 _id: String(r.user_id),
@@ -237,7 +276,7 @@ export const getAdminTeacherLeaves = async (req, res) => {
             reason: r.reason,
             rejectionReason: r.rejection_reason,
             status: r.status,
-            documentUrl: r.document_url,
+            documentUrl: formatDocumentUrl(r.id, r.document_url),
             createdAt: r.created_at,
             userId: {
                 _id: String(r.user_id),
@@ -275,15 +314,21 @@ export const approveLeave = async (req, res) => {
 
         const leave = result.rows[0];
 
+        // Determine applicant's role to pick right redirect link
+        const applicantRes = await pool.query('SELECT role FROM users WHERE id = $1', [leave.user_id]);
+        const applicantRole = applicantRes.rows[0]?.role || 'student';
+        const leaveLink = applicantRole === 'teacher' ? '/teacher/leaves' : '/student/leaves';
+
         // Notify applicant
         await pool.query(
-            `INSERT INTO notifications (recipient_id, title, message, type)
-             VALUES ($1, $2, $3, $4)`,
+            `INSERT INTO notifications (recipient_id, title, message, type, link)
+             VALUES ($1, $2, $3, $4, $5)`,
             [
                 leave.user_id,
                 'Leave Approved',
                 `✅ Your leave request (${new Date(leave.start_date).toLocaleDateString()} – ${new Date(leave.end_date).toLocaleDateString()}) has been APPROVED.`,
-                'leave_approved'
+                'leave_approved',
+                leaveLink
             ]
         );
 
@@ -315,15 +360,21 @@ export const rejectLeave = async (req, res) => {
 
         const leave = result.rows[0];
 
+        // Determine applicant's role to pick right redirect link
+        const applicantRes2 = await pool.query('SELECT role FROM users WHERE id = $1', [leave.user_id]);
+        const applicantRole2 = applicantRes2.rows[0]?.role || 'student';
+        const leaveLink2 = applicantRole2 === 'teacher' ? '/teacher/leaves' : '/student/leaves';
+
         // Notify applicant
         await pool.query(
-            `INSERT INTO notifications (recipient_id, title, message, type)
-             VALUES ($1, $2, $3, $4)`,
+            `INSERT INTO notifications (recipient_id, title, message, type, link)
+             VALUES ($1, $2, $3, $4, $5)`,
             [
                 leave.user_id,
                 'Leave Rejected',
                 `❌ Your leave request (${new Date(leave.start_date).toLocaleDateString()} – ${new Date(leave.end_date).toLocaleDateString()}) has been REJECTED. Reason: "${reason || 'Not specified'}"`,
-                'leave_rejected'
+                'leave_rejected',
+                leaveLink2
             ]
         );
 
@@ -355,15 +406,21 @@ export const revokeLeave = async (req, res) => {
 
         const leave = result.rows[0];
 
+        // Determine applicant's role to pick right redirect link
+        const applicantRes3 = await pool.query('SELECT role FROM users WHERE id = $1', [leave.user_id]);
+        const applicantRole3 = applicantRes3.rows[0]?.role || 'student';
+        const leaveLink3 = applicantRole3 === 'teacher' ? '/teacher/leaves' : '/student/leaves';
+
         // Notify applicant
         await pool.query(
-            `INSERT INTO notifications (recipient_id, title, message, type)
-             VALUES ($1, $2, $3, $4)`,
+            `INSERT INTO notifications (recipient_id, title, message, type, link)
+             VALUES ($1, $2, $3, $4, $5)`,
             [
                 leave.user_id,
                 'Leave Revoked',
                 `⚠️ Your approved leave (${new Date(leave.start_date).toLocaleDateString()} – ${new Date(leave.end_date).toLocaleDateString()}) has been REVOKED. Reason: "${reason || 'Revoked by Coordinator'}"`,
-                'leave_revoked'
+                'leave_revoked',
+                leaveLink3
             ]
         );
 

@@ -20,6 +20,22 @@ export const createDepartment = async (req, res) => {
         if (!depName) {
             return res.status(400).json({ message: 'Department name is required' });
         }
+
+        const existing = await pool.query(
+            'SELECT * FROM departments WHERE LOWER(name) = LOWER($1)',
+            [depName.trim()]
+        );
+        if (existing.rows.length > 0) {
+            const d = existing.rows[0];
+            return res.status(200).json({
+                _id: String(d.id),
+                id: d.id,
+                departmentName: d.name,
+                name: d.name,
+                message: 'Department already exists'
+            });
+        }
+
         const result = await pool.query(
             'INSERT INTO departments (name) VALUES ($1) RETURNING *',
             [depName.trim()]
@@ -162,6 +178,42 @@ export const deleteClass = async (req, res) => {
 };
 
 /**
+ * @desc    Update a class
+ * @route   PUT /api/admin/class/:id
+ * @access  Private (Admin)
+ */
+export const updateClass = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { className, name, departmentId, year, academicYear } = req.body;
+        const finalName = className || name;
+        const finalYear = year || academicYear;
+
+        const result = await pool.query(
+            'UPDATE classes SET name = $1, department_id = $2, academic_year = $3 WHERE id = $4 RETURNING *',
+            [finalName, departmentId, String(finalYear || '')]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'Class not found' });
+        }
+
+        const c = result.rows[0];
+        res.json({
+            _id: String(c.id),
+            id: c.id,
+            className: c.name,
+            name: c.name,
+            academicYear: c.academic_year,
+            year: c.academic_year,
+            departmentId: c.department_id
+        });
+    } catch (error) {
+        res.status(400).json({ message: error.message });
+    }
+};
+
+/**
  * @desc    Create a new user (Student/Teacher/Admin)
  * @route   POST /api/admin/user
  * @access  Private (Admin)
@@ -210,7 +262,7 @@ export const createUser = async (req, res) => {
             parentId: finalParentId, parentEmail
         });
 
-        const userRes = user.toObject();
+        const userRes = { ...user };
         delete userRes.password;
         res.status(201).json(userRes);
     } catch (error) {
@@ -340,19 +392,19 @@ export const getTeachers = async (req, res) => {
     try {
         const { departmentId } = req.query;
 
-        if (!departmentId) {
-            // No department filter — return all teachers
-            const teachers = await User.find({ role: 'teacher' }).select('-password').populate('departmentId');
-            return res.json(teachers);
-        }
-
-        // Find teachers who belong to this department OR teach in classes of this department
-        const result = await pool.query(`
-            SELECT DISTINCT u.*, d.name as department_name, d.code as department_code, c.name as class_name
+        let query = `
+            SELECT DISTINCT u.*, d.name as department_name, d.code as department_code, c.name as class_name,
+                   coord_c.id as coord_class_id, coord_c.name as coord_class_name
             FROM users u
             LEFT JOIN departments d ON u.department_id = d.id
             LEFT JOIN classes c ON u.class_id = c.id
+            LEFT JOIN classes coord_c ON u.class_coordinator_for = coord_c.id
             WHERE u.role = 'teacher'
+        `;
+        let params = [];
+
+        if (departmentId) {
+            query += `
               AND (
                 u.department_id = $1
                 OR u.id IN (
@@ -361,9 +413,17 @@ export const getTeachers = async (req, res) => {
                   JOIN classes cls ON sa.class_id = cls.id
                   WHERE cls.department_id = $1
                 )
+                OR u.class_coordinator_for IN (
+                  SELECT id FROM classes WHERE department_id = $1
+                )
               )
-            ORDER BY u.id DESC
-        `, [departmentId]);
+            `;
+            params.push(departmentId);
+        }
+
+        query += ` ORDER BY u.id DESC`;
+
+        const result = await pool.query(query, params);
 
         const teachers = result.rows.map(row => {
             const user = new User(row);
@@ -375,6 +435,16 @@ export const getTeachers = async (req, res) => {
                     departmentName: row.department_name,
                     code: row.department_code
                 };
+            }
+            if (row.class_coordinator_for) {
+                user.class_coordinator_for = row.class_coordinator_for;
+                user.classCoordinatorFor = {
+                    _id: String(row.class_coordinator_for),
+                    id: row.class_coordinator_for,
+                    name: row.coord_class_name,
+                    className: row.coord_class_name
+                };
+                user.coordinatorClassName = row.coord_class_name;
             }
             return user;
         });
@@ -407,10 +477,12 @@ export const getUserDetails = async (req, res) => {
     try {
         const userId = req.params.id;
         const userRes = await pool.query(`
-            SELECT u.*, d.name as department_name, c.name as class_name
+            SELECT u.*, d.name as department_name, c.name as class_name,
+                   coord_c.id as coord_class_id, coord_c.name as coord_class_name
             FROM users u
             LEFT JOIN departments d ON u.department_id = d.id
             LEFT JOIN classes c ON u.class_id = c.id
+            LEFT JOIN classes coord_c ON u.class_coordinator_for = coord_c.id
             WHERE u.id = $1
         `, [userId]);
 
@@ -430,6 +502,13 @@ export const getUserDetails = async (req, res) => {
             section: u.section,
             departmentId: u.department_id ? { _id: String(u.department_id), id: u.department_id, name: u.department_name, departmentName: u.department_name } : null,
             classId: u.class_id ? { _id: String(u.class_id), id: u.class_id, name: u.class_name, className: u.class_name } : null,
+            classCoordinatorFor: u.class_coordinator_for ? {
+                _id: String(u.class_coordinator_for),
+                id: u.class_coordinator_for,
+                name: u.coord_class_name,
+                className: u.coord_class_name
+            } : null,
+            coordinatorClassName: u.coord_class_name || null,
             streakCount: u.streak_count || 0,
             bestStreak: u.best_streak || 0
         };
@@ -566,24 +645,64 @@ export const deleteStudent = deleteUser;
  * @route   POST /api/admin/subject
  * @access  Private (Admin)
  */
+/**
+ * @desc    Create a new subject (supports single or multiple department assignment)
+ * @route   POST /api/admin/subject
+ * @access  Private (Admin)
+ */
 export const createSubject = async (req, res) => {
     try {
-        const { subjectName, departmentId, name } = req.body;
+        const { subjectName, departmentId, departmentIds, name } = req.body;
         const subName = subjectName || name;
         if (!subName) {
             return res.status(400).json({ message: 'Subject name is required' });
         }
-        const result = await pool.query(
-            'INSERT INTO subjects (name, department_id) VALUES ($1, $2) RETURNING *',
-            [subName.trim(), departmentId || null]
-        );
-        const s = result.rows[0];
+
+        let targetDeptIds = [];
+        if (Array.isArray(departmentIds) && departmentIds.length > 0) {
+            targetDeptIds = departmentIds;
+        } else if (departmentId) {
+            targetDeptIds = [departmentId];
+        } else {
+            targetDeptIds = [null];
+        }
+
+        const createdSubjects = [];
+        for (const deptId of targetDeptIds) {
+            const parsedDeptId = deptId ? parseInt(deptId, 10) || deptId : null;
+            let existing;
+            if (parsedDeptId) {
+                existing = await pool.query(
+                    'SELECT * FROM subjects WHERE LOWER(name) = LOWER($1) AND department_id = $2',
+                    [subName.trim(), parsedDeptId]
+                );
+            } else {
+                existing = await pool.query(
+                    'SELECT * FROM subjects WHERE LOWER(name) = LOWER($1) AND department_id IS NULL',
+                    [subName.trim()]
+                );
+            }
+
+            if (existing.rows.length > 0) {
+                createdSubjects.push(existing.rows[0]);
+            } else {
+                const result = await pool.query(
+                    'INSERT INTO subjects (name, department_id) VALUES ($1, $2) RETURNING *',
+                    [subName.trim(), parsedDeptId]
+                );
+                createdSubjects.push(result.rows[0]);
+            }
+        }
+
+        const first = createdSubjects[0];
         res.status(201).json({
-            _id: String(s.id),
-            id: s.id,
-            subjectName: s.name,
-            name: s.name,
-            departmentId: s.department_id
+            _id: String(first.id),
+            id: first.id,
+            subjectName: first.name,
+            name: first.name,
+            departmentId: first.department_id,
+            createdCount: createdSubjects.length,
+            subjects: createdSubjects
         });
     } catch (error) {
         res.status(400).json({ message: error.message });
@@ -591,23 +710,48 @@ export const createSubject = async (req, res) => {
 };
 
 /**
- * @desc    Update subject details
+ * @desc    Update subject details and assigned departments
  * @route   PUT /api/admin/subject/:id
  * @access  Private (Admin)
  */
 export const updateSubject = async (req, res) => {
     try {
         const { id } = req.params;
-        const { subjectName, departmentId, name } = req.body;
+        const { subjectName, departmentId, departmentIds, name } = req.body;
         const subName = subjectName || name;
+
+        const mainDeptId = Array.isArray(departmentIds) && departmentIds.length > 0
+            ? (parseInt(departmentIds[0], 10) || departmentIds[0])
+            : (departmentId ? (parseInt(departmentId, 10) || departmentId) : null);
+
         const result = await pool.query(
-            'UPDATE subjects SET name = COALESCE($1, name), department_id = COALESCE($2, department_id), updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *',
-            [subName || null, departmentId || null, id]
+            'UPDATE subjects SET name = COALESCE($1, name), department_id = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *',
+            [subName ? subName.trim() : null, mainDeptId, id]
         );
         if (result.rows.length === 0) {
             return res.status(404).json({ message: 'Subject not found' });
         }
         const s = result.rows[0];
+
+        // Ensure subject entries exist for all selected departmentIds
+        if (Array.isArray(departmentIds) && departmentIds.length > 1) {
+            for (let i = 1; i < departmentIds.length; i++) {
+                const dId = parseInt(departmentIds[i], 10) || departmentIds[i];
+                if (dId) {
+                    const existCheck = await pool.query(
+                        'SELECT id FROM subjects WHERE LOWER(name) = LOWER($1) AND department_id = $2',
+                        [s.name, dId]
+                    );
+                    if (existCheck.rows.length === 0) {
+                        await pool.query(
+                            'INSERT INTO subjects (name, department_id) VALUES ($1, $2)',
+                            [s.name, dId]
+                        );
+                    }
+                }
+            }
+        }
+
         res.json({
             _id: String(s.id),
             id: s.id,
@@ -621,19 +765,27 @@ export const updateSubject = async (req, res) => {
 };
 
 /**
- * @desc    Delete a subject and its related allocations
+ * @desc    Delete a subject and its related allocations (supports deleting by ID, array of IDs, or subject name)
  * @route   DELETE /api/admin/subject/:id
  * @access  Private (Admin)
  */
 export const deleteSubject = async (req, res) => {
     try {
         const { id } = req.params;
-        const result = await pool.query('DELETE FROM subjects WHERE id = $1 RETURNING *', [id]);
-        if (result.rows.length === 0) {
-            return res.status(404).json({ message: 'Subject not found' });
-        }
+        const { ids, name } = req.body || {};
 
-        await pool.query('DELETE FROM subject_allocations WHERE subject_id = $1', [id]);
+        if (Array.isArray(ids) && ids.length > 0) {
+            const intIds = ids.map(i => parseInt(i, 10)).filter(Boolean);
+            await pool.query('DELETE FROM subjects WHERE id = ANY($1::int[])', [intIds]);
+            await pool.query('DELETE FROM subject_allocations WHERE subject_id = ANY($1::int[])', [intIds]);
+        } else if (name) {
+            await pool.query('DELETE FROM subjects WHERE LOWER(name) = LOWER($1)', [name.trim()]);
+            await pool.query('DELETE FROM subject_allocations WHERE subject_id IN (SELECT id FROM subjects WHERE LOWER(name) = LOWER($1))', [name.trim()]);
+        } else {
+            const intId = parseInt(id, 10) || id;
+            await pool.query('DELETE FROM subjects WHERE id = $1', [intId]);
+            await pool.query('DELETE FROM subject_allocations WHERE subject_id = $1', [intId]);
+        }
 
         res.json({ message: 'Subject deleted successfully' });
     } catch (error) {
@@ -673,6 +825,48 @@ export const getTeacherAllocations = async (req, res) => {
         res.json(result.rows);
     } catch (error) {
         console.error('Error fetching teacher allocations:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+/**
+ * @desc    Get timetable allocations for a class and/or teacher to check slot availability
+ * @route   GET /api/admin/timetable-conflicts
+ * @access  Private (Admin)
+ */
+export const getTimetableConflicts = async (req, res) => {
+    try {
+        const { classId, teacherId } = req.query;
+        if (!classId && !teacherId) {
+            return res.json([]);
+        }
+
+        const whereClauses = [];
+        const params = [];
+        let paramIdx = 1;
+
+        if (classId) {
+            whereClauses.push(`sa.class_id = $${paramIdx++}`);
+            params.push(classId);
+        }
+        if (teacherId) {
+            whereClauses.push(`sa.teacher_id = $${paramIdx++}`);
+            params.push(teacherId);
+        }
+
+        const query = `
+            SELECT sa.*, s.name as subject_name, c.name as class_name, u.name as teacher_name
+            FROM subject_allocations sa
+            LEFT JOIN subjects s ON sa.subject_id = s.id
+            LEFT JOIN classes c ON sa.class_id = c.id
+            LEFT JOIN users u ON sa.teacher_id = u.id
+            WHERE ${whereClauses.join(' OR ')}
+        `;
+
+        const result = await pool.query(query, params);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error fetching timetable conflicts:', error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -801,16 +995,74 @@ export const assignSubject = async (req, res) => {
 export const assignClassCoordinator = async (req, res) => {
     try {
         const { teacherId, classId } = req.body;
+
+        if (!teacherId || !classId) {
+            return res.status(400).json({ message: 'Teacher and Class are required' });
+        }
+
+        // Rule 1: Check if this class ALREADY has a Class Coordinator
+        const classCheck = await pool.query(
+            `SELECT id, name FROM users WHERE class_coordinator_for = $1 AND id != $2 AND role = 'teacher'`,
+            [classId, teacherId]
+        );
+        if (classCheck.rows.length > 0) {
+            const existingCoord = classCheck.rows[0];
+            const classRes = await pool.query(`SELECT name FROM classes WHERE id = $1`, [classId]);
+            const className = classRes.rows[0]?.name || 'this class';
+            return res.status(400).json({
+                message: `⚠️ Class Coordinator Limit: ${className} already has a Class Coordinator (${existingCoord.name}). A class can only have one coordinator.`
+            });
+        }
+
+        // Rule 2: Check if this teacher is ALREADY a Class Coordinator for another class
+        const teacherCheck = await pool.query(
+            `SELECT id, name, class_coordinator_for FROM users WHERE id = $1 AND role = 'teacher'`,
+            [teacherId]
+        );
+        if (teacherCheck.rows.length === 0) {
+            return res.status(404).json({ message: 'Teacher not found' });
+        }
+
+        const currentClassId = teacherCheck.rows[0].class_coordinator_for;
+        if (currentClassId && String(currentClassId) !== String(classId)) {
+            const classRes = await pool.query(`SELECT name FROM classes WHERE id = $1`, [currentClassId]);
+            const currentClassName = classRes.rows[0]?.name || 'another class';
+            return res.status(400).json({
+                message: `⚠️ Coordinator Limit: ${teacherCheck.rows[0].name} is ALREADY the Class Coordinator for ${currentClassName}. A teacher can only be coordinator for one class.`
+            });
+        }
+
         const result = await pool.query(
             'UPDATE users SET class_coordinator_for = $1 WHERE id = $2 AND role = \'teacher\' RETURNING *',
             [classId, teacherId]
         );
-        if (result.rows.length === 0) {
-            return res.status(404).json({ message: 'Teacher not found' });
-        }
         res.json(result.rows[0]);
     } catch (error) {
         res.status(400).json({ message: error.message });
+    }
+};
+
+/**
+ * @desc    Get all active class coordinators with department and class details
+ * @route   GET /api/admin/coordinators
+ * @access  Private (Admin)
+ */
+export const getCoordinators = async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT u.id as teacher_id, u.name as teacher_name, u.email as teacher_email, u.avatar,
+                   c.id as class_id, c.name as class_name,
+                   d.id as department_id, d.name as department_name, d.code as department_code
+            FROM users u
+            JOIN classes c ON u.class_coordinator_for = c.id
+            LEFT JOIN departments d ON c.department_id = d.id
+            WHERE u.role = 'teacher' AND u.class_coordinator_for IS NOT NULL
+            ORDER BY d.name ASC, c.name ASC, u.name ASC
+        `);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error fetching coordinators:', error);
+        res.status(500).json({ message: error.message });
     }
 };
 
@@ -821,7 +1073,10 @@ export const assignClassCoordinator = async (req, res) => {
  */
 export const revokeClassCoordinator = async (req, res) => {
     try {
-        const { teacherId } = req.params;
+        const teacherId = req.params.teacherId || req.body.teacherId;
+        if (!teacherId) {
+            return res.status(400).json({ message: 'Teacher ID is required' });
+        }
         const result = await pool.query(
             'UPDATE users SET class_coordinator_for = NULL WHERE id = $1 AND role = \'teacher\' RETURNING *',
             [teacherId]
@@ -1009,7 +1264,38 @@ export const deleteSubjectAllocation = async (req, res) => {
 export const getSubjects = async (req, res) => {
     try {
         const result = await pool.query(`
-            SELECT s.*, d.name as department_name, d.code as department_code
+            SELECT 
+                s.id,
+                s.name as subject_name,
+                s.department_id,
+                d.name as department_name,
+                d.code as department_code,
+                COALESCE(
+                    (
+                        SELECT json_agg(DISTINCT jsonb_build_object(
+                            'teacherId', u.id,
+                            'teacherName', u.name,
+                            'teacherEmail', u.email,
+                            'className', c.name
+                        ))
+                        FROM subject_allocations sa
+                        JOIN users u ON sa.teacher_id = u.id
+                        LEFT JOIN classes c ON sa.class_id = c.id
+                        WHERE sa.subject_id = s.id
+                    ), '[]'::json
+                ) as handling_teachers,
+                COALESCE(
+                    (
+                        SELECT json_agg(DISTINCT jsonb_build_object(
+                            'id', dep.id,
+                            'departmentName', dep.name,
+                            'code', dep.code
+                        ))
+                        FROM subjects s2
+                        JOIN departments dep ON s2.department_id = dep.id
+                        WHERE LOWER(s2.name) = LOWER(s.name)
+                    ), '[]'::json
+                ) as assigned_departments
             FROM subjects s
             LEFT JOIN departments d ON s.department_id = d.id
             ORDER BY s.name ASC
@@ -1017,14 +1303,16 @@ export const getSubjects = async (req, res) => {
         const subjects = result.rows.map(s => ({
             _id: String(s.id),
             id: s.id,
-            subjectName: s.name,
-            name: s.name,
+            subjectName: s.subject_name,
+            name: s.subject_name,
             departmentId: s.department_id ? {
                 _id: String(s.department_id),
                 id: s.department_id,
                 departmentName: s.department_name,
                 name: s.department_name
-            } : null
+            } : null,
+            handlingTeachers: s.handling_teachers || [],
+            assignedDepartments: s.assigned_departments || []
         }));
         res.json(subjects);
     } catch (error) {
@@ -1520,6 +1808,35 @@ export const markTeacherAttendance = async (req, res) => {
         });
     } catch (error) {
         console.error('Error marking teacher attendance:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+/**
+ * @desc    Export teacher attendance report
+ * @route   GET /api/admin/teacher-attendance/export
+ * @access  Private (Admin)
+ */
+export const exportTeacherAttendanceReport = async (req, res) => {
+    try {
+        const { startDate, endDate } = req.query;
+        let query = `
+            SELECT TO_CHAR(ta.date, 'YYYY-MM-DD') as date, u.name as teacher_name, u.email, COALESCE(d.name, 'Academics') as department_name, ta.status, ta.remarks
+            FROM teacher_attendance ta
+            JOIN users u ON ta.teacher_id = u.id
+            LEFT JOIN departments d ON u.department_id = d.id
+        `;
+        const params = [];
+        if (startDate && endDate) {
+            query += ` WHERE TO_CHAR(ta.date, 'YYYY-MM-DD') >= $1 AND TO_CHAR(ta.date, 'YYYY-MM-DD') <= $2`;
+            params.push(startDate, endDate);
+        }
+        query += ` ORDER BY ta.date DESC, u.name ASC`;
+
+        const result = await pool.query(query, params);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error exporting teacher attendance:', error);
         res.status(500).json({ message: error.message });
     }
 };

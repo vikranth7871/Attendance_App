@@ -86,6 +86,15 @@ const ParentLeave = ({ selectedChildId }) => {
                                     <p style={{ color: 'var(--text-primary)', background: 'var(--bg-secondary)', padding: '1rem', borderRadius: '0.75rem', fontSize: '0.9rem', margin: 0 }}>
                                         "{leave.reason}"
                                     </p>
+
+                                    {(leave.status === 'rejected' || leave.status === 'revoked') && (leave.rejection_reason || leave.rejectionReason) && (
+                                        <div style={{ marginTop: '0.75rem', padding: '0.75rem 1rem', background: leave.status === 'rejected' ? 'rgba(239,68,68,0.08)' : 'rgba(245,158,11,0.08)', borderRadius: '0.75rem', border: `1px solid ${leave.status === 'rejected' ? 'rgba(239,68,68,0.2)' : 'rgba(245,158,11,0.2)'}`, color: leave.status === 'rejected' ? 'var(--danger)' : '#f59e0b', fontSize: '0.85rem' }}>
+                                            <strong style={{ display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '0.2rem' }}>
+                                                {leave.status === 'rejected' ? 'Rejection Reason' : 'Revocation Reason'}:
+                                            </strong>
+                                            {leave.rejection_reason || leave.rejectionReason}
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Action Controls for Pending Requests */}

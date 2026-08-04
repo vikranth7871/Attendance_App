@@ -1,17 +1,25 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Bell, FileCheck, FileX, FileWarning, FileClock, ChevronRight } from 'lucide-react';
+import { Bell, FileCheck, FileX, FileWarning, FileClock, ChevronRight, AlertTriangle, Info, CheckCircle2, BookOpen, Award, MessageSquare, Calendar, GraduationCap, DollarSign } from 'lucide-react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 
 /* ── Per-type visual config ── */
 const TYPE_CONFIG = {
+    // Leave types
     leave_request: {
         icon: FileClock,
         color: '#8b5cf6',
         bg: 'rgba(139,92,246,0.1)',
         border: 'rgba(139,92,246,0.4)',
         label: 'Leave Request'
+    },
+    teacher_leave_request: {
+        icon: FileClock,
+        color: '#8b5cf6',
+        bg: 'rgba(139,92,246,0.1)',
+        border: 'rgba(139,92,246,0.4)',
+        label: 'Leave Application'
     },
     leave_approved: {
         icon: FileCheck,
@@ -34,6 +42,74 @@ const TYPE_CONFIG = {
         border: 'rgba(245,158,11,0.35)',
         label: 'Revoked'
     },
+    // Attendance types
+    warning: {
+        icon: AlertTriangle,
+        color: '#f59e0b',
+        bg: 'rgba(245,158,11,0.08)',
+        border: 'rgba(245,158,11,0.35)',
+        label: 'Attendance Alert'
+    },
+    attendance: {
+        icon: AlertTriangle,
+        color: '#f59e0b',
+        bg: 'rgba(245,158,11,0.08)',
+        border: 'rgba(245,158,11,0.35)',
+        label: 'Attendance'
+    },
+    // General types
+    info: {
+        icon: Info,
+        color: '#6366f1',
+        bg: 'rgba(99,102,241,0.08)',
+        border: 'rgba(99,102,241,0.3)',
+        label: 'Info'
+    },
+    success: {
+        icon: CheckCircle2,
+        color: '#10b981',
+        bg: 'rgba(16,185,129,0.08)',
+        border: 'rgba(16,185,129,0.35)',
+        label: 'Success'
+    },
+    // Assignment / exam
+    assignment: {
+        icon: BookOpen,
+        color: '#6366f1',
+        bg: 'rgba(99,102,241,0.08)',
+        border: 'rgba(99,102,241,0.3)',
+        label: 'Assignment'
+    },
+    exam: {
+        icon: Award,
+        color: '#f59e0b',
+        bg: 'rgba(245,158,11,0.08)',
+        border: 'rgba(245,158,11,0.35)',
+        label: 'Exam'
+    },
+    result: {
+        icon: Award,
+        color: '#10b981',
+        bg: 'rgba(16,185,129,0.08)',
+        border: 'rgba(16,185,129,0.35)',
+        label: 'Result'
+    },
+    // Message
+    message: {
+        icon: MessageSquare,
+        color: '#3b82f6',
+        bg: 'rgba(59,130,246,0.08)',
+        border: 'rgba(59,130,246,0.3)',
+        label: 'Message'
+    },
+    // Fee / payment
+    fee: {
+        icon: DollarSign,
+        color: '#10b981',
+        bg: 'rgba(16,185,129,0.08)',
+        border: 'rgba(16,185,129,0.35)',
+        label: 'Fee'
+    },
 };
 
 const DEFAULT_CONFIG = {
@@ -46,16 +122,28 @@ const DEFAULT_CONFIG = {
 
 const getConfig = (type) => TYPE_CONFIG[type] || DEFAULT_CONFIG;
 
+/* ── Safely parse a timestamp as UTC regardless of whether it has a Z suffix ── */
+const parseUTC = (dateStr) => {
+    if (!dateStr) return new Date();
+    // Already has timezone info
+    if (typeof dateStr === 'string' && (dateStr.endsWith('Z') || dateStr.includes('+') || dateStr.includes('-', 10))) {
+        return new Date(dateStr);
+    }
+    // Bare timestamp like "2026-08-04T08:15:07" — treat as UTC
+    return new Date(dateStr + 'Z');
+};
+
 const getTimeAgo = (date) => {
-    const seconds = Math.floor((new Date() - new Date(date)) / 1000);
-    if (seconds < 60) return 'just now';
+    const seconds = Math.floor((new Date() - parseUTC(date)) / 1000);
+    if (seconds < 5) return 'just now';
+    if (seconds < 60) return `${seconds}s ago`;
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) return `${minutes}m ago`;
     const hours = Math.floor(minutes / 60);
     if (hours < 24) return `${hours}h ago`;
     const days = Math.floor(hours / 24);
     if (days < 30) return `${days}d ago`;
-    return new Date(date).toLocaleDateString();
+    return parseUTC(date).toLocaleDateString();
 };
 
 const NotificationDropdown = () => {

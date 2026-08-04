@@ -237,6 +237,19 @@ const TeacherApplyLeave = () => {
                                         {new Date(l.startDate).toLocaleDateString()} — {new Date(l.endDate).toLocaleDateString()}
                                     </div>
                                     <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{l.reason}</p>
+                                    {(l.status === 'rejected' || l.status === 'revoked') && (l.rejectionReason || l.rejection_reason) && (
+                                        <div style={{ marginTop: '0.35rem', padding: '0.6rem 0.8rem', background: l.status === 'rejected' ? 'rgba(239,68,68,0.08)' : 'rgba(245,158,11,0.08)', borderRadius: '8px', border: `1px solid ${l.status === 'rejected' ? 'rgba(239,68,68,0.25)' : 'rgba(245,158,11,0.25)'}`, display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                                            <AlertCircle size={15} style={{ color: l.status === 'rejected' ? '#ef4444' : '#f59e0b', marginTop: '2px', flexShrink: 0 }} />
+                                            <div>
+                                                <div style={{ fontSize: '0.72rem', fontWeight: '800', color: l.status === 'rejected' ? '#ef4444' : '#f59e0b', textTransform: 'uppercase' }}>
+                                                    {l.status === 'rejected' ? 'Rejection Reason' : 'Revocation Reason'}
+                                                </div>
+                                                <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '0.1rem' }}>
+                                                    {l.rejectionReason || l.rejection_reason}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                     {l.documentUrl && (
                                         <button
                                             type="button"

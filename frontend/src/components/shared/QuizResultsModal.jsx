@@ -5,6 +5,7 @@ import { X, Trophy, Medal, Clock, Award, Download, CheckCircle, Search, Filter, 
 import axios from 'axios';
 
 const QuizResultsModal = ({ isOpen, onClose, quiz }) => {
+    const passingScore = quiz?.passingScore || quiz?.passing_score || 80;
     const [activeTab, setActiveTab] = useState('leaderboard'); // 'leaderboard' or 'certificates'
     const [leaderboard, setLeaderboard] = useState([]);
     const [certificates, setCertificates] = useState([]);
@@ -86,11 +87,11 @@ const QuizResultsModal = ({ isOpen, onClose, quiz }) => {
 
         // 3. Grade / Performance Filter ('all', 'passed', 'failed', 'top')
         if (gradeFilter === 'passed') {
-            list = list.filter(e => e.percentage >= 50);
+            list = list.filter(e => (e.percentage || 0) >= passingScore);
         } else if (gradeFilter === 'failed') {
-            list = list.filter(e => e.percentage < 50);
+            list = list.filter(e => (e.percentage || 0) < passingScore);
         } else if (gradeFilter === 'top') {
-            list = list.filter(e => e.percentage >= 90);
+            list = list.filter(e => (e.percentage || 0) >= 90);
         }
 
         // 4. Sorting (Only apply when not default)
@@ -107,7 +108,7 @@ const QuizResultsModal = ({ isOpen, onClose, quiz }) => {
         }
 
         return list;
-    }, [leaderboard, attemptFilter, searchQuery, gradeFilter, sortBy]);
+    }, [leaderboard, attemptFilter, searchQuery, gradeFilter, sortBy, passingScore]);
 
     // Analytics summary
     const analytics = useMemo(() => {
@@ -115,10 +116,10 @@ const QuizResultsModal = ({ isOpen, onClose, quiz }) => {
         const uniqueStudents = new Set(leaderboard.map(e => e.studentId || e.name)).size;
         const totalAttempts = leaderboard.length;
         const avgScore = Math.round(leaderboard.reduce((acc, curr) => acc + (curr.percentage || 0), 0) / totalAttempts);
-        const passedCount = leaderboard.filter(e => (e.percentage || 0) >= 50).length;
+        const passedCount = leaderboard.filter(e => (e.percentage || 0) >= passingScore).length;
         const passRate = Math.round((passedCount / totalAttempts) * 100);
         return { totalAttempts, totalStudents: uniqueStudents, avgScore, passRate };
-    }, [leaderboard]);
+    }, [leaderboard, passingScore]);
 
     const filteredCertificates = certificates.filter(cert =>
         cert.studentId?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -290,8 +291,8 @@ const QuizResultsModal = ({ isOpen, onClose, quiz }) => {
                                                                 style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', fontSize: '0.82rem', fontWeight: '700', outline: 'none', cursor: 'pointer' }}
                                                             >
                                                                 <option value="all" style={{ background: 'var(--bg-primary)' }}>All Grades</option>
-                                                                <option value="passed" style={{ background: 'var(--bg-primary)' }}>Passed (≥ 50%)</option>
-                                                                <option value="failed" style={{ background: 'var(--bg-primary)' }}>Failed (&lt; 50%)</option>
+                                                                <option value="passed" style={{ background: 'var(--bg-primary)' }}>Passed (≥ {passingScore}%)</option>
+                                                                <option value="failed" style={{ background: 'var(--bg-primary)' }}>Failed (&lt; {passingScore}%)</option>
                                                                 <option value="top" style={{ background: 'var(--bg-primary)' }}>Top (≥ 90%)</option>
                                                             </select>
                                                         </div>
@@ -381,7 +382,7 @@ const QuizResultsModal = ({ isOpen, onClose, quiz }) => {
                                                             <tbody>
                                                                 {processedLeaderboard.map((entry, idx) => {
                                                                     const rankNum = idx + 1;
-                                                                    const isPassed = (entry.percentage || 0) >= 50;
+                                                                    const isPassed = (entry.percentage || 0) >= passingScore;
 
                                                                     return (
                                                                         <tr
@@ -418,7 +419,7 @@ const QuizResultsModal = ({ isOpen, onClose, quiz }) => {
                                                                             </td>
 
                                                                             {/* Score Percentage */}
-                                                                            <td style={{ padding: '0.85rem 1rem', fontWeight: '800', fontSize: '1rem', color: entry.percentage >= 90 ? '#10b981' : entry.percentage >= 50 ? 'var(--text-primary)' : '#ef4444' }}>
+                                                                            <td style={{ padding: '0.85rem 1rem', fontWeight: '800', fontSize: '1rem', color: entry.percentage >= 90 ? '#10b981' : entry.percentage >= passingScore ? 'var(--text-primary)' : '#ef4444' }}>
                                                                                 {entry.percentage}%
                                                                             </td>
 

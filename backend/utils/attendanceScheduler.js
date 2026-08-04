@@ -102,11 +102,17 @@ export const autoMarkAbsentAndLeave = async (gracePeriodMinutes = 15) => {
 
                     if (student.parent_id) {
                         await pool.query(
-                            `INSERT INTO notifications (recipient_id, title, message, type)
-                             VALUES ($1, 'Attendance Alert', $2, 'info')`,
-                            [student.parent_id, `📋 Attendance Alert: ${student.name} is on approved LEAVE today.`]
+                            `INSERT INTO notifications (recipient_id, title, message, type, link)
+                             VALUES ($1, 'Attendance Alert', $2, 'warning', '/parent/attendance')`,
+                            [student.parent_id, `📋 ${student.name} is on approved LEAVE today.`]
                         );
                     }
+                    // Notify student
+                    await pool.query(
+                        `INSERT INTO notifications (recipient_id, title, message, type, link)
+                         VALUES ($1, 'Attendance Alert', $2, 'warning', '/student/attendance')`,
+                        [student.id, `📋 You are on approved LEAVE today.`]
+                    );
                 } else {
                     // Auto-mark as 'absent'
                     await pool.query(
@@ -121,11 +127,17 @@ export const autoMarkAbsentAndLeave = async (gracePeriodMinutes = 15) => {
                     // Notify parent of absence
                     if (student.parent_id) {
                         await pool.query(
-                            `INSERT INTO notifications (recipient_id, title, message, type)
-                             VALUES ($1, 'Attendance Alert', $2, 'warning')`,
-                            [student.parent_id, `⚠️ Attendance Alert: ${student.name} was marked ABSENT today for non-marking.`]
+                            `INSERT INTO notifications (recipient_id, title, message, type, link)
+                             VALUES ($1, 'Attendance Alert', $2, 'warning', '/parent/attendance')`,
+                            [student.parent_id, `⚠️ ${student.name} was marked ABSENT today.`]
                         );
                     }
+                    // Notify student of auto-absence
+                    await pool.query(
+                        `INSERT INTO notifications (recipient_id, title, message, type, link)
+                         VALUES ($1, 'Attendance Alert', $2, 'warning', '/student/attendance')`,
+                        [student.id, `⚠️ You were automatically marked ABSENT today. Contact your coordinator if this is incorrect.`]
+                    );
                 }
             }
         }
@@ -135,14 +147,76 @@ export const autoMarkAbsentAndLeave = async (gracePeriodMinutes = 15) => {
 };
 
 /**
+ * Auto-Save End-of-Day Faculty/Teacher Attendance
+ * 1. Checks all active teachers for current day
+ * 2. If approved leave exists -> status = 'leave'
+ * 3. If no attendance marked yet -> auto-saves status = 'present' (default faculty status)
+ */
+export const autoSaveTeacherAttendance = async () => {
+    try {
+        const todayStr = new Date().toISOString().split('T')[0];
+
+        // Fetch all active teachers
+        const teachersRes = await pool.query(
+            `SELECT id, name FROM users WHERE role = 'teacher'`
+        );
+
+        if (teachersRes.rows.length === 0) return;
+
+        // Fetch marked attendance for today
+        const attRes = await pool.query(
+            `SELECT teacher_id FROM teacher_attendance WHERE date = $1`,
+            [todayStr]
+        );
+        const markedTeacherIds = new Set(attRes.rows.map(r => r.teacher_id));
+
+        for (const teacher of teachersRes.rows) {
+            if (markedTeacherIds.has(teacher.id)) {
+                // Already marked for today
+                continue;
+            }
+
+            // Check if teacher has approved leave today
+            const leaveRes = await pool.query(
+                `SELECT id, reason FROM leave_requests 
+                 WHERE user_id = $1 AND status = 'approved' AND start_date <= $2 AND end_date >= $2 LIMIT 1`,
+                [teacher.id, todayStr]
+            );
+
+            if (leaveRes.rows.length > 0) {
+                // Auto-save as 'leave'
+                const reason = leaveRes.rows[0].reason || 'Approved Leave';
+                await pool.query(
+                    `INSERT INTO teacher_attendance (teacher_id, date, status, marked_by, remarks, updated_at)
+                     VALUES ($1, $2, 'leave', NULL, $3, CURRENT_TIMESTAMP)
+                     ON CONFLICT (teacher_id, date) DO NOTHING`,
+                    [teacher.id, todayStr, `Approved Leave: ${reason}`]
+                );
+            } else {
+                // Auto-save as default 'present' at end of day
+                await pool.query(
+                    `INSERT INTO teacher_attendance (teacher_id, date, status, marked_by, remarks, updated_at)
+                     VALUES ($1, $2, 'present', NULL, 'Auto-saved (End of Day)', CURRENT_TIMESTAMP)
+                     ON CONFLICT (teacher_id, date) DO NOTHING`,
+                    [teacher.id, todayStr]
+                );
+            }
+        }
+    } catch (error) {
+        console.error('Error in autoSaveTeacherAttendance scheduler:', error);
+    }
+};
+
+/**
  * Initialize cron scheduler running every 5 minutes
  */
 export const initAttendanceScheduler = () => {
     // Run every 5 minutes: '*/5 * * * *'
     cron.schedule('*/5 * * * *', () => {
-        console.log('⏰ [Automated Scheduler] Checking for un-marked attendance slots...');
+        console.log('⏰ [Automated Scheduler] Checking for un-marked attendance & faculty EOD auto-save...');
         autoMarkAbsentAndLeave(15);
+        autoSaveTeacherAttendance();
     });
 
-    console.log('✅ Automated Attendance Scheduler initialized (runs every 5 mins with 15-min grace period)');
+    console.log('✅ Automated Attendance Scheduler initialized (runs every 5 mins with 15-min grace period & EOD Teacher Auto-Save)');
 };

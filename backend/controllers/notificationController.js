@@ -8,10 +8,16 @@ export const getNotifications = async (req, res) => {
             return res.json([]);
         }
         const result = await pool.query(
-            `SELECT * FROM notifications WHERE recipient_id = $1 ORDER BY created_at DESC LIMIT 20`,
+            `SELECT *, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at_utc
+             FROM notifications WHERE recipient_id = $1 ORDER BY created_at DESC LIMIT 50`,
             [userId]
         );
-        res.json(result.rows);
+        // Return rows with normalized UTC timestamp
+        const rows = result.rows.map(r => ({
+            ...r,
+            created_at: r.created_at_utc || r.created_at
+        }));
+        res.json(rows);
     } catch (error) {
         console.error('Error fetching notifications:', error);
         res.json([]);
