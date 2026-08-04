@@ -5,7 +5,7 @@ export default defineConfig({
   base: process.env.VITE_BASE_PATH || '/',
   plugins: [react()],
   server: {
-    host: true,
+    host: 'localhost',
     port: 3000,
     // Proxy /api calls to the backend during local development
     proxy: {
