@@ -5,12 +5,12 @@ export default defineConfig({
   base: process.env.VITE_BASE_PATH || '/',
   plugins: [react()],
   server: {
-    host: 'localhost',
-    port: 3000,
+    host: '127.0.0.1',
+    port: 5173,
     // Proxy /api calls to the backend during local development
     proxy: {
       '/api': {
-        target: 'http://localhost:5005',
+        target: 'http://127.0.0.1:5005',
         changeOrigin: true,
       },
     },
