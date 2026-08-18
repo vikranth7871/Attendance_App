@@ -1,8 +1,18 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Download, FileText, ExternalLink } from 'lucide-react';
+import { X, Download, FileText, ExternalLink, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 
 const DocumentModal = ({ url, title = 'Supporting Document', onClose }) => {
+    const [loading, setLoading] = useState(true);
+    const [hasError, setHasError] = useState(false);
+
+    useEffect(() => {
+        if (url) {
+            setLoading(true);
+            setHasError(false);
+        }
+    }, [url]);
+
     if (!url) return null;
 
     const isDataUri = url.startsWith('data:');
@@ -52,9 +62,9 @@ const DocumentModal = ({ url, title = 'Supporting Document', onClose }) => {
                     left: 0,
                     right: 0,
                     bottom: 0,
-                    background: 'rgba(15, 23, 42, 0.75)',
-                    backdropFilter: 'blur(8px)',
-                    WebkitBackdropFilter: 'blur(8px)',
+                    background: 'rgba(15, 23, 42, 0.8)',
+                    backdropFilter: 'blur(10px)',
+                    WebkitBackdropFilter: 'blur(10px)',
                     zIndex: 99999,
                     display: 'flex',
                     alignItems: 'center',
@@ -63,9 +73,10 @@ const DocumentModal = ({ url, title = 'Supporting Document', onClose }) => {
                 }}
             >
                 <motion.div
-                    initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                    initial={{ scale: 0.92, opacity: 0, y: 20 }}
                     animate={{ scale: 1, opacity: 1, y: 0 }}
-                    exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                    exit={{ scale: 0.92, opacity: 0, y: 20 }}
+                    transition={{ type: 'spring', damping: 25, stiffness: 300 }}
                     onClick={e => e.stopPropagation()}
                     style={{
                         background: 'var(--bg-secondary)',
@@ -77,24 +88,24 @@ const DocumentModal = ({ url, title = 'Supporting Document', onClose }) => {
                         display: 'flex',
                         flexDirection: 'column',
                         overflow: 'hidden',
-                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)'
+                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
                     }}
                 >
                     {/* Header */}
                     <div style={{
-                        padding: '1.25rem 1.5rem',
+                        padding: '1.15rem 1.5rem',
                         borderBottom: '1px solid var(--border-color)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         background: 'var(--bg-primary)'
                     }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                             <div style={{
-                                width: '36px',
-                                height: '36px',
+                                width: '38px',
+                                height: '38px',
                                 borderRadius: '10px',
-                                background: 'rgba(91, 80, 230, 0.12)',
+                                background: 'rgba(99, 102, 241, 0.12)',
                                 color: 'var(--brand-primary)',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -103,7 +114,7 @@ const DocumentModal = ({ url, title = 'Supporting Document', onClose }) => {
                                 <FileText size={20} />
                             </div>
                             <div>
-                                <h3 style={{ fontSize: '1.1rem', fontWeight: '800', color: 'var(--text-primary)', margin: 0 }}>
+                                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: 'var(--text-primary)', margin: 0 }}>
                                     {title}
                                 </h3>
                                 <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>
@@ -127,7 +138,8 @@ const DocumentModal = ({ url, title = 'Supporting Document', onClose }) => {
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: '0.4rem',
-                                    boxShadow: '0 4px 12px rgba(91, 80, 230, 0.25)'
+                                    boxShadow: '0 4px 12px rgba(91, 80, 230, 0.25)',
+                                    transition: 'transform 0.15s ease'
                                 }}
                             >
                                 <Download size={14} /> Download
@@ -144,7 +156,8 @@ const DocumentModal = ({ url, title = 'Supporting Document', onClose }) => {
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    cursor: 'pointer'
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
                                 }}
                             >
                                 <X size={18} />
@@ -160,25 +173,147 @@ const DocumentModal = ({ url, title = 'Supporting Document', onClose }) => {
                         alignItems: 'center',
                         justifyContent: 'center',
                         background: 'var(--bg-primary)',
-                        minHeight: '300px'
+                        minHeight: '380px',
+                        position: 'relative'
                     }}>
-                        {isPdf ? (
+                        {/* Loading State Template */}
+                        {loading && !hasError && (
+                            <div style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '1rem',
+                                padding: '3rem 2rem',
+                                width: '100%',
+                                height: '100%',
+                                minHeight: '340px'
+                            }}>
+                                <div style={{
+                                    position: 'relative',
+                                    width: '64px',
+                                    height: '64px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}>
+                                    <div style={{
+                                        position: 'absolute',
+                                        inset: 0,
+                                        borderRadius: '16px',
+                                        background: 'rgba(99, 102, 241, 0.15)',
+                                        animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+                                    }} />
+                                    <Loader2 size={32} className="animate-spin" color="var(--brand-primary)" />
+                                </div>
+                                <div style={{ textAlign: 'center' }}>
+                                    <div style={{ fontWeight: '700', fontSize: '0.95rem', color: 'var(--text-primary)', marginBottom: '0.3rem' }}>
+                                        Loading Supporting Document...
+                                    </div>
+                                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                                        Decrypting and preparing preview
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Error Fallback State */}
+                        {hasError ? (
+                            <div style={{
+                                textAlign: 'center',
+                                padding: '3rem 2rem',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                gap: '1rem'
+                            }}>
+                                <div style={{
+                                    width: '56px',
+                                    height: '56px',
+                                    borderRadius: '14px',
+                                    background: 'rgba(239, 68, 68, 0.1)',
+                                    color: '#ef4444',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}>
+                                    <AlertCircle size={28} />
+                                </div>
+                                <div>
+                                    <h4 style={{ fontSize: '1rem', fontWeight: '700', color: 'var(--text-primary)', margin: '0 0 0.4rem' }}>
+                                        Preview Not Available Inline
+                                    </h4>
+                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', maxWidth: '320px', margin: 0 }}>
+                                        The file could not be rendered directly in the browser viewer. You can open or download it directly.
+                                    </p>
+                                </div>
+                                <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                                    <button
+                                        onClick={handleDownload}
+                                        style={{
+                                            padding: '0.6rem 1.25rem',
+                                            borderRadius: '10px',
+                                            background: 'var(--brand-primary)',
+                                            color: 'white',
+                                            border: 'none',
+                                            fontWeight: '600',
+                                            fontSize: '0.85rem',
+                                            cursor: 'pointer',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '0.5rem'
+                                        }}
+                                    >
+                                        <Download size={15} /> Download Document
+                                    </button>
+                                    <button
+                                        onClick={() => { setHasError(false); setLoading(true); }}
+                                        style={{
+                                            padding: '0.6rem 1rem',
+                                            borderRadius: '10px',
+                                            background: 'rgba(255,255,255,0.06)',
+                                            color: 'var(--text-primary)',
+                                            border: '1px solid var(--border-color)',
+                                            fontWeight: '600',
+                                            fontSize: '0.85rem',
+                                            cursor: 'pointer',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '0.4rem'
+                                        }}
+                                    >
+                                        <RefreshCw size={14} /> Retry
+                                    </button>
+                                </div>
+                            </div>
+                        ) : isPdf ? (
                             <iframe
                                 src={url}
                                 title="PDF Preview"
-                                style={{ width: '100%', height: '65vh', border: 'none', borderRadius: '12px' }}
+                                onLoad={() => setLoading(false)}
+                                onError={() => { setLoading(false); setHasError(true); }}
+                                style={{
+                                    width: '100%',
+                                    height: '65vh',
+                                    border: 'none',
+                                    borderRadius: '12px',
+                                    display: loading ? 'none' : 'block'
+                                }}
                             />
                         ) : isImage || isDataUri ? (
                             <img
                                 src={url}
                                 alt="Supporting Document"
+                                onLoad={() => setLoading(false)}
+                                onError={() => { setLoading(false); setHasError(true); }}
                                 style={{
                                     maxWidth: '100%',
                                     maxHeight: '70vh',
                                     borderRadius: '12px',
                                     objectFit: 'contain',
                                     boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
-                                    border: '1px solid var(--border-color)'
+                                    border: '1px solid var(--border-color)',
+                                    display: loading ? 'none' : 'block'
                                 }}
                             />
                         ) : (
