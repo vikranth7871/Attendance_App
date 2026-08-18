@@ -17,7 +17,7 @@ Access all 4 role portals using pre-configured test accounts:
 | **System Admin** | `/admin` | `admin@example.com` | `admin123` | Full Administrative, User Management & Leave Approvals |
 | **Educator / Teacher** | `/teacher` | `teacher@example.com` | `teacher123` | Timetable, Mark Attendance, Assignments, Exams & Parent Inbox |
 | **Student** | `/student` | `student@example.com` | `student123` | Attendance Streaks, Assignments, Exam Results & Quizzes |
-| **Parent** | `/parent` | `parent@example.com` | `parent123` | Multi-Child Switcher, Fees, Attendance Analytics & Teacher Messaging |
+| **Parent** | `/parent` | `parent.doe@example.com` | `parent123` | Multi-Child Switcher, Fees, Attendance Analytics & Teacher Messaging |
 
 ---
 
