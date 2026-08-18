@@ -4,7 +4,7 @@ import { Routes, Route, useNavigate, Navigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
     Users, Calendar, AlertCircle, ChevronRight, Activity, TrendingUp, 
-    Bell, ShieldCheck, Menu, BookOpen, GraduationCap, Hash, CheckCircle2, 
+    Bell, ShieldCheck, BookOpen, GraduationCap, Hash, CheckCircle2, 
     Clock, Award, CreditCard, MessageSquare, UserCheck, Sparkles 
 } from 'lucide-react';
 import ParentSidebar from '../../components/parent/ParentSidebar';
@@ -185,9 +185,6 @@ const ParentDashboard = () => {
                     position: 'sticky', top: 0, zIndex: 100
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                        <button className="mobile-menu-btn" onClick={() => setIsSidebarOpen(true)}>
-                            <Menu size={24} />
-                        </button>
                         <h1 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>Parent Portal</h1>
                     </div>
 
