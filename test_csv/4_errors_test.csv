@@ -1,0 +1,8 @@
+name,email,password,role,department,className,section,rollNumber,parentEmail
+Bad Student One,badstudentnoemail,pass1234,student,Computer Science,CS101-A,A,3001,bs1.parent@gmail.com
+Bad Student Two,,pass1234,student,Computer Science,CS101-A,A,3002,bs2.parent@gmail.com
+Bad Student Three,bad3@example.com,,student,Computer Science,CS101-A,A,3003,bs3.parent@gmail.com
+Bad Student Four,bad4@example.com,pass1234,superuser,Computer Science,CS101-A,A,3004,bs4.parent@gmail.com
+Bad Student Five,bad5@example.com,pass1234,student,Computer Science,CS101-A,A,3005,
+Good Student One,good1@test.com,pass1234,student,Computer Science,CS101-A,A,3006,good1.parent@gmail.com
+Ravi Kumar,ravi.kumar@student.com,pass1234,student,Computer Science,CS101-A,A,2001,ravi.parent@gmail.com

@@ -1,0 +1,5 @@
+name,email,password,role,department,className
+Dr. Anand Rao,anand.rao@college.edu,teacher123,teacher,Computer Science,CS101-A
+Prof. Meena Iyer,meena.iyer@college.edu,teacher123,teacher,Mathematics,MA202-B
+Mr. Suresh Pillai,suresh.pillai@college.edu,teacher123,teacher,Electronics,EC303-A
+Dr. Lakshmi Nair,lakshmi.nair@college.edu,teacher123,teacher,Computer Science,CS101-A

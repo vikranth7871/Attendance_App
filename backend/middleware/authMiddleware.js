@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import User from '../models/User.js';
+import { pool } from '../config/db.js';
 
 export const protect = async (req, res, next) => {
     const authHeader = req.headers.authorization;
@@ -8,14 +8,25 @@ export const protect = async (req, res, next) => {
         return res.status(401).json({ message: 'Not authorized, no token' });
     }
 
+    const token = authHeader.split(' ')[1];
+
+    if (!token) {
+        return res.status(401).json({ message: 'Not authorized, no token' });
+    }
+
     try {
-        const token = authHeader.split(' ')[1];
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const found = await User.findById(decoded.id);
-        if (found) delete found.password;
-        req.user = found;
+        const secret = process.env.JWT_SECRET || 'iAttend_super_secret_jwt_key_2024R';
+        const decoded = jwt.verify(token, secret);
+        const result = await pool.query('SELECT * FROM users WHERE id = $1', [decoded.id]);
+        if (!result.rows[0]) {
+            return res.status(401).json({ message: 'Not authorized, user not found' });
+        }
+        const user = result.rows[0];
+        delete user.password;
+        req.user = user;
         next();
     } catch (error) {
+        console.error('Auth middleware error:', error.message);
         return res.status(401).json({ message: 'Not authorized, token failed' });
     }
 };

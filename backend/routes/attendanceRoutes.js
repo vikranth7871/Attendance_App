@@ -1,6 +1,7 @@
 import express from 'express';
 import {
-    markManualAttendance, bulkMarkManualAttendance, getClassAttendance, testAttendanceEmail
+    markManualAttendance, bulkMarkManualAttendance, getClassAttendance, testAttendanceEmail,
+    getStudentAutoSaveSetting, toggleStudentAutoSave
 } from '../controllers/attendanceController.js';
 import { protect, authorizeRoles, authorizePermissions } from '../middleware/authMiddleware.js';
 
@@ -10,6 +11,9 @@ router.use(protect);
 
 // BUG-03 Fix: Guard test endpoint — admin only, not public
 router.get('/test-attendance-email', authorizeRoles('admin'), testAttendanceEmail);
+
+router.get('/auto-save-setting', getStudentAutoSaveSetting);
+router.post('/toggle-auto-save', authorizeRoles('teacher', 'admin'), toggleStudentAutoSave);
 
 router.post('/manual', authorizeRoles('teacher', 'admin'), authorizePermissions('markAttendance', 'manualAttendance'), markManualAttendance);
 router.post('/manual-bulk', authorizeRoles('teacher', 'admin'), authorizePermissions('markAttendance', 'manualAttendance'), bulkMarkManualAttendance);

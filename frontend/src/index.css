@@ -1,4 +1,8 @@
+/* Font stack: uses system fonts as fallback when Google Fonts CDN is unavailable */
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+
+/* System font fallback if Google Fonts fails to load */
+
 
 :root {
   --bg-primary: #f4f7fe;
@@ -56,7 +60,7 @@
 }
 
 body {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   background-color: var(--bg-primary);
   color: var(--text-primary);
   line-height: 1.5;
@@ -91,7 +95,7 @@ body {
   border: 1px solid var(--border-color);
   background: var(--bg-secondary);
   color: var(--text-primary);
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   transition: all 0.2s ease;
   outline: none;
 }
@@ -125,7 +129,7 @@ body {
   cursor: pointer;
   transition: all 0.2s ease;
   border: none;
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   gap: 0.5rem;
 }
 

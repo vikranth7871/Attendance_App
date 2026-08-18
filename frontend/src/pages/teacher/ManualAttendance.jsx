@@ -20,6 +20,8 @@ const ManualAttendance = () => {
     const [selectedSlotIndex, setSelectedSlotIndex] = useState(0);
     const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
     const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+    const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
+    const [togglingAutoSave, setTogglingAutoSave] = useState(false);
 
     useEffect(() => {
         const handleResize = () => setIsMobile(window.innerWidth <= 768);
@@ -42,8 +44,36 @@ const ManualAttendance = () => {
                 setLoading(false);
             }
         };
+
+        const fetchAutoSaveSetting = async () => {
+            try {
+                const { data } = await axios.get('/attendance/auto-save-setting');
+                setAutoSaveEnabled(data.autoSaveEnabled ?? true);
+            } catch (err) {
+                console.error('Failed to fetch auto-save setting:', err);
+            }
+        };
+
         fetchRoster();
+        fetchAutoSaveSetting();
     }, []);
+
+    const handleToggleAutoSave = async () => {
+        setTogglingAutoSave(true);
+        try {
+            const nextVal = !autoSaveEnabled;
+            const { data } = await axios.post('/attendance/toggle-auto-save', { enabled: nextVal });
+            setAutoSaveEnabled(data.autoSaveEnabled);
+            setSuccess(data.message || (nextVal ? 'Student Auto-Save enabled' : 'Student Auto-Save turned off'));
+            setTimeout(() => setSuccess(null), 3500);
+        } catch (err) {
+            console.error('Failed to toggle auto-save:', err);
+            setError('Failed to update Auto-Save setting.');
+            setTimeout(() => setError(null), 3000);
+        } finally {
+            setTogglingAutoSave(false);
+        }
+    };
 
     // Initialize local attendance map when selectedSession or date changes
     useEffect(() => {
@@ -243,11 +273,11 @@ const ManualAttendance = () => {
                                 key={session.allocationId}
                                 onClick={() => { setSelectedSession(session); setError(null); }}
                                 style={{
-                                    padding: '0.65rem 1.25rem',
-                                    borderRadius: '0.75rem',
-                                    border: isSelected ? '2px solid var(--brand-primary)' : '1px solid var(--border-color)',
-                                    backgroundColor: isSelected ? 'linear-gradient(135deg, rgba(91, 80, 230, 0.12), rgba(99, 102, 241, 0.08))' : 'var(--bg-secondary)',
-                                    color: 'var(--text-primary)',
+                                    padding: '0.6rem 1.15rem',
+                                    borderRadius: '10px',
+                                    border: isSelected ? '1px solid var(--brand-primary)' : '1px solid var(--border-color)',
+                                    background: isSelected ? 'var(--brand-primary)' : 'var(--bg-secondary)',
+                                    color: isSelected ? '#ffffff' : 'var(--text-primary)',
                                     fontSize: '0.85rem',
                                     fontWeight: '700',
                                     cursor: 'pointer',
@@ -255,12 +285,20 @@ const ManualAttendance = () => {
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: '0.5rem',
-                                    boxShadow: isSelected ? '0 4px 12px rgba(91, 80, 230, 0.15)' : 'none'
+                                    boxShadow: isSelected ? '0 4px 14px rgba(99, 102, 241, 0.35)' : 'none'
                                 }}
                             >
-                                <BookOpen size={16} style={{ color: active ? '#10b981' : 'var(--brand-primary)' }} />
-                                {session.class?.className} - {session.subject?.subjectName}
-                                {active && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', boxShadow: '0 0 8px #10b981' }}></span>}
+                                <BookOpen size={16} style={{ color: isSelected ? '#ffffff' : (active ? '#10b981' : 'var(--brand-primary)') }} />
+                                <span>{session.class?.className} - {session.subject?.subjectName}</span>
+                                {active && (
+                                    <span style={{
+                                        width: '8px',
+                                        height: '8px',
+                                        borderRadius: '50%',
+                                        background: isSelected ? '#a7f3d0' : '#10b981',
+                                        boxShadow: '0 0 6px #10b981'
+                                    }}></span>
+                                )}
                             </button>
                         );
                     })}
@@ -306,15 +344,70 @@ const ManualAttendance = () => {
                         </div>
                     </div>
 
-                    {/* Date & Slot Selectors */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                    {/* Date, Slot & Auto-Save Selectors */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                        {/* Auto-Save Sliding Switch Toggle */}
+                        <div>
+                            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Auto-Save</label>
+                            <div
+                                onClick={!togglingAutoSave ? handleToggleAutoSave : undefined}
+                                title={`Click to switch Auto-Save ${autoSaveEnabled ? 'OFF' : 'ON'}`}
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.6rem',
+                                    padding: '0.3rem 0.65rem 0.3rem 0.75rem',
+                                    borderRadius: '8px',
+                                    background: 'var(--bg-primary)',
+                                    border: `1px solid ${autoSaveEnabled ? 'rgba(16, 185, 129, 0.4)' : 'var(--border-color)'}`,
+                                    cursor: togglingAutoSave ? 'not-allowed' : 'pointer',
+                                    userSelect: 'none',
+                                    transition: 'all 0.25s ease',
+                                    height: '37px',
+                                    boxSizing: 'border-box',
+                                    boxShadow: autoSaveEnabled ? '0 0 10px rgba(16, 185, 129, 0.12)' : 'none'
+                                }}
+                            >
+                                {/* Switch Track & Sliding Knob */}
+                                <div style={{
+                                    width: '38px',
+                                    height: '20px',
+                                    borderRadius: '999px',
+                                    background: autoSaveEnabled ? '#10b981' : '#4b5563',
+                                    position: 'relative',
+                                    transition: 'background 0.25s ease'
+                                }}>
+                                    <div style={{
+                                        width: '14px',
+                                        height: '14px',
+                                        borderRadius: '50%',
+                                        background: '#ffffff',
+                                        position: 'absolute',
+                                        top: '3px',
+                                        left: autoSaveEnabled ? '21px' : '3px',
+                                        transition: 'left 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
+                                    }} />
+                                </div>
+
+                                <span style={{
+                                    fontSize: '0.75rem',
+                                    fontWeight: '800',
+                                    color: autoSaveEnabled ? '#10b981' : 'var(--text-secondary)',
+                                    minWidth: '26px'
+                                }}>
+                                    {autoSaveEnabled ? 'ON' : 'OFF'}
+                                </span>
+                            </div>
+                        </div>
+
                         {selectedSession?.slots && selectedSession.slots.length > 1 && (
                             <div>
                                 <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Select Slot</label>
                                 <select
                                     value={selectedSlotIndex}
                                     onChange={e => setSelectedSlotIndex(Number(e.target.value))}
-                                    style={{ padding: '0.5rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: '600', outline: 'none' }}
+                                    style={{ padding: '0.5rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: '600', outline: 'none', height: '37px', boxSizing: 'border-box' }}
                                 >
                                     {selectedSession.slots.map((slot, idx) => (
                                         <option key={idx} value={idx}>
@@ -331,7 +424,7 @@ const ManualAttendance = () => {
                                 type="date"
                                 value={attendanceDate}
                                 onChange={e => setAttendanceDate(e.target.value)}
-                                style={{ padding: '0.5rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: '600', outline: 'none' }}
+                                style={{ padding: '0.5rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: '600', outline: 'none', height: '37px', boxSizing: 'border-box' }}
                             />
                         </div>
                     </div>
@@ -445,6 +538,46 @@ const ManualAttendance = () => {
                         <Save size={16} /> {saving ? 'Saving...' : 'Save Attendance'}
                     </button>
                 </div>
+            </div>
+
+            {/* Common Policy / Auto-save Notice */}
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '0.65rem 1rem',
+                background: autoSaveEnabled ? 'rgba(99, 102, 241, 0.08)' : 'rgba(107, 114, 128, 0.08)',
+                borderRadius: '10px',
+                border: `1px solid ${autoSaveEnabled ? 'rgba(99, 102, 241, 0.2)' : 'var(--border-color)'}`,
+                fontSize: '0.82rem',
+                color: 'var(--text-secondary)',
+                flexWrap: 'wrap',
+                gap: '0.5rem',
+                transition: 'all 0.3s ease'
+            }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: '500' }}>
+                    {autoSaveEnabled ? (
+                        <>
+                            <Clock size={15} style={{ color: 'var(--brand-primary)' }} />
+                            <span><strong>Auto-Mark Absent:</strong> Un-marked students are automatically recorded as Absent 15 minutes after session end.</span>
+                        </>
+                    ) : (
+                        <>
+                            <AlertCircle size={15} style={{ color: 'var(--text-secondary)' }} />
+                            <span><strong>Manual Mode (Auto-Save OFF):</strong> Student attendance is only recorded when you click <em>Save Attendance</em>.</span>
+                        </>
+                    )}
+                </span>
+                <span style={{
+                    fontSize: '0.72rem',
+                    color: autoSaveEnabled ? 'var(--brand-primary)' : 'var(--text-secondary)',
+                    fontWeight: '700',
+                    padding: '0.2rem 0.6rem',
+                    borderRadius: '999px',
+                    background: autoSaveEnabled ? 'rgba(99, 102, 241, 0.12)' : 'rgba(107, 114, 128, 0.15)'
+                }}>
+                    {autoSaveEnabled ? 'Auto-Save Active' : 'Manual Save Only'}
+                </span>
             </div>
 
             {/* Student List Cards */}

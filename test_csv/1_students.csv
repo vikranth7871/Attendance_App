@@ -1,0 +1,6 @@
+name,email,password,role,department,className,section,rollNumber,parentEmail
+Ravi Kumar,ravi.kumar@student.com,pass1234,student,Computer Science,CS101-A,A,2001,ravi.parent@gmail.com
+Priya Sharma,priya.sharma@student.com,pass1234,student,Computer Science,CS101-A,A,2002,priya.parent@gmail.com
+Arjun Nair,arjun.nair@student.com,pass1234,student,Mathematics,MA202-B,B,2003,arjun.parent@gmail.com
+Sneha Reddy,sneha.reddy@student.com,pass1234,student,Electronics,EC303-A,A,2004,sneha.parent@gmail.com
+Karan Mehta,karan.mehta@student.com,pass1234,student,Computer Science,CS101-A,A,2005,karan.parent@gmail.com

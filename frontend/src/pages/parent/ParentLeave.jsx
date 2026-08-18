@@ -59,68 +59,77 @@ const ParentLeave = ({ selectedChildId }) => {
                         No leave requests submitted for this student.
                     </div>
                 ) : (
-                    leaves.map((leave) => (
-                        <motion.div
-                            key={leave.id}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className="glass-panel"
-                            style={{ padding: '1.75rem', borderLeft: `4px solid ${leave.status === 'approved' ? 'var(--success)' : leave.status === 'rejected' ? 'var(--danger)' : 'var(--warning)'}` }}
-                        >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
-                                <div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                                        <span style={{ fontSize: '1.1rem', fontWeight: '800', color: 'var(--text-primary)' }}>{leave.leave_type || leave.leaveType || 'General Leave'}</span>
+                    leaves.map((leave) => {
+                        const statusColor = leave.status === 'approved' ? 'var(--success)' : leave.status === 'rejected' ? 'var(--danger)' : 'var(--warning)';
+                        const startDate = new Date(leave.start_date || leave.startDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                        const endDate = new Date(leave.end_date || leave.endDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+
+                        return (
+                            <motion.div
+                                key={leave.id}
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                style={{
+                                    background: 'var(--bg-secondary)',
+                                    border: '1px solid var(--border-color)',
+                                    borderRadius: '0.75rem',
+                                    padding: '1rem 1.25rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '1rem',
+                                    flexWrap: 'wrap',
+                                }}
+                            >
+                                {/* Status stripe */}
+                                <div style={{ width: '4px', borderRadius: '999px', alignSelf: 'stretch', background: statusColor, flexShrink: 0 }} />
+
+                                {/* Main info */}
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
+                                        <span style={{ fontWeight: '700', color: 'var(--text-primary)' }}>{leave.leave_type || leave.leaveType || 'General Leave'}</span>
                                         <span style={{
-                                            padding: '0.25rem 0.75rem', borderRadius: '999px', fontSize: '0.75rem', fontWeight: '800',
-                                            textTransform: 'uppercase',
-                                            background: leave.status === 'approved' ? 'rgba(16,185,129,0.15)' : leave.status === 'rejected' ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)',
-                                            color: leave.status === 'approved' ? 'var(--success)' : leave.status === 'rejected' ? 'var(--danger)' : 'var(--warning)'
+                                            padding: '0.15rem 0.6rem', borderRadius: '999px', fontSize: '0.72rem', fontWeight: '700',
+                                            textTransform: 'uppercase', color: statusColor,
+                                            background: leave.status === 'approved' ? 'rgba(16,185,129,0.12)' : leave.status === 'rejected' ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.12)'
                                         }}>
                                             {leave.status}
                                         </span>
                                     </div>
-                                    <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-                                        📅 {new Date(leave.start_date || leave.startDate).toLocaleDateString()} to {new Date(leave.end_date || leave.endDate).toLocaleDateString()}
+                                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>
+                                        {startDate} → {endDate}
                                     </div>
-                                    <p style={{ color: 'var(--text-primary)', background: 'var(--bg-secondary)', padding: '1rem', borderRadius: '0.75rem', fontSize: '0.9rem', margin: 0 }}>
-                                        "{leave.reason}"
-                                    </p>
-
+                                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+                                        {leave.reason}
+                                    </div>
                                     {(leave.status === 'rejected' || leave.status === 'revoked') && (leave.rejection_reason || leave.rejectionReason) && (
-                                        <div style={{ marginTop: '0.75rem', padding: '0.75rem 1rem', background: leave.status === 'rejected' ? 'rgba(239,68,68,0.08)' : 'rgba(245,158,11,0.08)', borderRadius: '0.75rem', border: `1px solid ${leave.status === 'rejected' ? 'rgba(239,68,68,0.2)' : 'rgba(245,158,11,0.2)'}`, color: leave.status === 'rejected' ? 'var(--danger)' : '#f59e0b', fontSize: '0.85rem' }}>
-                                            <strong style={{ display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '0.2rem' }}>
-                                                {leave.status === 'rejected' ? 'Rejection Reason' : 'Revocation Reason'}:
-                                            </strong>
-                                            {leave.rejection_reason || leave.rejectionReason}
+                                        <div style={{ marginTop: '0.4rem', fontSize: '0.8rem', color: statusColor }}>
+                                            ⚠ {leave.rejection_reason || leave.rejectionReason}
                                         </div>
                                     )}
                                 </div>
 
-                                {/* Action Controls for Pending Requests */}
+                                {/* Approve / Reject buttons for pending */}
                                 {leave.status === 'pending' && (
-                                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                                    <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
                                         <button
                                             onClick={() => setRemarksModal({ leaveId: leave.id, action: 'approved' })}
                                             disabled={processingId === leave.id}
-                                            className="btn"
-                                            style={{ background: 'var(--success)', color: 'white', display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.6rem 1.25rem', borderRadius: '0.75rem', fontWeight: '700' }}
+                                            style={{ background: 'var(--success)', color: '#fff', border: 'none', borderRadius: '0.5rem', padding: '0.45rem 1rem', fontSize: '0.82rem', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
                                         >
-                                            <Check size={16} /> Approve
+                                            <Check size={14} /> Approve
                                         </button>
                                         <button
                                             onClick={() => setRemarksModal({ leaveId: leave.id, action: 'rejected' })}
                                             disabled={processingId === leave.id}
-                                            className="btn"
-                                            style={{ background: 'var(--danger)', color: 'white', display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.6rem 1.25rem', borderRadius: '0.75rem', fontWeight: '700' }}
+                                            style={{ background: 'var(--danger)', color: '#fff', border: 'none', borderRadius: '0.5rem', padding: '0.45rem 1rem', fontSize: '0.82rem', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
                                         >
-                                            <X size={16} /> Reject
+                                            <X size={14} /> Reject
                                         </button>
                                     </div>
                                 )}
-                            </div>
-                        </motion.div>
-                    ))
+                            </motion.div>
+                        );
+                    })
                 )}
             </div>
 

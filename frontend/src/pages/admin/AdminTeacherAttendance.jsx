@@ -17,6 +17,8 @@ const AdminTeacherAttendance = () => {
     const [exportStartDate, setExportStartDate] = useState(() => format(subDays(new Date(), 30), 'yyyy-MM-dd'));
     const [exportEndDate, setExportEndDate] = useState(todayStr);
     const [exportLoading, setExportLoading] = useState(false);
+    const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
+    const [togglingAutoSave, setTogglingAutoSave] = useState(false);
 
     useEffect(() => {
         fetchTeacherAttendance(date);
@@ -27,10 +29,28 @@ const AdminTeacherAttendance = () => {
         try {
             const { data } = await axios.get(`/admin/teacher-attendance?date=${selectedDate}`);
             setTeachers(data.teachers || []);
+            setAutoSaveEnabled(data.autoSaveEnabled ?? true);
         } catch (err) {
             console.error('Failed to fetch teacher attendance:', err);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleToggleAutoSave = async () => {
+        setTogglingAutoSave(true);
+        try {
+            const nextVal = !autoSaveEnabled;
+            const { data } = await axios.post('/admin/teacher-attendance/toggle-auto-save', { enabled: nextVal });
+            setAutoSaveEnabled(data.autoSaveEnabled);
+            setToast(data.message || (nextVal ? 'Auto-Save enabled' : 'Auto-Save turned off'));
+            setTimeout(() => setToast(''), 3500);
+        } catch (err) {
+            console.error('Failed to toggle auto-save:', err);
+            setToast('Failed to update Auto-Save setting.');
+            setTimeout(() => setToast(''), 3000);
+        } finally {
+            setTogglingAutoSave(false);
         }
     };
 
@@ -249,19 +269,58 @@ const AdminTeacherAttendance = () => {
 
                 {/* Date Picker & Controls */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                    <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.35rem',
-                        padding: '0.25rem 0.65rem',
-                        borderRadius: '999px',
-                        background: 'rgba(16, 185, 129, 0.1)',
-                        color: '#10b981',
-                        fontWeight: '700',
-                        fontSize: '0.75rem',
-                        border: '1px solid rgba(16, 185, 129, 0.2)'
-                    }}>
-                        <CheckCircle size={13} /> EOD Auto-Save Enabled
+                    {/* Interactive Auto-Save Sliding Switch Toggle */}
+                    <div
+                        onClick={!togglingAutoSave ? handleToggleAutoSave : undefined}
+                        title={`Click to switch Auto-Save ${autoSaveEnabled ? 'OFF' : 'ON'}`}
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.6rem',
+                            padding: '0.3rem 0.65rem 0.3rem 0.75rem',
+                            borderRadius: '999px',
+                            background: 'var(--bg-secondary)',
+                            border: `1px solid ${autoSaveEnabled ? 'rgba(16, 185, 129, 0.4)' : 'var(--border-color)'}`,
+                            cursor: togglingAutoSave ? 'not-allowed' : 'pointer',
+                            userSelect: 'none',
+                            transition: 'all 0.25s ease',
+                            boxShadow: autoSaveEnabled ? '0 0 12px rgba(16, 185, 129, 0.15)' : 'none'
+                        }}
+                    >
+                        <span style={{ fontSize: '0.78rem', fontWeight: '700', color: 'var(--text-primary)' }}>
+                            EOD Auto-Save
+                        </span>
+
+                        {/* Switch Track & Sliding Knob */}
+                        <div style={{
+                            width: '38px',
+                            height: '20px',
+                            borderRadius: '999px',
+                            background: autoSaveEnabled ? '#10b981' : '#4b5563',
+                            position: 'relative',
+                            transition: 'background 0.25s ease'
+                        }}>
+                            <div style={{
+                                width: '14px',
+                                height: '14px',
+                                borderRadius: '50%',
+                                background: '#ffffff',
+                                position: 'absolute',
+                                top: '3px',
+                                left: autoSaveEnabled ? '21px' : '3px',
+                                transition: 'left 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                                boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
+                            }} />
+                        </div>
+
+                        <span style={{
+                            fontSize: '0.72rem',
+                            fontWeight: '800',
+                            color: autoSaveEnabled ? '#10b981' : 'var(--text-secondary)',
+                            minWidth: '24px'
+                        }}>
+                            {autoSaveEnabled ? 'ON' : 'OFF'}
+                        </span>
                     </div>
 
                     <div style={{
@@ -420,6 +479,46 @@ const AdminTeacherAttendance = () => {
                 </button>
             </div>
 
+            {/* Common Policy Notice at Top of Table */}
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '0.65rem 1rem',
+                background: autoSaveEnabled ? 'rgba(99, 102, 241, 0.08)' : 'rgba(107, 114, 128, 0.08)',
+                borderRadius: '10px',
+                border: `1px solid ${autoSaveEnabled ? 'rgba(99, 102, 241, 0.2)' : 'var(--border-color)'}`,
+                fontSize: '0.82rem',
+                color: 'var(--text-secondary)',
+                flexWrap: 'wrap',
+                gap: '0.5rem',
+                transition: 'all 0.3s ease'
+            }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: '500' }}>
+                    {autoSaveEnabled ? (
+                        <>
+                            <Clock size={15} style={{ color: 'var(--brand-primary)' }} />
+                            <span><strong>Auto-saved (End of Day):</strong> Un-marked faculty attendance is automatically recorded as Absent at the end of the day.</span>
+                        </>
+                    ) : (
+                        <>
+                            <AlertCircle size={15} style={{ color: 'var(--text-secondary)' }} />
+                            <span><strong>Manual Mode (Auto-Save OFF):</strong> Attendance will only be recorded when you click <em>Save Attendance</em>.</span>
+                        </>
+                    )}
+                </span>
+                <span style={{
+                    fontSize: '0.72rem',
+                    color: autoSaveEnabled ? 'var(--brand-primary)' : 'var(--text-secondary)',
+                    fontWeight: '700',
+                    padding: '0.2rem 0.6rem',
+                    borderRadius: '999px',
+                    background: autoSaveEnabled ? 'rgba(99, 102, 241, 0.12)' : 'rgba(107, 114, 128, 0.15)'
+                }}>
+                    {autoSaveEnabled ? 'Auto-Save Active' : 'Manual Save Only'}
+                </span>
+            </div>
+
             {/* Faculty Attendance Roster List */}
             {loading ? (
                 <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
@@ -431,63 +530,43 @@ const AdminTeacherAttendance = () => {
                         <div
                             key={t.id}
                             style={{
-                                display: 'flex',
+                                display: 'grid',
+                                gridTemplateColumns: '36px 1fr 250px',
                                 alignItems: 'center',
-                                justifyContent: 'space-between',
                                 background: 'var(--bg-secondary)',
                                 padding: '1rem 1.25rem',
                                 borderRadius: '12px',
                                 border: '1px solid var(--border-color)',
-                                flexWrap: 'wrap',
-                                gap: '1rem'
+                                gap: '1.25rem'
                             }}
                         >
-                            {/* Teacher Info */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: '220px' }}>
-                                <div style={{ fontWeight: '700', color: 'var(--text-secondary)', fontSize: '0.85rem', width: '24px' }}>
-                                    #{idx + 1}
-                                </div>
-                                <div>
-                                    <div style={{ fontWeight: '700', color: 'var(--text-primary)', fontSize: '0.95rem' }}>
-                                        {t.name}
-                                    </div>
-                                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                                        {t.departmentName} • {t.email}
-                                    </div>
-                                    {t.onLeave && (
-                                        <div style={{ fontSize: '0.75rem', color: 'var(--brand-primary)', fontWeight: '700', marginTop: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                                            <CalendarOff size={13} /> Approved Leave ({t.leaveReason})
-                                        </div>
-                                    )}
-                                </div>
+                            {/* # Index */}
+                            <div style={{ fontWeight: '700', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                                #{idx + 1}
                             </div>
 
-                            {/* Remarks Input */}
-                            <div style={{ flex: 1, minWidth: '200px', maxWidth: '350px' }}>
-                                <input
-                                    type="text"
-                                    placeholder="Add optional remarks..."
-                                    value={t.remarks || ''}
-                                    onChange={e => handleRemarksChange(t.id, e.target.value)}
-                                    style={{
-                                        width: '100%',
-                                        padding: '0.45rem 0.75rem',
-                                        borderRadius: '8px',
-                                        border: '1px solid var(--border-color)',
-                                        background: 'var(--bg-primary)',
-                                        color: 'var(--text-primary)',
-                                        fontSize: '0.82rem',
-                                        outline: 'none'
-                                    }}
-                                />
+                            {/* Teacher Info */}
+                            <div style={{ minWidth: 0 }}>
+                                <div style={{ fontWeight: '700', color: 'var(--text-primary)', fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {t.name}
+                                </div>
+                                <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {t.departmentName} • {t.email}
+                                </div>
+                                {t.onLeave && (
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--brand-primary)', fontWeight: '700', marginTop: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                        <CalendarOff size={13} /> Approved Leave ({t.leaveReason})
+                                    </div>
+                                )}
                             </div>
 
                             {/* Status Selector Pills */}
-                            <div style={{ display: 'flex', gap: '0.4rem', background: 'var(--bg-primary)', padding: '0.25rem', borderRadius: '9px', border: '1px solid var(--border-color)' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.25rem', background: 'var(--bg-primary)', padding: '0.25rem', borderRadius: '9px', border: '1px solid var(--border-color)' }}>
                                 <button
                                     onClick={() => handleStatusChange(t.id, 'present')}
                                     style={{
-                                        padding: '0.45rem 0.9rem',
+                                        padding: '0.45rem 0',
+                                        textAlign: 'center',
                                         borderRadius: '7px',
                                         border: 'none',
                                         background: t.status === 'present' ? '#16a34a' : 'transparent',
@@ -503,7 +582,8 @@ const AdminTeacherAttendance = () => {
                                 <button
                                     onClick={() => handleStatusChange(t.id, 'absent')}
                                     style={{
-                                        padding: '0.45rem 0.9rem',
+                                        padding: '0.45rem 0',
+                                        textAlign: 'center',
                                         borderRadius: '7px',
                                         border: 'none',
                                         background: t.status === 'absent' ? '#dc2626' : 'transparent',
@@ -519,7 +599,8 @@ const AdminTeacherAttendance = () => {
                                 <button
                                     onClick={() => handleStatusChange(t.id, 'leave')}
                                     style={{
-                                        padding: '0.45rem 0.9rem',
+                                        padding: '0.45rem 0',
+                                        textAlign: 'center',
                                         borderRadius: '7px',
                                         border: 'none',
                                         background: t.status === 'leave' ? 'var(--brand-primary)' : 'transparent',

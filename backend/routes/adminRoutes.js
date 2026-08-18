@@ -6,7 +6,7 @@ import {
     enrollSubject, updateEnrolledSubject, removeEnrolledSubject, getSubjects,
     updateSubjectAllocation, deleteSubjectAllocation, getParents, getSystemActivity, getDashboardStats,
     updateAdminProfile, getSystemSettings, updateSystemSettings,
-    deleteDepartment, deleteClass, updateClass, getTeacherAttendance, markTeacherAttendance, exportTeacherAttendanceReport
+    deleteDepartment, deleteClass, updateClass, getTeacherAttendance, markTeacherAttendance, exportTeacherAttendanceReport, toggleTeacherAutoSave
 } from '../controllers/adminController.js';
 import { protect, authorizeRoles } from '../middleware/authMiddleware.js';
 
@@ -73,5 +73,6 @@ router.put('/settings', updateSystemSettings);
 router.get('/teacher-attendance/export', exportTeacherAttendanceReport);
 router.get('/teacher-attendance', getTeacherAttendance);
 router.post('/teacher-attendance', markTeacherAttendance);
+router.post('/teacher-attendance/toggle-auto-save', toggleTeacherAutoSave);
 
 export default router;

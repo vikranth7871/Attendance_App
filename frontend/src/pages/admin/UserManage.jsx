@@ -43,8 +43,12 @@ const UserManage = () => {
     const [csvFile, setCsvFile] = useState(null);
     const [csvPreview, setCsvPreview] = useState([]);
     const [csvHeaders, setCsvHeaders] = useState([]);
+    const [csvAllRows, setCsvAllRows] = useState([]);
+    const [csvErrors, setCsvErrors] = useState({}); // rowIdx -> error string
     const [uploading, setUploading] = useState(false);
     const [uploadResult, setUploadResult] = useState(null);
+    const [templateRole, setTemplateRole] = useState('student');
+    const [uploadProgress, setUploadProgress] = useState(0);
 
     useEffect(() => {
         fetchDepartmentsAndClasses();
@@ -185,54 +189,153 @@ const UserManage = () => {
     };
 
     // --- CSV Upload Logic ---
+    const REQUIRED_HEADERS = ['name', 'email', 'password', 'role'];
+
+    const STUDENT_REQUIRED = ['name', 'email', 'password', 'role', 'parentEmail'];
+    const ROLE_TEMPLATES = {
+        student: {
+            headers: ['name', 'email', 'password', 'role', 'department', 'className', 'section', 'rollNumber', 'parentEmail'],
+            required: STUDENT_REQUIRED,
+            sample: [
+                ['Alice Student', 'alice@example.com', 'student123', 'student', 'Computer Science', 'CS101-A', 'A', '1001', 'alice.parent@example.com'],
+                ['Bob Student', 'bob@example.com', 'student123', 'student', 'Computer Science', 'CS101-A', 'A', '1002', 'bob.parent@example.com'],
+            ]
+        },
+        teacher: {
+            headers: ['name', 'email', 'password', 'role', 'department', 'className'],
+            sample: [
+                ['Jane Teacher', 'jane.teacher@example.com', 'teacher123', 'teacher', 'Computer Science', 'CS101-A'],
+                ['Tom Faculty', 'tom.faculty@example.com', 'teacher123', 'teacher', 'Mathematics', 'MA202-B'],
+            ]
+        },
+        parent: {
+            headers: ['name', 'email', 'password', 'role'],
+            sample: [
+                ['Alice Parent', 'alice.parent@example.com', 'parent123', 'parent'],
+                ['Bob Parent', 'bob.parent@example.com', 'parent123', 'parent'],
+            ]
+        },
+        admin: {
+            headers: ['name', 'email', 'password', 'role'],
+            sample: [
+                ['Admin User', 'newadmin@example.com', 'admin123', 'admin'],
+            ]
+        },
+    };
+
+    const validateRows = (rows, headers) => {
+        const errors = {};
+        const seenEmails = new Set();
+        rows.forEach((row, idx) => {
+            const errs = [];
+            if (!row.name?.trim()) errs.push('Missing name');
+            if (!row.email?.trim()) errs.push('Missing email');
+            else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email.trim())) errs.push('Invalid email format');
+            if (!row.password?.trim()) errs.push('Missing password');
+            if (!row.role?.trim()) errs.push('Missing role');
+            else if (!['student', 'teacher', 'parent', 'admin'].includes(row.role.trim().toLowerCase())) errs.push(`Invalid role "${row.role}"`);
+            // parentEmail is required for students
+            if (row.role?.trim().toLowerCase() === 'student' && !row.parentEmail?.trim()) errs.push('Missing parentEmail (required for students)');
+            if (row.email && seenEmails.has(row.email.trim().toLowerCase())) errs.push('Duplicate email in this file');
+            if (row.email) seenEmails.add(row.email.trim().toLowerCase());
+            if (errs.length > 0) errors[idx] = errs.join(', ');
+        });
+        return errors;
+    };
+
+    // Inline cell edit handler — updates the row and re-validates all rows live
+    const handleCellEdit = (rowIdx, header, value) => {
+        const updated = csvPreview.map((row, i) =>
+            i === rowIdx ? { ...row, [header]: value } : row
+        );
+        setCsvPreview(updated);
+        setCsvAllRows(updated);
+        setCsvErrors(validateRows(updated, csvHeaders));
+    };
+
+    // Remove single row from preview
+    const handleDeleteRow = (rowIdx) => {
+        const updated = csvPreview.filter((_, i) => i !== rowIdx);
+        setCsvPreview(updated);
+        setCsvAllRows(updated);
+        setCsvErrors(validateRows(updated, csvHeaders));
+    };
+
+    // Clear and remove the current attachment
+    const handleClearAttachment = () => {
+        setCsvFile(null);
+        setCsvPreview([]);
+        setCsvAllRows([]);
+        setCsvHeaders([]);
+        setCsvErrors({});
+        setUploadResult(null);
+        setUploadProgress(0);
+    };
+
     const handleFileChange = (e) => {
         const file = e.target.files[0];
         if (file) {
             setCsvFile(file);
+            setUploadResult(null);
+            setUploadProgress(0);
             Papa.parse(file, {
                 header: true,
                 skipEmptyLines: true,
                 complete: function (results) {
-                    setCsvHeaders(results.meta.fields || []);
-                    setCsvPreview(results.data.slice(0, 5));
+                    const headers = results.meta.fields || [];
+                    const rows = results.data;
+                    setCsvHeaders(headers);
+                    setCsvAllRows(rows);
+                    setCsvPreview(rows);
+                    setCsvErrors(validateRows(rows, headers));
                 }
             });
-            setUploadResult(null);
+            e.target.value = '';
         }
     };
 
     const handleCsvUpload = async () => {
         if (!csvFile) return alert('Please select a file first.');
+        const errorCount = Object.keys(csvErrors).length;
+        if (errorCount > 0 && !window.confirm(`${errorCount} row(s) have validation errors and will likely fail. Continue anyway?`)) return;
+
         setUploading(true);
         setUploadResult(null);
+        setUploadProgress(10);
 
-        Papa.parse(csvFile, {
-            header: true,
-            skipEmptyLines: true,
-            complete: async function (results) {
-                try {
-                    const response = await axios.post('/admin/create-users-bulk', { users: results.data });
-                    setUploadResult({ success: true, message: response.data.message, data: response.data });
-                    setCsvFile(null);
-                    setCsvPreview([]);
-                } catch (err) {
-                    setUploadResult({ success: false, message: err.response?.data?.message || err.message, data: err.response?.data });
-                } finally {
-                    setUploading(false);
-                }
-            }
-        });
+        try {
+            setUploadProgress(40);
+            const response = await axios.post('/admin/create-users-bulk', { users: csvPreview });
+            setUploadProgress(100);
+            setUploadResult({ success: true, data: response.data });
+            setCsvFile(null);
+            setCsvPreview([]);
+            setCsvAllRows([]);
+            setCsvErrors({});
+            fetchStudents();
+            fetchTeachers();
+            fetchParents();
+        } catch (err) {
+            setUploadProgress(0);
+            setUploadResult({ success: false, data: err.response?.data, message: err.response?.data?.message || err.message });
+        } finally {
+            setUploading(false);
+        }
     };
 
     const downloadTemplate = () => {
-        const csvContent = "data:text/csv;charset=utf-8,name,email,password,role,department,className,rollNumber\nJohn Doe,john@example.com,password123,student,Computer Science,CS101-A,101";
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", "user_upload_template.csv");
+        const tmpl = ROLE_TEMPLATES[templateRole];
+        const rows = [tmpl.headers, ...tmpl.sample];
+        const csvContent = rows.map(r => r.join(',')).join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `iAttend_${templateRole}_template.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     };
 
     const filteredClassesManual = classes.filter(c => c.departmentId?._id === manualForm.departmentId || c.departmentId === manualForm.departmentId);
@@ -549,74 +652,282 @@ const UserManage = () => {
                             <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }}>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.5rem', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', border: '1px dashed var(--border-color)', flexWrap: 'wrap', gap: '1.5rem' }}>
-                                        <div>
-                                            <h3 style={{ fontSize: '1.1rem', fontWeight: '500', marginBottom: '0.5rem' }}>Upload CSV File</h3>
-                                            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Please ensure your CSV matches the required columns.</p>
+                                    {/* Template Download Section */}
+                                    <div style={{ padding: '1.25rem', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                                            <div>
+                                                <h3 style={{ fontSize: '1rem', fontWeight: '700', marginBottom: '0.25rem' }}>Download Template</h3>
+                                                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                                    Select a role to download its pre-filled CSV template with sample rows.
+                                                </p>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                <select
+                                                    value={templateRole}
+                                                    onChange={e => setTemplateRole(e.target.value)}
+                                                    style={{
+                                                        padding: '0.55rem 0.9rem',
+                                                        borderRadius: '0.5rem',
+                                                        border: '1px solid var(--border-color)',
+                                                        background: 'var(--bg-primary)',
+                                                        color: 'var(--text-primary)',
+                                                        fontSize: '0.875rem',
+                                                        outline: 'none',
+                                                        cursor: 'pointer',
+                                                        fontWeight: '500',
+                                                        transition: 'border-color 0.2s, box-shadow 0.2s'
+                                                    }}
+                                                    onFocus={e => {
+                                                        e.target.style.borderColor = 'var(--brand-primary)';
+                                                        e.target.style.boxShadow = '0 0 0 2px rgba(99, 102, 241, 0.25)';
+                                                    }}
+                                                    onBlur={e => {
+                                                        e.target.style.borderColor = 'var(--border-color)';
+                                                        e.target.style.boxShadow = 'none';
+                                                    }}
+                                                >
+                                                    <option value="student">Student</option>
+                                                    <option value="teacher">Teacher</option>
+                                                    <option value="parent">Parent</option>
+                                                    <option value="admin">Admin</option>
+                                                </select>
+                                                <button
+                                                    onClick={downloadTemplate}
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.5rem',
+                                                        padding: '0.55rem 1rem',
+                                                        borderRadius: '0.5rem',
+                                                        border: '1px solid var(--border-color)',
+                                                        background: 'var(--bg-primary)',
+                                                        color: 'var(--text-primary)',
+                                                        cursor: 'pointer',
+                                                        fontSize: '0.875rem',
+                                                        fontWeight: '600',
+                                                        transition: 'all 0.2s ease'
+                                                    }}
+                                                >
+                                                    <Download size={15} /> Download {templateRole} template
+                                                </button>
+                                            </div>
                                         </div>
-                                        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                                            <button type="button" onClick={downloadTemplate} className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                <Download size={16} /> Template
-                                            </button>
-                                            <label className="btn btn-primary" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                <Upload size={16} /> Browse File
-                                                <input type="file" accept=".csv" onChange={handleFileChange} style={{ display: 'none' }} />
-                                            </label>
+                                        {/* Column hints */}
+                                        <div style={{ marginTop: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                                            {(ROLE_TEMPLATES[templateRole]?.headers || []).map(h => (
+                                                <span key={h} style={{ padding: '0.2rem 0.6rem', borderRadius: '999px', fontSize: '0.72rem', fontWeight: '600', background: (ROLE_TEMPLATES[templateRole]?.required || ['name','email','password','role']).includes(h) ? 'rgba(239,68,68,0.12)' : 'rgba(91,80,230,0.1)', color: (ROLE_TEMPLATES[templateRole]?.required || ['name','email','password','role']).includes(h) ? 'var(--danger)' : 'var(--brand-primary)' }}>
+                                                    {h}{(ROLE_TEMPLATES[templateRole]?.required || ['name','email','password','role']).includes(h) ? ' *' : ''}
+                                                </span>
+                                            ))}
+                                        </div>
+                                        <p style={{ fontSize: '0.72rem', color: 'var(--text-light)', marginTop: '0.5rem' }}>* Required fields</p>
+                                    </div>
+
+                                    {/* File Upload */}
+                                    <div style={{ padding: '1.5rem', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', border: '2px dashed var(--border-color)', textAlign: 'center' }}>
+                                        <Upload size={28} style={{ marginBottom: '0.5rem', color: 'var(--brand-primary)' }} />
+                                        <p style={{ fontWeight: '600', marginBottom: '0.25rem' }}>Upload your CSV file</p>
+                                        <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>Supports all roles in a single file — students, teachers, parents, admins</p>
+                                        
+                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 1.25rem', borderRadius: '0.5rem', background: 'var(--brand-primary)', color: '#fff', cursor: 'pointer', fontWeight: '700', fontSize: '0.875rem' }}>
+                                                    <FileText size={16} /> {csvFile ? csvFile.name : 'Browse CSV File'}
+                                                    <input type="file" accept=".csv" onChange={handleFileChange} style={{ display: 'none' }} />
+                                                </label>
+                                            </div>
+
+                                            {csvFile && (
+                                                <button
+                                                    type="button"
+                                                    onClick={handleClearAttachment}
+                                                    title="Remove attachment"
+                                                    style={{
+                                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                                        width: '28px', height: '28px', borderRadius: '50%',
+                                                        background: 'rgba(239,68,68,0.12)', color: 'var(--danger)',
+                                                        border: '1px solid rgba(239,68,68,0.3)', cursor: 'pointer',
+                                                        transition: 'all 0.15s ease'
+                                                    }}
+                                                    onMouseOver={e => {
+                                                        e.currentTarget.style.background = 'var(--danger)';
+                                                        e.currentTarget.style.color = '#fff';
+                                                    }}
+                                                    onMouseOut={e => {
+                                                        e.currentTarget.style.background = 'rgba(239,68,68,0.12)';
+                                                        e.currentTarget.style.color = 'var(--danger)';
+                                                    }}
+                                                >
+                                                    <X size={15} />
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
 
-                                    {csvFile && (
-                                        <div style={{ padding: '1rem', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                                                <span style={{ fontWeight: '500', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><FileText size={18} color="var(--brand-primary)" /> {csvFile.name}</span>
-                                                <button onClick={handleCsvUpload} disabled={uploading} className="btn btn-primary" style={{ height: '36px' }}>
-                                                    {uploading ? 'Processing...' : 'Upload Users'}
+                                    {/* Live Preview Table */}
+                                    {csvPreview.length > 0 && (
+                                        <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.875rem 1rem', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap', gap: '0.75rem' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                                    <span style={{ fontWeight: '700', fontSize: '0.95rem' }}>
+                                                        <FileText size={16} style={{ verticalAlign: 'middle', marginRight: '0.4rem', color: 'var(--brand-primary)' }} />
+                                                        {csvFile?.name} — {csvPreview.length} rows
+                                                    </span>
+                                                    {Object.keys(csvErrors).length > 0 && (
+                                                        <span style={{ padding: '0.2rem 0.6rem', borderRadius: '999px', background: 'rgba(239,68,68,0.12)', color: 'var(--danger)', fontSize: '0.75rem', fontWeight: '700' }}>
+                                                            {Object.keys(csvErrors).length} error{Object.keys(csvErrors).length > 1 ? 's' : ''}
+                                                        </span>
+                                                    )}
+                                                    {Object.keys(csvErrors).length === 0 && (
+                                                        <span style={{ padding: '0.2rem 0.6rem', borderRadius: '999px', background: 'rgba(16,185,129,0.12)', color: 'var(--success)', fontSize: '0.75rem', fontWeight: '700' }}>
+                                                            ✓ All rows valid
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <button
+                                                    onClick={handleCsvUpload}
+                                                    disabled={uploading}
+                                                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1.25rem', borderRadius: '0.5rem', background: uploading ? '#6b7280' : 'var(--brand-primary)', color: '#fff', border: 'none', fontWeight: '700', cursor: uploading ? 'not-allowed' : 'pointer', fontSize: '0.875rem' }}
+                                                >
+                                                    {uploading ? <><Loader2 size={15} className="spin" /> Uploading...</> : <><Upload size={15} /> Upload {csvPreview.length} Users</>}
                                                 </button>
                                             </div>
 
-                                            {csvPreview.length > 0 && (
-                                                <div className="table-responsive" style={{ fontSize: '0.875rem' }}>
-                                                    <p style={{ marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>Preview (First {csvPreview.length} rows):</p>
-                                                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                                                        <thead>
-                                                            <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                                {csvHeaders.map(h => <th key={h} style={{ padding: '0.5rem' }}>{h}</th>)}
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            {csvPreview.map((row, idx) => (
-                                                                <tr key={idx} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                                    {csvHeaders.map(h => <td key={h} style={{ padding: '0.5rem', color: 'var(--text-secondary)' }}>{row[h]}</td>)}
-                                                                </tr>
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
+                                            {/* Progress bar */}
+                                            {uploading && (
+                                                <div style={{ height: '4px', background: 'var(--border-color)' }}>
+                                                    <div style={{ height: '100%', width: `${uploadProgress}%`, background: 'var(--brand-primary)', transition: 'width 0.4s ease', borderRadius: '999px' }} />
                                                 </div>
                                             )}
+
+                                            <div style={{ overflowX: 'auto', maxHeight: '360px', overflowY: 'auto' }}>
+                                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                                                    <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-secondary)', zIndex: 1 }}>
+                                                        <tr>
+                                                            <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)', fontWeight: '600', whiteSpace: 'nowrap' }}>#</th>
+                                                            {csvHeaders.map(h => (
+                                                                <th key={h} style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)', fontWeight: '600', whiteSpace: 'nowrap' }}>{h}</th>
+                                                            ))}
+                                                            <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)', fontWeight: '600' }}>Status</th>
+                                                            <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)', fontWeight: '600' }}>Action</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {csvPreview.map((row, idx) => (
+                                                            <tr key={idx} style={{ borderBottom: '1px solid var(--border-color)', background: csvErrors[idx] ? 'rgba(239,68,68,0.04)' : 'rgba(16,185,129,0.02)', transition: 'background 0.2s' }}>
+                                                                <td style={{ padding: '0.45rem 0.75rem', color: 'var(--text-light)', fontWeight: '600', fontSize: '0.75rem' }}>{idx + 1}</td>
+                                                                {csvHeaders.map(h => {
+                                                                    const isRequired = (ROLE_TEMPLATES[row.role?.trim().toLowerCase()]?.required || ['name','email','password','role']).includes(h);
+                                                                    const isEmpty = !row[h]?.trim();
+                                                                    const isRoleField = h === 'role';
+                                                                    return (
+                                                                        <td key={h} style={{ padding: '0.2rem 0.4rem' }}>
+                                                                            {isRoleField ? (
+                                                                                <select
+                                                                                    value={row[h] || ''}
+                                                                                    onChange={e => handleCellEdit(idx, h, e.target.value)}
+                                                                                    style={{
+                                                                                        width: '100%', padding: '0.3rem 0.4rem',
+                                                                                        borderRadius: '0.35rem', fontSize: '0.78rem',
+                                                                                        border: `1px solid ${isEmpty && isRequired ? 'var(--danger)' : 'var(--border-color)'}`,
+                                                                                        background: 'var(--bg-primary)', color: 'var(--text-primary)',
+                                                                                        outline: 'none', cursor: 'pointer'
+                                                                                    }}
+                                                                                >
+                                                                                    <option value="">— select —</option>
+                                                                                    <option value="student">student</option>
+                                                                                    <option value="teacher">teacher</option>
+                                                                                    <option value="parent">parent</option>
+                                                                                    <option value="admin">admin</option>
+                                                                                </select>
+                                                                            ) : (
+                                                                                <input
+                                                                                    type={h === 'password' ? 'text' : 'text'}
+                                                                                    value={row[h] || ''}
+                                                                                    onChange={e => handleCellEdit(idx, h, e.target.value)}
+                                                                                    placeholder={isRequired ? `${h} *` : h}
+                                                                                    style={{
+                                                                                        width: '100%', minWidth: h === 'email' || h === 'parentEmail' ? '160px' : '80px',
+                                                                                        padding: '0.3rem 0.5rem',
+                                                                                        borderRadius: '0.35rem', fontSize: '0.78rem',
+                                                                                        border: `1px solid ${isEmpty && isRequired ? 'var(--danger)' : 'var(--border-color)'}`,
+                                                                                        background: isEmpty && isRequired ? 'rgba(239,68,68,0.05)' : 'var(--bg-primary)',
+                                                                                        color: 'var(--text-primary)', outline: 'none',
+                                                                                        transition: 'border-color 0.15s, background 0.15s'
+                                                                                    }}
+                                                                                />
+                                                                            )}
+                                                                        </td>
+                                                                    );
+                                                                })}
+                                                                <td style={{ padding: '0.45rem 0.75rem', whiteSpace: 'nowrap', minWidth: '120px' }}>
+                                                                    {csvErrors[idx]
+                                                                        ? <span title={csvErrors[idx]} style={{ color: 'var(--danger)', fontSize: '0.7rem', fontWeight: '600', display: 'flex', alignItems: 'flex-start', gap: '0.25rem' }}><span style={{flexShrink:0}}>⚠</span>{csvErrors[idx]}</span>
+                                                                        : <span style={{ color: 'var(--success)', fontSize: '0.72rem', fontWeight: '600' }}>✓ OK</span>
+                                                                    }
+                                                                </td>
+                                                                <td style={{ padding: '0.45rem 0.5rem', textAlign: 'center' }}>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleDeleteRow(idx)}
+                                                                        title="Remove row"
+                                                                        style={{
+                                                                            background: 'transparent',
+                                                                            border: 'none',
+                                                                            color: 'var(--text-light)',
+                                                                            cursor: 'pointer',
+                                                                            padding: '0.25rem',
+                                                                            borderRadius: '0.25rem',
+                                                                            display: 'inline-flex',
+                                                                            alignItems: 'center',
+                                                                            justifyContent: 'center'
+                                                                        }}
+                                                                        onMouseOver={e => e.currentTarget.style.color = 'var(--danger)'}
+                                                                        onMouseOut={e => e.currentTarget.style.color = 'var(--text-light)'}
+                                                                    >
+                                                                        <Trash2 size={14} />
+                                                                    </button>
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
                                         </div>
                                     )}
 
+                                    {/* Upload Result Summary */}
                                     {uploadResult && (
-                                        <div style={{
-                                            padding: '1rem',
-                                            borderRadius: 'var(--radius-md)',
-                                            background: uploadResult.success ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                                            color: uploadResult.success ? '#15803d' : '#b91c1c',
-                                            border: `1px solid ${uploadResult.success ? '#22c55e' : '#ef4444'}`,
-                                            display: 'flex',
-                                            alignItems: 'flex-start',
-                                            gap: '0.75rem'
-                                        }}>
-                                            {uploadResult.success ? <CheckCircle size={20} style={{ marginTop: '0.125rem' }} /> : <AlertCircle size={20} style={{ marginTop: '0.125rem' }} />}
-                                            <div>
-                                                <p style={{ fontWeight: '600', marginBottom: '0.25rem' }}>{uploadResult.message}</p>
-                                                {!uploadResult.success && uploadResult.data?.errors && (
-                                                    <ul style={{ marginLeft: '1.5rem', marginTop: '0.5rem', fontSize: '0.875rem' }}>
-                                                        {uploadResult.data.errors.slice(0, 5).map((err, i) => <li key={i}>{err}</li>)}
-                                                        {uploadResult.data.errors.length > 5 && <li>...and {uploadResult.data.errors.length - 5} more errors.</li>}
-                                                    </ul>
-                                                )}
+                                        <div style={{ borderRadius: 'var(--radius-md)', border: `1px solid ${uploadResult.success ? 'var(--success)' : 'var(--danger)'}`, overflow: 'hidden' }}>
+                                            <div style={{ padding: '1rem 1.25rem', background: uploadResult.success ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                                {uploadResult.success ? <CheckCircle size={20} color="var(--success)" /> : <AlertCircle size={20} color="var(--danger)" />}
+                                                <div>
+                                                    <p style={{ fontWeight: '700', color: 'var(--text-primary)', marginBottom: '0.1rem' }}>{uploadResult.data?.message || uploadResult.message}</p>
+                                                    {uploadResult.success && (
+                                                        <div style={{ display: 'flex', gap: '1rem', fontSize: '0.8rem', marginTop: '0.25rem', flexWrap: 'wrap' }}>
+                                                            <span style={{ color: 'var(--success)' }}>✅ {uploadResult.data?.successfulCount || 0} created</span>
+                                                            <span style={{ color: 'var(--warning)' }}>⚠️ {uploadResult.data?.skippedCount || 0} skipped (duplicates)</span>
+                                                            <span style={{ color: 'var(--danger)' }}>❌ {uploadResult.data?.failedCount || 0} failed</span>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
+                                            {uploadResult.success && uploadResult.data?.skipped?.length > 0 && (
+                                                <div style={{ padding: '0.75rem 1.25rem', borderTop: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
+                                                    <p style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--warning)', marginBottom: '0.4rem' }}>⚠️ Skipped Duplicates:</p>
+                                                    <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                                                        {uploadResult.data.skipped.map((s, i) => <li key={i}>{s}</li>)}
+                                                    </ul>
+                                                </div>
+                                            )}
+                                            {uploadResult.data?.errors?.length > 0 && (
+                                                <div style={{ padding: '0.75rem 1.25rem', borderTop: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
+                                                    <p style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--danger)', marginBottom: '0.4rem' }}>❌ Failed Rows:</p>
+                                                    <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                                                        {uploadResult.data.errors.map((err, i) => <li key={i}>{err}</li>)}
+                                                    </ul>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
 

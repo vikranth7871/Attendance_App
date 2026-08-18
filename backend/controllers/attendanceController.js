@@ -231,3 +231,52 @@ export const bulkMarkManualAttendance = async (req, res) => {
 export const testAttendanceEmail = async (req, res) => {
     res.json({ message: 'Email test endpoint ready' });
 };
+
+/**
+ * @desc    Get student auto-save setting
+ * @route   GET /api/attendance/auto-save-setting
+ * @access  Private
+ */
+export const getStudentAutoSaveSetting = async (req, res) => {
+    try {
+        const settingRes = await pool.query(
+            `SELECT value FROM system_settings WHERE key = 'student_auto_save_enabled' LIMIT 1`
+        );
+        let autoSaveEnabled = true;
+        if (settingRes.rows.length > 0) {
+            const val = settingRes.rows[0].value;
+            autoSaveEnabled = typeof val === 'boolean' ? val : (typeof val === 'string' ? JSON.parse(val) : !!val);
+        }
+        res.json({ autoSaveEnabled });
+    } catch (error) {
+        console.error('Error fetching student auto-save setting:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+/**
+ * @desc    Toggle student auto-save setting
+ * @route   POST /api/attendance/toggle-auto-save
+ * @access  Private (Teacher/Admin)
+ */
+export const toggleStudentAutoSave = async (req, res) => {
+    try {
+        const { enabled } = req.body;
+        const boolVal = !!enabled;
+
+        await pool.query(`
+            INSERT INTO system_settings (key, value, description, updated_at)
+            VALUES ('student_auto_save_enabled', $1, 'Enable or disable student attendance auto-mark absent', CURRENT_TIMESTAMP)
+            ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = CURRENT_TIMESTAMP
+        `, [JSON.stringify(boolVal)]);
+
+        res.json({
+            success: true,
+            autoSaveEnabled: boolVal,
+            message: boolVal ? 'Student Auto-Save has been enabled.' : 'Student Auto-Save has been turned off (Manual Save Only).'
+        });
+    } catch (error) {
+        console.error('Error toggling student auto-save:', error);
+        res.status(500).json({ message: error.message });
+    }
+};

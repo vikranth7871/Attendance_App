@@ -1,5 +1,6 @@
 import User from '../models/User.js';
 import { pool } from '../config/db.js';
+import bcrypt from 'bcryptjs';
 import Department from '../models/Department.js';
 import Class from '../models/Class.js';
 import Subject from '../models/Subject.js';
@@ -284,80 +285,141 @@ export const createUsersBulk = async (req, res) => {
 
         const depCache = {};
         const classCache = {};
+        const successful = [];
+        const failed = [];
+        const skipped = [];
 
-        const results = await Promise.allSettled(users.map(async (u, index) => {
-            let { name, email, password, role, department, className, section, rollNumber, parentEmail } = u;
+        for (let index = 0; index < users.length; index++) {
+            const u = users[index];
+            try {
+                let { name, email, password, role, department, className, section, rollNumber, parentEmail } = u;
 
-            if (!name || !email || !password || !role) {
-                throw new Error(`Row ${index + 1}: Missing required fields (Name, Email, Password, Role)`);
-            }
-
-            const userExists = await User.findOne({ email: email.toLowerCase().trim() });
-            if (userExists) {
-                throw new Error(`Row ${index + 1}: User with email ${email} already exists`);
-            }
-
-            let departmentId = null;
-            if (department) {
-                const depNameKey = department.toLowerCase().trim();
-                if (!depCache[depNameKey]) {
-                    const depRes = await pool.query(
-                        'SELECT id FROM departments WHERE LOWER(name) = $1 LIMIT 1',
-                        [depNameKey]
-                    );
-                    let depId = depRes.rows[0]?.id;
-                    if (!depId) {
-                        const newDepRes = await pool.query(
-                            'INSERT INTO departments (name) VALUES ($1) RETURNING id',
-                            [department.trim()]
-                        );
-                        depId = newDepRes.rows[0].id;
-                    }
-                    depCache[depNameKey] = depId;
+                // Validate required fields
+                if (!name || !email || !password || !role) {
+                    failed.push(`Row ${index + 1} (${email || 'no email'}): Missing required fields — name, email, password, role`);
+                    continue;
                 }
-                departmentId = depCache[depNameKey];
-            }
 
-            let classId = null;
-            if (className && departmentId) {
-                const classKey = `${className.toLowerCase().trim()}-${departmentId}`;
-                if (!classCache[classKey]) {
-                    const classRes = await pool.query(
-                        'SELECT id FROM classes WHERE LOWER(name) = $1 AND department_id = $2 LIMIT 1',
-                        [className.toLowerCase().trim(), departmentId]
-                    );
-                    let cId = classRes.rows[0]?.id;
-                    if (!cId) {
-                        const newClassRes = await pool.query(
-                            'INSERT INTO classes (name, department_id) VALUES ($1, $2) RETURNING id',
-                            [className.trim(), departmentId]
-                        );
-                        cId = newClassRes.rows[0].id;
-                    }
-                    classCache[classKey] = cId;
+                const validRoles = ['student', 'teacher', 'parent', 'admin'];
+                if (!validRoles.includes(role.toLowerCase().trim())) {
+                    failed.push(`Row ${index + 1} (${email}): Invalid role "${role}". Must be one of: student, teacher, parent, admin`);
+                    continue;
                 }
-                classId = classCache[classKey];
+
+                // parentEmail is required for students
+                if (role.toLowerCase().trim() === 'student' && !parentEmail?.trim()) {
+                    failed.push(`Row ${index + 1} (${email}): parentEmail is required for students`);
+                    continue;
+                }
+
+                const cleanEmail = email.toLowerCase().trim();
+
+                // Skip duplicate emails
+                const existsRes = await pool.query('SELECT id FROM users WHERE LOWER(email) = $1', [cleanEmail]);
+                if (existsRes.rows.length > 0) {
+                    skipped.push(`Row ${index + 1} (${cleanEmail}): Already exists — skipped`);
+                    continue;
+                }
+
+                // Resolve department
+                let departmentId = null;
+                if (department) {
+                    const depKey = department.toLowerCase().trim();
+                    if (!depCache[depKey]) {
+                        const depRes = await pool.query('SELECT id FROM departments WHERE LOWER(name) = $1 LIMIT 1', [depKey]);
+                        let depId = depRes.rows[0]?.id;
+                        if (!depId) {
+                            const newDep = await pool.query('INSERT INTO departments (name) VALUES ($1) RETURNING id', [department.trim()]);
+                            depId = newDep.rows[0].id;
+                        }
+                        depCache[depKey] = depId;
+                    }
+                    departmentId = depCache[depKey];
+                }
+
+                // Resolve class (search by name, optionally scoped to department)
+                let classId = null;
+                if (className) {
+                    const classKey = `${className.toLowerCase().trim()}-${departmentId || 'any'}`;
+                    if (!classCache[classKey]) {
+                        let classRes;
+                        if (departmentId) {
+                            classRes = await pool.query(
+                                'SELECT id FROM classes WHERE LOWER(name) = $1 AND department_id = $2 LIMIT 1',
+                                [className.toLowerCase().trim(), departmentId]
+                            );
+                        } else {
+                            classRes = await pool.query(
+                                'SELECT id FROM classes WHERE LOWER(name) = $1 LIMIT 1',
+                                [className.toLowerCase().trim()]
+                            );
+                        }
+                        let cId = classRes.rows[0]?.id;
+                        if (!cId && departmentId) {
+                            const newClass = await pool.query(
+                                'INSERT INTO classes (name, department_id) VALUES ($1, $2) RETURNING id',
+                                [className.trim(), departmentId]
+                            );
+                            cId = newClass.rows[0].id;
+                        }
+                        classCache[classKey] = cId || null;
+                    }
+                    classId = classCache[classKey];
+                }
+
+                // Hash password
+                const hashedPassword = await bcrypt.hash(password, 10);
+
+                // Insert user
+                const insertRes = await pool.query(
+                    `INSERT INTO users (name, email, password, role, department_id, class_id, section, roll_number, parent_email)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id, name, email, role`,
+                    [
+                        name.trim(),
+                        cleanEmail,
+                        hashedPassword,
+                        role.toLowerCase().trim(),
+                        departmentId,
+                        classId,
+                        section ? section.trim() : null,
+                        rollNumber ? String(rollNumber).trim() : null,
+                        parentEmail ? parentEmail.toLowerCase().trim() : null
+                    ]
+                );
+
+                const newUser = insertRes.rows[0];
+
+                // Auto-link parent: if this is a student with parentEmail, update parent's parent_id
+                if (role.toLowerCase() === 'student' && parentEmail) {
+                    const cleanParentEmail = parentEmail.toLowerCase().trim();
+                    await pool.query(
+                        'UPDATE users SET parent_id = $1 WHERE LOWER(email) = $2 AND role = $3',
+                        [newUser.id, cleanParentEmail, 'parent']
+                    );
+                }
+
+                // Auto-link: if this is a parent, link to any existing student with matching parent_email
+                if (role.toLowerCase() === 'parent') {
+                    await pool.query(
+                        'UPDATE users SET parent_id = $1 WHERE LOWER(parent_email) = $2 AND role = $3',
+                        [newUser.id, cleanEmail, 'student']
+                    );
+                }
+
+                successful.push(`${newUser.name} (${newUser.email}) [${newUser.role}]`);
+
+            } catch (err) {
+                failed.push(`Row ${index + 1} (${u.email || '?'}): ${err.message}`);
             }
-
-            return User.create({
-                name: name.trim(),
-                email: email.toLowerCase().trim(),
-                password,
-                role: role.toLowerCase().trim(),
-                departmentId,
-                classId,
-                section: section ? section.trim() : null,
-                rollNumber: rollNumber ? rollNumber.trim() : null,
-                parentEmail: parentEmail ? parentEmail.toLowerCase().trim() : null
-            });
-        }));
-
-        const successful = results.filter(r => r.status === 'fulfilled').map(r => r.value);
-        const failed = results.filter(r => r.status === 'rejected').map(r => r.reason.message);
+        }
 
         res.status(201).json({
-            message: `Successfully created ${successful.length} users. Failed: ${failed.length}`,
+            message: `✅ Created ${successful.length} users | ⚠️ Skipped ${skipped.length} duplicates | ❌ Failed ${failed.length}`,
             successfulCount: successful.length,
+            skippedCount: skipped.length,
+            failedCount: failed.length,
+            created: successful,
+            skipped,
             errors: failed
         });
 
@@ -1709,6 +1771,13 @@ export const getTeacherAttendance = async (req, res) => {
     try {
         const { date = new Date().toISOString().split('T')[0] } = req.query;
 
+        // Auto-fix any previously auto-saved 'present' records to 'absent'
+        await pool.query(`
+            UPDATE teacher_attendance
+            SET status = 'absent'
+            WHERE remarks = 'Auto-saved (End of Day)' AND status = 'present'
+        `);
+
         // Fetch all teachers
         const teachersRes = await pool.query(`
             SELECT u.id, u.name, u.email, u.avatar, COALESCE(d.name, 'Academics') as department_name
@@ -1755,16 +1824,54 @@ export const getTeacherAttendance = async (req, res) => {
                 status,
                 onLeave: !!leave,
                 leaveReason: leave?.reason || '',
-                remarks: att?.remarks || ''
+                remarks: (att?.remarks && att.remarks !== 'Auto-saved (End of Day)') ? att.remarks : ''
             };
         });
 
+        // Check if teacher auto-save is enabled in system_settings (defaults to true)
+        const settingRes = await pool.query(
+            `SELECT value FROM system_settings WHERE key = 'teacher_auto_save_enabled' LIMIT 1`
+        );
+        let autoSaveEnabled = true;
+        if (settingRes.rows.length > 0) {
+            const val = settingRes.rows[0].value;
+            autoSaveEnabled = typeof val === 'boolean' ? val : (typeof val === 'string' ? JSON.parse(val) : !!val);
+        }
+
         res.json({
             date,
-            teachers
+            teachers,
+            autoSaveEnabled
         });
     } catch (error) {
         console.error('Error fetching teacher attendance:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+/**
+ * @desc    Toggle teacher auto-save on or off
+ * @route   POST /api/admin/teacher-attendance/toggle-auto-save
+ * @access  Private (Admin)
+ */
+export const toggleTeacherAutoSave = async (req, res) => {
+    try {
+        const { enabled } = req.body;
+        const boolVal = !!enabled;
+
+        await pool.query(`
+            INSERT INTO system_settings (key, value, description, updated_at)
+            VALUES ('teacher_auto_save_enabled', $1, 'Enable or disable EOD faculty auto-save', CURRENT_TIMESTAMP)
+            ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = CURRENT_TIMESTAMP
+        `, [JSON.stringify(boolVal)]);
+
+        res.json({
+            success: true,
+            autoSaveEnabled: boolVal,
+            message: boolVal ? 'EOD Auto-Save has been enabled.' : 'EOD Auto-Save has been turned off (Manual Save Only).'
+        });
+    } catch (error) {
+        console.error('Error toggling teacher auto-save:', error);
         res.status(500).json({ message: error.message });
     }
 };

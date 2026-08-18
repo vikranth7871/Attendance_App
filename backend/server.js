@@ -27,7 +27,12 @@ const app = express();
 // Middleware
 const allowedOrigins = process.env.NODE_ENV === 'production' 
     ? (process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',').map(o => o.trim()) : [])
-    : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002', 'http://localhost:5173', 'http://localhost:8081', 'http://localhost:19006'];
+    : [
+        'http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002',
+        'http://localhost:5173', 'http://localhost:5174', 'http://localhost:8081', 'http://localhost:19006',
+        'http://127.0.0.1:3000', 'http://127.0.0.1:3001', 'http://127.0.0.1:3002',
+        'http://127.0.0.1:5173', 'http://127.0.0.1:5174', 'http://127.0.0.1:8081',
+      ];
 
 const corsOptions = {
     origin: function (origin, callback) {
@@ -71,8 +76,8 @@ app.get('/api', (req, res) => {
 
 const PORT = process.env.PORT || 5005;
 
-app.listen(PORT, '127.0.0.1', () => {
-    console.log(`Server running on http://127.0.0.1:${PORT}`);
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
 });
 
 

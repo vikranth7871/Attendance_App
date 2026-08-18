@@ -31,6 +31,19 @@ export function parseTimeToMinutes(timeStr) {
  */
 export const autoMarkAbsentAndLeave = async (gracePeriodMinutes = 15) => {
     try {
+        // Check if student auto-save is enabled in system_settings
+        const settingRes = await pool.query(
+            `SELECT value FROM system_settings WHERE key = 'student_auto_save_enabled' LIMIT 1`
+        );
+        if (settingRes.rows.length > 0) {
+            const val = settingRes.rows[0].value;
+            const isEnabled = typeof val === 'boolean' ? val : (typeof val === 'string' ? JSON.parse(val) : !!val);
+            if (isEnabled === false) {
+                // Student Auto-save is deactivated
+                return;
+            }
+        }
+
         const now = new Date();
         const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         const currentDayOfWeek = days[now.getDay()];
@@ -154,6 +167,19 @@ export const autoMarkAbsentAndLeave = async (gracePeriodMinutes = 15) => {
  */
 export const autoSaveTeacherAttendance = async () => {
     try {
+        // Check if teacher auto-save is enabled in system_settings
+        const settingRes = await pool.query(
+            `SELECT value FROM system_settings WHERE key = 'teacher_auto_save_enabled' LIMIT 1`
+        );
+        if (settingRes.rows.length > 0) {
+            const val = settingRes.rows[0].value;
+            const isEnabled = typeof val === 'boolean' ? val : (typeof val === 'string' ? JSON.parse(val) : !!val);
+            if (isEnabled === false) {
+                // Auto-save is deactivated
+                return;
+            }
+        }
+
         const todayStr = new Date().toISOString().split('T')[0];
 
         // Fetch all active teachers
@@ -193,10 +219,10 @@ export const autoSaveTeacherAttendance = async () => {
                     [teacher.id, todayStr, `Approved Leave: ${reason}`]
                 );
             } else {
-                // Auto-save as default 'present' at end of day
+                // Auto-save as default 'absent' at end of day
                 await pool.query(
                     `INSERT INTO teacher_attendance (teacher_id, date, status, marked_by, remarks, updated_at)
-                     VALUES ($1, $2, 'present', NULL, 'Auto-saved (End of Day)', CURRENT_TIMESTAMP)
+                     VALUES ($1, $2, 'absent', NULL, 'Auto-saved (End of Day)', CURRENT_TIMESTAMP)
                      ON CONFLICT (teacher_id, date) DO NOTHING`,
                     [teacher.id, todayStr]
                 );
