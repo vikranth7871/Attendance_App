@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Routes, Route, useNavigate, Navigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { 
-    Users, Calendar, AlertCircle, ChevronRight, Activity, TrendingUp, 
-    Bell, ShieldCheck, BookOpen, GraduationCap, Hash, CheckCircle2, 
-    Clock, Award, CreditCard, MessageSquare, UserCheck, Sparkles 
+import {
+    Users, Calendar, AlertCircle, ChevronRight, Activity, TrendingUp,
+    Bell, ShieldCheck, BookOpen, GraduationCap, Hash, CheckCircle2,
+    Clock, Award, CreditCard, MessageSquare, UserCheck, Sparkles
 } from 'lucide-react';
 import ParentSidebar from '../../components/parent/ParentSidebar';
 import ChildSwitcher from '../../components/parent/ChildSwitcher';
@@ -174,21 +174,19 @@ const ParentDashboard = () => {
     }, []);
 
     return (
-        <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-primary)' }}>
+        <div className="app-container" style={{ background: 'var(--bg-primary)' }}>
             <ParentSidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
 
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                {/* Header Navbar with Child Switcher & Notifications */}
-                <header style={{
-                    padding: '1.25rem 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    borderBottom: '1px solid var(--border-color)', background: 'var(--glass-bg)', backdropFilter: 'blur(10px)',
-                    position: 'sticky', top: 0, zIndex: 100
-                }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                        <h1 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>Parent Portal</h1>
+            <main className="dashboard-main">
+                {/* Header Navbar matching Admin Portal */}
+                <header className="glass-panel dashboard-header">
+                    <div className="flex-row-mobile">
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                            <h1 style={{ fontSize: '1.5rem', fontWeight: '600' }}>Parent Portal</h1>
+                        </div>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+                    <div className="dashboard-header-actions">
                         {/* Child Switcher Component */}
                         <ChildSwitcher
                             childrenList={childrenSummary}
@@ -199,7 +197,7 @@ const ParentDashboard = () => {
                     </div>
                 </header>
 
-                <main style={{ flex: 1, padding: '2rem', overflowY: 'auto' }}>
+                <div style={{ flex: 1 }}>
                     <Routes>
                         <Route path="/" element={<ParentSummaryHub childrenSummary={childrenSummary} selectedChildId={selectedChildId} loading={loading} navigate={navigate} />} />
                         <Route path="/attendance" element={<ParentAttendance selectedChildId={selectedChildId} />} />
@@ -212,8 +210,8 @@ const ParentDashboard = () => {
                         <Route path="/profile" element={<ParentProfile />} />
                         <Route path="*" element={<Navigate to="/parent" replace />} />
                     </Routes>
-                </main>
-            </div>
+                </div>
+            </main>
         </div>
     );
 };
