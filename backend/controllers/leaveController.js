@@ -132,9 +132,6 @@ export const applyLeave = async (req, res) => {
 
 const formatDocumentUrl = (id, docUrl) => {
     if (!docUrl) return null;
-    if (docUrl.startsWith('data:')) {
-        return `/api/leave/document/${id}`;
-    }
     return docUrl;
 };
 

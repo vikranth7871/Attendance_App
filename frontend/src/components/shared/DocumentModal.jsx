@@ -6,19 +6,35 @@ const DocumentModal = ({ url, title = 'Supporting Document', onClose }) => {
     if (!url) return null;
 
     const isDataUri = url.startsWith('data:');
-    const isImage = isDataUri ? url.startsWith('data:image/') : /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(url);
-    const isPdf = isDataUri ? url.startsWith('data:application/pdf') : /\.pdf$/i.test(url);
+    const isImage = isDataUri ? url.startsWith('data:image/') : (/\.(jpg|jpeg|png|webp|gif|svg)($|\?)/i.test(url) || url.includes('/document/'));
+    const isPdf = isDataUri ? url.startsWith('data:application/pdf') : /\.pdf($|\?)/i.test(url);
 
-    const handleDownload = () => {
-        if (isDataUri) {
-            const link = document.createElement('a');
-            link.href = url;
-            const ext = url.substring(url.indexOf('/') + 1, url.indexOf(';')) || 'file';
-            link.download = `supporting_document_${Date.now()}.${ext}`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        } else {
+    const handleDownload = async () => {
+        try {
+            if (isDataUri) {
+                const link = document.createElement('a');
+                link.href = url;
+                let ext = 'png';
+                if (url.startsWith('data:application/pdf')) ext = 'pdf';
+                else if (url.startsWith('data:image/jpeg')) ext = 'jpg';
+                else if (url.startsWith('data:image/png')) ext = 'png';
+                link.download = `supporting_document_${Date.now()}.${ext}`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            } else {
+                const res = await fetch(url);
+                const blob = await res.blob();
+                const blobUrl = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = blobUrl;
+                link.download = `supporting_document_${Date.now()}.${isPdf ? 'pdf' : 'jpg'}`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(blobUrl);
+            }
+        } catch (e) {
             window.open(url, '_blank');
         }
     };
