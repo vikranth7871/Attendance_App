@@ -46,6 +46,32 @@ export const applyLeave = async (req, res) => {
             }
         }
 
+        // Check if user already has an active (pending or approved) leave request for overlapping dates
+        const overlapCheck = await pool.query(`
+            SELECT id, status, start_date, end_date FROM leave_requests
+            WHERE user_id = $1 
+              AND status IN ('pending', 'approved')
+              AND start_date <= $3 AND end_date >= $2
+            LIMIT 1
+        `, [userId, startDate, endDate]);
+
+        if (overlapCheck.rows.length > 0) {
+            const conflict = overlapCheck.rows[0];
+            const formattedStart = new Date(conflict.start_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+            const formattedEnd = new Date(conflict.end_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+            const dateSpan = formattedStart === formattedEnd ? formattedStart : `${formattedStart} – ${formattedEnd}`;
+
+            if (conflict.status === 'approved') {
+                return res.status(400).json({ 
+                    message: `You already have an APPROVED leave request covering ${dateSpan}.` 
+                });
+            } else {
+                return res.status(400).json({ 
+                    message: `A PENDING leave application is already submitted for ${dateSpan}. Please await review.` 
+                });
+            }
+        }
+
         const result = await pool.query(
             `INSERT INTO leave_requests
              (user_id, role, leave_type, start_date, end_date, reason, document_url, status)

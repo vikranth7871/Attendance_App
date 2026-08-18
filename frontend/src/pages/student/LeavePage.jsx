@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { Clock, Calendar, AlertCircle, Info, UploadCloud, X, ArrowRightCircle, FileText } from 'lucide-react';
+import { Clock, Calendar, AlertCircle, Info, UploadCloud, X, ArrowRightCircle, FileText, Loader2, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import LeaveCalendarPicker from '../../components/shared/LeaveCalendarPicker';
 import DocumentModal from '../../components/shared/DocumentModal';
@@ -49,6 +49,7 @@ const LeavePage = () => {
     const [previewDoc, setPreviewDoc] = useState(null);
     const [totalDays, setTotalDays] = useState(0);
     const [formError, setFormError] = useState('');
+    const [submitting, setSubmitting] = useState(false);
     const formRef = useRef(null);
 
     const fetchHistory = async () => {
@@ -104,6 +105,8 @@ const LeavePage = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (submitting) return;
+
         setFormError('');
         setStatusMsg('');
 
@@ -127,6 +130,8 @@ const LeavePage = () => {
             return;
         }
 
+        setSubmitting(true);
+
         const formData = new FormData();
         formData.append('leaveType', leaveData.leaveType);
         formData.append('startDate', leaveData.startDate);
@@ -143,11 +148,20 @@ const LeavePage = () => {
             const { data } = await axios.post('/leave/apply', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
-            setStatusMsg({ type: 'success', text: data.message });
+            // 1. Immediately reset form fields to avoid duplicate resubmission
             setLeaveData({ leaveType: 'Casual', startDate: '', endDate: '', reason: '', document: null, extensionFor: null });
+            const fileInput = document.getElementById('document-upload');
+            if (fileInput) fileInput.value = '';
+
+            // 2. Alert user with success notification
+            setStatusMsg({ type: 'success', text: data.message || 'Leave request submitted successfully for coordinator approval!' });
+            
+            // 3. Refresh live history
             fetchHistory();
         } catch (err) {
             setStatusMsg({ type: 'error', text: err.response?.data?.message || err.message });
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -279,12 +293,41 @@ const LeavePage = () => {
 
                     <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
                         {leaveData.extensionFor && (
-                            <button type="button" onClick={() => setLeaveData({ leaveType: 'Casual', startDate: '', endDate: '', reason: '', document: null, extensionFor: null })} className="btn btn-secondary" style={{ flex: 1, height: '3.5rem', fontSize: '1rem', fontWeight: '700', background: 'rgba(255,255,255,0.05)', color: 'var(--text-primary)' }}>
+                            <button
+                                type="button"
+                                disabled={submitting}
+                                onClick={() => setLeaveData({ leaveType: 'Casual', startDate: '', endDate: '', reason: '', document: null, extensionFor: null })}
+                                className="btn btn-secondary"
+                                style={{ flex: 1, height: '3.5rem', fontSize: '1rem', fontWeight: '700', background: 'rgba(255,255,255,0.05)', color: 'var(--text-primary)' }}
+                            >
                                 Cancel Extension
                             </button>
                         )}
-                        <button type="submit" className="btn btn-primary" style={{ flex: leaveData.extensionFor ? 1.5 : 1, height: '3.5rem', fontSize: '1rem', fontWeight: '700' }}>
-                            {leaveData.extensionFor ? 'Submit Extension' : 'Submit Request'}
+                        <button
+                            type="submit"
+                            disabled={submitting || totalDays === 0}
+                            className="btn btn-primary"
+                            style={{
+                                flex: leaveData.extensionFor ? 1.5 : 1,
+                                height: '3.5rem',
+                                fontSize: '1rem',
+                                fontWeight: '700',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '0.5rem',
+                                opacity: submitting ? 0.7 : 1,
+                                cursor: submitting ? 'not-allowed' : 'pointer'
+                            }}
+                        >
+                            {submitting ? (
+                                <>
+                                    <Loader2 size={18} className="animate-spin" />
+                                    <span>Submitting Request...</span>
+                                </>
+                            ) : (
+                                leaveData.extensionFor ? 'Submit Extension' : 'Submit Request'
+                            )}
                         </button>
                     </div>
                 </form>
