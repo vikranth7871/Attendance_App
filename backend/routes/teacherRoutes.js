@@ -11,6 +11,7 @@ const router = express.Router();
 
 router.get('/subjects', protect, authorizeRoles('teacher'), getMySubjects);
 router.get('/roster', protect, authorizeRoles('teacher'), getMyRoster);
+router.get('/class-roster', protect, authorizeRoles('teacher'), getMyRoster);
 router.get('/report', protect, authorizeRoles('teacher'), getAttendanceReport);
 router.get('/student/:studentId/profile', protect, authorizeRoles('teacher'), getStudentProfile);
 router.put('/student/:studentId/update', protect, authorizeRoles('teacher', 'admin'), updateStudentByCoordinator);

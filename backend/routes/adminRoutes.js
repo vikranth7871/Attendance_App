@@ -8,6 +8,7 @@ import {
     updateAdminProfile, getSystemSettings, updateSystemSettings,
     deleteDepartment, deleteClass, updateClass, getTeacherAttendance, markTeacherAttendance, exportTeacherAttendanceReport, toggleTeacherAutoSave
 } from '../controllers/adminController.js';
+import { getAdminTeacherLeaves, approveLeave, rejectLeave, revokeLeave } from '../controllers/leaveController.js';
 import { protect, authorizeRoles } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -38,6 +39,10 @@ router.get('/user-details/:id', getUserDetails);
 router.get('/timetable/:classId', getTimetableByClass);
 router.get('/timetable-conflicts', getTimetableConflicts);
 router.get('/subjects', getSubjects);
+router.get('/teacher-leaves', getAdminTeacherLeaves);
+router.put('/teacher-leaves/:id/approve', approveLeave);
+router.put('/teacher-leaves/:id/reject', rejectLeave);
+router.put('/teacher-leaves/:id/revoke', revokeLeave);
 
 router.put('/update-student/:id', updateStudent);
 router.put('/update-user/:id', updateUser);

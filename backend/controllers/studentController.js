@@ -416,3 +416,28 @@ export const getSubjectDetails = async (req, res) => {
     }
 };
 
+export const getStudentTimetable = async (req, res) => {
+    try {
+        const userId = req.user.id || req.user._id;
+        const userRes = await pool.query('SELECT class_id FROM users WHERE id = $1', [userId]);
+        const classId = userRes.rows[0]?.class_id || 1;
+
+        const result = await pool.query(`
+            SELECT sa.id, sa.day_of_week, sa.time_slot, sa.start_time, sa.end_time, sa.room_number,
+                   COALESCE(s.name, 'General Class') as subject_name, s.code as subject_code,
+                   u.name as teacher_name
+            FROM subject_allocations sa
+            LEFT JOIN subjects s ON sa.subject_id = s.id
+            LEFT JOIN users u ON sa.teacher_id = u.id
+            WHERE sa.class_id = $1
+            ORDER BY sa.id ASC
+        `, [classId]);
+
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error in getStudentTimetable:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+
