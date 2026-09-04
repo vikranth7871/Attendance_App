@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, ScrollView, RefreshControl,
-  TouchableOpacity
+  TouchableOpacity, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { CalendarCheck, CalendarX, Clock, TrendingUp } from 'lucide-react-native';
+import { CalendarCheck, CalendarX, Clock, TrendingUp, Download } from 'lucide-react-native';
 import Header from '../../components/Header';
 import { FullPageLoader } from '../../components/LoadingSkeleton';
 import api from '../../api/client';
 import { colors, spacing, radius, typography, shadows } from '../../styles/theme';
+import { exportCsv } from '../../utils/fileExporter';
 
 const STATUS_COLORS = {
   present: colors.success,
@@ -39,8 +40,37 @@ const ParentAttendanceScreen = ({ route, navigation }) => {
     }
   };
 
-  useEffect(() => { fetchAttendance(); }, [studentId]);
-  const onRefresh = useCallback(() => { setRefreshing(true); fetchAttendance(); }, []);
+  useEffect(() => {
+    fetchAttendance();
+  }, [studentId]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchAttendance();
+  }, []);
+
+  const handleExportCsv = async () => {
+    const records = data?.records || [];
+    if (records.length === 0) {
+      Alert.alert('No Data', 'No attendance records to export.');
+      return;
+    }
+
+    let csvContent = `Date,Subject,Status,Teacher,Remarks\n`;
+    records.forEach((r) => {
+      const d = r.date ? new Date(r.date).toISOString().split('T')[0] : '';
+      const s = `"${(r.subject_name || 'General').replace(/"/g, '""')}"`;
+      const st = r.status || '';
+      const t = `"${(r.teacher_name || '').replace(/"/g, '""')}"`;
+      const rem = `"${(r.remarks || '').replace(/"/g, '""')}"`;
+      csvContent += `${d},${s},${st},${t},${rem}\n`;
+    });
+
+    const success = await exportCsv('Child_Attendance_Report.csv', csvContent);
+    if (success) {
+      Alert.alert('✅ Exported', 'Attendance report CSV generated successfully.');
+    }
+  };
 
   if (loading) return <FullPageLoader message="Loading attendance records..." />;
 
@@ -48,8 +78,8 @@ const ParentAttendanceScreen = ({ route, navigation }) => {
   const monthly = data?.monthlyBreakdown || [];
   const subjects = data?.subjectBreakdown || [];
 
-  const totalPresent = records.filter(r => r.status === 'present').length;
-  const totalAbsent = records.filter(r => r.status === 'absent').length;
+  const totalPresent = records.filter((r) => r.status === 'present').length;
+  const totalAbsent = records.filter((r) => r.status === 'absent').length;
 
   const TABS = [
     { key: 'records', label: 'Records' },
@@ -59,7 +89,16 @@ const ParentAttendanceScreen = ({ route, navigation }) => {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <Header title="Attendance Report" subtitle="Your child's attendance" navigation={navigation} />
+      <Header
+        title="Attendance Report"
+        subtitle="Your child's attendance"
+        navigation={navigation}
+        rightAction={
+          <TouchableOpacity style={styles.exportBtn} onPress={handleExportCsv}>
+            <Download size={17} color={colors.parent} />
+          </TouchableOpacity>
+        }
+      />
 
       {/* Summary Row */}
       <View style={styles.summaryRow}>
@@ -84,7 +123,7 @@ const ParentAttendanceScreen = ({ route, navigation }) => {
 
       {/* Tabs */}
       <View style={styles.tabRow}>
-        {TABS.map(t => (
+        {TABS.map((t) => (
           <TouchableOpacity
             key={t.key}
             style={[styles.tab, activeTab === t.key && styles.tabActive]}
@@ -138,14 +177,7 @@ const ParentAttendanceScreen = ({ route, navigation }) => {
                 <View style={styles.monthStats}>
                   <Text style={[styles.monthStat, { color: colors.success }]}>{m.present} P</Text>
                   <Text style={[styles.monthStat, { color: colors.danger }]}>{m.absent} A</Text>
-                  <Text style={[styles.monthStat, { color: colors.primary }]}>{m.leave} L</Text>
-                  <Text style={styles.monthStat}>{m.total} Total</Text>
-                </View>
-                <View style={styles.barBg}>
-                  <View style={[styles.barFill, {
-                    width: `${Math.min(parseFloat(m.percentage), 100)}%`,
-                    backgroundColor: parseFloat(m.percentage) >= 75 ? colors.success : colors.danger
-                  }]} />
+                  <Text style={[styles.monthStat, { color: colors.warning }]}>{m.leave} L</Text>
                 </View>
               </View>
             ))
@@ -154,26 +186,21 @@ const ParentAttendanceScreen = ({ route, navigation }) => {
 
         {activeTab === 'subjects' && (
           subjects.length === 0 ? (
-            <View style={styles.empty}><Text style={styles.emptyText}>No subject data yet</Text></View>
+            <View style={styles.empty}><Text style={styles.emptyText}>No subject data available</Text></View>
           ) : (
             subjects.map((s, i) => (
               <View key={i} style={[styles.subjectCard, shadows.sm]}>
-                <Text style={styles.subjectName}>{s.subjectName}</Text>
-                <Text style={styles.subjectStats}>{s.present} / {s.total} classes</Text>
-                <View style={styles.barBg}>
-                  <View style={[styles.barFill, {
-                    width: `${Math.min(parseFloat(s.percentage), 100)}%`,
-                    backgroundColor: parseFloat(s.percentage) >= 75 ? colors.success : colors.danger
-                  }]} />
+                <View style={styles.subjectHeader}>
+                  <Text style={styles.subjectName}>{s.subject_name}</Text>
+                  <Text style={[styles.subjectPct, { color: parseFloat(s.percentage) >= 75 ? colors.success : colors.danger }]}>
+                    {s.percentage}%
+                  </Text>
                 </View>
-                <Text style={[styles.subjectPct, { color: parseFloat(s.percentage) >= 75 ? colors.success : colors.danger }]}>
-                  {s.percentage}%
-                </Text>
+                <Text style={styles.subjectClasses}>{s.present} of {s.total} classes attended</Text>
               </View>
             ))
           )
         )}
-        <View style={{ height: spacing.xl }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -181,37 +208,60 @@ const ParentAttendanceScreen = ({ route, navigation }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
-  summaryRow: { flexDirection: 'row', padding: spacing.md, gap: spacing.sm, paddingBottom: 0 },
-  summaryCard: { flex: 1, backgroundColor: colors.bgCard, borderRadius: radius.md, padding: spacing.sm, alignItems: 'center', borderWidth: 1, gap: 3 },
-  summaryValue: { ...typography.lg, ...typography.bold },
+  exportBtn: {
+    padding: spacing.sm, backgroundColor: colors.parent + '22',
+    borderRadius: radius.md, borderWidth: 1, borderColor: colors.parent + '44',
+  },
+  summaryRow: { flexDirection: 'row', gap: spacing.sm, padding: spacing.md, paddingBottom: spacing.xs },
+  summaryCard: {
+    flex: 1, backgroundColor: colors.bgCard, borderRadius: radius.md,
+    padding: spacing.sm, alignItems: 'center', borderWidth: 1,
+  },
+  summaryValue: { ...typography.lg, ...typography.bold, marginVertical: 2 },
   summaryLabel: { ...typography.xs, color: colors.textMuted },
-  tabRow: { flexDirection: 'row', padding: spacing.md, gap: spacing.xs, paddingBottom: spacing.sm },
-  tab: { flex: 1, padding: spacing.sm, borderRadius: radius.full, backgroundColor: colors.bgCard, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
+  tabRow: { flexDirection: 'row', paddingHorizontal: spacing.md, gap: spacing.xs, marginVertical: spacing.xs },
+  tab: {
+    flex: 1, paddingVertical: 8, alignItems: 'center',
+    borderRadius: radius.full, backgroundColor: colors.bgCard,
+    borderWidth: 1, borderColor: colors.border,
+  },
   tabActive: { backgroundColor: colors.parent + '22', borderColor: colors.parent },
-  tabText: { ...typography.sm, color: colors.textMuted, fontWeight: '600' },
-  tabTextActive: { color: colors.parent },
-  listContent: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
-  recordCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgCard, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.xs, borderWidth: 1, borderColor: colors.border },
-  statusDot: { width: 10, height: 10, borderRadius: 5, marginRight: spacing.sm, flexShrink: 0 },
+  tabText: { ...typography.xs, color: colors.textMuted, fontWeight: '600' },
+  tabTextActive: { color: colors.parent, fontWeight: '700' },
+  listContent: { padding: spacing.md },
+  recordCard: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    backgroundColor: colors.bgCard, borderRadius: radius.md,
+    padding: spacing.md, marginBottom: spacing.xs,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
   recordInfo: { flex: 1 },
   recordDate: { ...typography.sm, ...typography.semibold, color: colors.textPrimary },
-  recordSubject: { ...typography.xs, color: colors.textMuted },
+  recordSubject: { ...typography.xs, color: colors.textMuted, marginTop: 2 },
   statusBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.full },
   statusText: { fontSize: 11, fontWeight: '700', textTransform: 'capitalize' },
-  monthCard: { backgroundColor: colors.bgCard, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.border },
-  monthHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  monthName: { ...typography.base, ...typography.semibold, color: colors.textPrimary },
-  monthPct: { ...typography.base, ...typography.bold },
-  monthStats: { flexDirection: 'row', gap: spacing.md, marginBottom: 8 },
-  monthStat: { ...typography.sm, color: colors.textMuted },
-  barBg: { height: 5, backgroundColor: colors.bgElevated, borderRadius: radius.full, overflow: 'hidden' },
-  barFill: { height: '100%', borderRadius: radius.full },
-  subjectCard: { backgroundColor: colors.bgCard, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.border },
-  subjectName: { ...typography.base, ...typography.semibold, color: colors.textPrimary, marginBottom: 4 },
-  subjectStats: { ...typography.sm, color: colors.textSecondary, marginBottom: 6 },
-  subjectPct: { ...typography.sm, ...typography.semibold, marginTop: 4 },
-  empty: { alignItems: 'center', paddingTop: spacing.xxl },
-  emptyText: { ...typography.base, color: colors.textMuted },
+  monthCard: {
+    backgroundColor: colors.bgCard, borderRadius: radius.md,
+    padding: spacing.md, marginBottom: spacing.xs,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  monthHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  monthName: { ...typography.sm, ...typography.bold, color: colors.textPrimary },
+  monthPct: { ...typography.sm, ...typography.bold },
+  monthStats: { flexDirection: 'row', gap: spacing.md },
+  monthStat: { ...typography.xs, fontWeight: '600' },
+  subjectCard: {
+    backgroundColor: colors.bgCard, borderRadius: radius.md,
+    padding: spacing.md, marginBottom: spacing.xs,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  subjectHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  subjectName: { ...typography.sm, ...typography.bold, color: colors.textPrimary },
+  subjectPct: { ...typography.sm, ...typography.bold },
+  subjectClasses: { ...typography.xs, color: colors.textMuted },
+  empty: { alignItems: 'center', paddingVertical: spacing.xl },
+  emptyText: { ...typography.sm, color: colors.textMuted },
 });
 
 export default ParentAttendanceScreen;

@@ -11,6 +11,7 @@ import StudentAssignmentsScreen from '../screens/student/StudentAssignmentsScree
 import StudentResultsScreen from '../screens/student/StudentResultsScreen';
 import StudentAttendanceHistoryScreen from '../screens/student/StudentAttendanceHistoryScreen';
 import StudentProfileScreen from '../screens/student/StudentProfileScreen';
+import StudentSubjectsScreen from '../screens/student/StudentSubjectsScreen';
 import QuizHubScreen from '../screens/quiz/QuizHubScreen';
 import QuizAttemptScreen from '../screens/quiz/QuizAttemptScreen';
 import QuizResultsScreen from '../screens/quiz/QuizResultsScreen';
@@ -68,6 +69,7 @@ const StudentTabs = () => (
 const StudentNavigator = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen name="StudentTabs" component={StudentTabs} />
+    <Stack.Screen name="StudentSubjects" component={StudentSubjectsScreen} />
     <Stack.Screen name="StudentResults" component={StudentResultsScreen} />
     <Stack.Screen name="StudentAttendanceHistory" component={StudentAttendanceHistoryScreen} />
     <Stack.Screen name="QuizHub" component={QuizHubScreen} />

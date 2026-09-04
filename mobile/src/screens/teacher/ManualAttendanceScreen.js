@@ -1,102 +1,146 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  RefreshControl, Alert, ActivityIndicator
+  RefreshControl, Alert, ActivityIndicator, ScrollView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Check, X, Clock, ChevronDown } from 'lucide-react-native';
+import {
+  Check, X, Clock, Calendar, CheckCheck, XCircle,
+  BookOpen, Users, ChevronRight
+} from 'lucide-react-native';
 import Header from '../../components/Header';
 import { FullPageLoader } from '../../components/LoadingSkeleton';
 import api from '../../api/client';
 import { colors, spacing, radius, typography, shadows } from '../../styles/theme';
 
 const STATUS_MAP = {
-  present: { label: 'P', color: colors.success },
-  absent: { label: 'A', color: colors.danger },
-  late: { label: 'L', color: colors.warning },
+  present: { label: 'Present', short: 'P', color: colors.success, bg: colors.success + '22' },
+  absent: { label: 'Absent', short: 'A', color: colors.danger, bg: colors.danger + '22' },
+  late: { label: 'Late', short: 'L', color: colors.warning, bg: colors.warning + '22' },
 };
 
-const ManualAttendanceScreen = () => {
-  const [subjects, setSubjects] = useState([]);
-  const [selectedSubject, setSelectedSubject] = useState(null);
-  const [slots, setSlots] = useState([]);
-  const [selectedSlot, setSelectedSlot] = useState(null);
-  const [students, setStudents] = useState([]);
+const ManualAttendanceScreen = ({ navigation }) => {
+  const [rosterGroups, setRosterGroups] = useState([]);
+  const [selectedGroupIndex, setSelectedGroupIndex] = useState(0);
+  const [selectedSlotIndex, setSelectedSlotIndex] = useState(0);
   const [attendance, setAttendance] = useState({});
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [showSubjectPicker, setShowSubjectPicker] = useState(false);
-  const [showSlotPicker, setShowSlotPicker] = useState(false);
+  const [submittedToday, setSubmittedToday] = useState(false);
+  const dateStr = new Date().toISOString().split('T')[0];
 
-  const fetchSubjects = async () => {
+  const fetchRoster = async () => {
     try {
-      const { data } = await api.get('/teacher/subjects');
-      setSubjects(data || []);
-      if (data?.length > 0) setSelectedSubject(data[0]);
+      const { data } = await api.get('/teacher/roster');
+      const groups = Array.isArray(data) ? data : [];
+      setRosterGroups(groups);
+
+      if (groups.length > 0) {
+        initGroupAttendance(groups[selectedGroupIndex] || groups[0]);
+      }
     } catch (err) {
-      console.error('Subjects fetch error:', err);
+      console.error('Roster fetch error:', err);
+      Alert.alert('Error', err.response?.data?.message || 'Failed to load class roster');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  const fetchStudentsForSubject = async (subject) => {
-    if (!subject) return;
-    try {
-      const { data } = await api.get(`/teacher/attendance/students?subject_id=${subject.subject_id || subject.id}`);
-      setStudents(data || []);
-      // Default all to present
-      const init = {};
-      (data || []).forEach(s => { init[s.id] = 'present'; });
-      setAttendance(init);
-    } catch (err) {
-      console.error('Students fetch error:', err);
-    }
+  const initGroupAttendance = (group) => {
+    if (!group || !group.students) return;
+    const initial = {};
+    let hasAnySubmitted = false;
+
+    group.students.forEach(s => {
+      // If attendance already logged today, pre-fill it
+      if (s.attendanceStatus) {
+        initial[s.id] = s.attendanceStatus.toLowerCase();
+        hasAnySubmitted = true;
+      } else {
+        initial[s.id] = 'present';
+      }
+    });
+
+    setAttendance(initial);
+    setSubmittedToday(hasAnySubmitted);
   };
 
-  useEffect(() => { fetchSubjects(); }, []);
-  useEffect(() => { if (selectedSubject) { setSubmitted(false); fetchStudentsForSubject(selectedSubject); } }, [selectedSubject]);
+  useEffect(() => {
+    fetchRoster();
+  }, []);
 
-  const toggleStatus = (studentId) => {
-    if (submitted) return;
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchRoster();
+  }, [selectedGroupIndex]);
+
+  const handleSelectGroup = (idx) => {
+    setSelectedGroupIndex(idx);
+    setSelectedSlotIndex(0);
+    initGroupAttendance(rosterGroups[idx]);
+  };
+
+  const currentGroup = rosterGroups[selectedGroupIndex] || null;
+  const currentSlots = currentGroup?.slots || [];
+  const currentSlot = currentSlots[selectedSlotIndex] || null;
+  const currentStudents = currentGroup?.students || [];
+
+  const toggleStudentStatus = (studentId) => {
     setAttendance(prev => {
-      const current = prev[studentId] || 'present';
-      const next = current === 'present' ? 'absent' : current === 'absent' ? 'late' : 'present';
+      const cur = prev[studentId] || 'present';
+      const next = cur === 'present' ? 'absent' : cur === 'absent' ? 'late' : 'present';
       return { ...prev, [studentId]: next };
     });
   };
 
-  const handleSubmit = async () => {
-    if (submitted) {
-      Alert.alert('Already Submitted', 'Attendance for this slot has already been submitted.');
+  const setAllStatus = (status) => {
+    const next = {};
+    currentStudents.forEach(s => {
+      next[s.id] = status;
+    });
+    setAttendance(next);
+  };
+
+  const handleSubmitAttendance = async () => {
+    if (!currentGroup) {
+      Alert.alert('No Class Selected', 'Please select a subject and class first.');
       return;
     }
-    if (!selectedSubject) {
-      Alert.alert('No Subject', 'Please select a subject first.');
+    if (currentStudents.length === 0) {
+      Alert.alert('Empty Roster', 'No students enrolled in this section.');
       return;
     }
+
     setSubmitting(true);
     try {
-      const payload = students.map(s => ({
-        student_id: s.id,
+      const attendanceData = currentStudents.map(s => ({
+        studentId: s.id,
         status: attendance[s.id] || 'present',
       }));
-      await api.post('/teacher/attendance/mark', {
-        subject_id: selectedSubject.subject_id || selectedSubject.id,
-        date: new Date().toISOString().split('T')[0],
-        records: payload,
-      });
-      setSubmitted(true);
-      Alert.alert('✅ Submitted', 'Attendance has been marked successfully.');
+
+      const payload = {
+        attendanceData,
+        subjectId: currentGroup.subject?.id || currentGroup.subject?._id,
+        classId: currentGroup.class?.id || currentGroup.class?._id,
+        date: dateStr,
+        timeSlot: currentSlot?.timeSlot || (currentSlot ? `${currentSlot.startTime} - ${currentSlot.endTime}` : null),
+      };
+
+      const { data } = await api.post('/attendance/manual-bulk', payload);
+
+      setSubmittedToday(true);
+      Alert.alert('✅ Attendance Recorded', data?.message || 'Attendance records successfully saved.');
     } catch (err) {
-      Alert.alert('Error', err.response?.data?.message || 'Failed to submit attendance.');
+      console.error('Submit attendance error:', err);
+      Alert.alert('Submission Failed', err.response?.data?.message || 'Failed to submit attendance.');
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (loading) return <FullPageLoader message="Loading attendance data..." />;
+  if (loading) return <FullPageLoader message="Loading assigned class rosters..." />;
 
   const presentCount = Object.values(attendance).filter(v => v === 'present').length;
   const absentCount = Object.values(attendance).filter(v => v === 'absent').length;
@@ -104,90 +148,178 @@ const ManualAttendanceScreen = () => {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <Header title="Mark Attendance" />
+      <Header
+        title="Mark Attendance"
+        subtitle={`Session: ${dateStr}`}
+        navigation={navigation}
+      />
 
-      {/* Subject Picker */}
-      <View style={styles.controls}>
-        <TouchableOpacity style={styles.picker} onPress={() => setShowSubjectPicker(!showSubjectPicker)}>
-          <Text style={styles.pickerText} numberOfLines={1}>
-            {selectedSubject ? (selectedSubject.subject_name || selectedSubject.name) : 'Select Subject'}
-          </Text>
-          <ChevronDown size={16} color={colors.textMuted} />
-        </TouchableOpacity>
-        {showSubjectPicker && (
-          <View style={styles.dropdown}>
-            {subjects.map((s, i) => (
+      {/* Class / Subject Horizontal Selector */}
+      <View style={styles.selectorContainer}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: spacing.md, gap: spacing.xs }}>
+          {rosterGroups.map((grp, idx) => {
+            const isSelected = selectedGroupIndex === idx;
+            return (
               <TouchableOpacity
-                key={i}
-                style={styles.dropdownItem}
-                onPress={() => { setSelectedSubject(s); setShowSubjectPicker(false); }}
+                key={grp.allocationId || idx}
+                style={[styles.groupChip, isSelected && styles.groupChipActive]}
+                onPress={() => handleSelectGroup(idx)}
               >
-                <Text style={[styles.dropdownText, selectedSubject?.id === s.id && { color: colors.teacher }]}>
-                  {s.subject_name || s.name} {s.class_name ? `- ${s.class_name}` : ''}
+                <BookOpen size={14} color={isSelected ? '#fff' : colors.teacher} />
+                <Text style={[styles.groupChipText, isSelected && styles.groupChipTextActive]}>
+                  {grp.subject?.name || grp.subject?.subjectName}
                 </Text>
+                <View style={[styles.classPill, isSelected && { backgroundColor: 'rgba(255,255,255,0.25)' }]}>
+                  <Text style={[styles.classPillText, isSelected && { color: '#fff' }]}>
+                    {grp.class?.name || grp.class?.className}
+                  </Text>
+                </View>
               </TouchableOpacity>
-            ))}
-          </View>
-        )}
+            );
+          })}
+        </ScrollView>
       </View>
 
-      {/* Summary Bar */}
-      <View style={styles.summaryBar}>
-        <View style={styles.summaryItem}><View style={[styles.dot, { backgroundColor: colors.success }]} /><Text style={styles.summaryCount}>{presentCount} P</Text></View>
-        <View style={styles.summaryItem}><View style={[styles.dot, { backgroundColor: colors.danger }]} /><Text style={styles.summaryCount}>{absentCount} A</Text></View>
-        <View style={styles.summaryItem}><View style={[styles.dot, { backgroundColor: colors.warning }]} /><Text style={styles.summaryCount}>{lateCount} L</Text></View>
-        <Text style={styles.summaryTotal}>{students.length} total</Text>
-      </View>
-
-      {submitted && (
-        <View style={styles.submittedBanner}>
-          <Check size={16} color={colors.success} />
-          <Text style={styles.submittedText}>Attendance submitted for today</Text>
+      {/* Slots Selector (if multiple slots) */}
+      {currentSlots.length > 1 && (
+        <View style={styles.slotRow}>
+          <Clock size={14} color={colors.textMuted} />
+          <Text style={styles.slotLabel}>Slot:</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {currentSlots.map((slot, sIdx) => {
+              const active = selectedSlotIndex === sIdx;
+              return (
+                <TouchableOpacity
+                  key={sIdx}
+                  style={[styles.slotChip, active && styles.slotChipActive]}
+                  onPress={() => setSelectedSlotIndex(sIdx)}
+                >
+                  <Text style={[styles.slotChipText, active && styles.slotChipTextActive]}>
+                    {slot.dayOfWeek?.slice(0, 3)} {slot.timeSlot || `${slot.startTime}-${slot.endTime}`}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
       )}
 
+      {/* Summary KPI Counters & Quick Actions */}
+      <View style={styles.metaRow}>
+        <View style={styles.counters}>
+          <View style={[styles.badgePill, { borderColor: colors.success + '44', backgroundColor: colors.success + '15' }]}>
+            <Text style={[styles.badgePillText, { color: colors.success }]}>{presentCount} P</Text>
+          </View>
+          <View style={[styles.badgePill, { borderColor: colors.danger + '44', backgroundColor: colors.danger + '15' }]}>
+            <Text style={[styles.badgePillText, { color: colors.danger }]}>{absentCount} A</Text>
+          </View>
+          <View style={[styles.badgePill, { borderColor: colors.warning + '44', backgroundColor: colors.warning + '15' }]}>
+            <Text style={[styles.badgePillText, { color: colors.warning }]}>{lateCount} L</Text>
+          </View>
+          <Text style={styles.totalText}>{currentStudents.length} enrolled</Text>
+        </View>
+
+        <View style={styles.quickActions}>
+          <TouchableOpacity style={[styles.quickBtn, { borderColor: colors.success + '66' }]} onPress={() => setAllStatus('present')}>
+            <CheckCheck size={13} color={colors.success} />
+            <Text style={[styles.quickBtnText, { color: colors.success }]}>All P</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.quickBtn, { borderColor: colors.danger + '66' }]} onPress={() => setAllStatus('absent')}>
+            <XCircle size={13} color={colors.danger} />
+            <Text style={[styles.quickBtnText, { color: colors.danger }]}>All A</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {submittedToday && (
+        <View style={styles.submittedBanner}>
+          <Check size={16} color={colors.success} />
+          <Text style={styles.submittedText}>Attendance already recorded for today. Tap Submit to overwrite updates.</Text>
+        </View>
+      )}
+
+      {/* Student Roster List */}
       <FlatList
-        data={students}
+        data={currentStudents}
         keyExtractor={(item) => item.id?.toString()}
         renderItem={({ item }) => {
           const status = attendance[item.id] || 'present';
-          const statusCfg = STATUS_MAP[status];
+          const cfg = STATUS_MAP[status] || STATUS_MAP.present;
+
           return (
-            <TouchableOpacity
-              style={[styles.studentRow, shadows.sm, submitted && styles.studentRowDisabled]}
-              onPress={() => toggleStatus(item.id)}
-              activeOpacity={submitted ? 1 : 0.7}
-            >
+            <View style={[styles.studentCard, shadows.sm]}>
               <View style={styles.studentInfo}>
-                <Text style={styles.studentName}>{item.name}</Text>
-                <Text style={styles.studentMeta}>{item.roll_number}</Text>
+                <View style={styles.nameRow}>
+                  <Text style={styles.studentName}>{item.name}</Text>
+                  {item.rollNumber ? (
+                    <Text style={styles.rollBadge}>{item.rollNumber}</Text>
+                  ) : null}
+                </View>
+                <Text style={styles.studentMeta}>
+                  {item.attendancePercentage !== undefined ? `${item.attendancePercentage}% Overall` : item.email}
+                </Text>
               </View>
-              <View style={[styles.statusBtn, { backgroundColor: statusCfg.color + '22', borderColor: statusCfg.color }]}>
-                <Text style={[styles.statusBtnText, { color: statusCfg.color }]}>{statusCfg.label}</Text>
+
+              {/* Interactive Status Buttons */}
+              <View style={styles.statusButtonsGroup}>
+                {['present', 'absent', 'late'].map(st => {
+                  const isSelected = status === st;
+                  const itemCfg = STATUS_MAP[st];
+                  return (
+                    <TouchableOpacity
+                      key={st}
+                      style={[
+                        styles.singleStatusBtn,
+                        isSelected && { backgroundColor: itemCfg.color, borderColor: itemCfg.color }
+                      ]}
+                      onPress={() => {
+                        setAttendance(prev => ({ ...prev, [item.id]: st }));
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.singleStatusText,
+                          isSelected ? { color: '#fff', fontWeight: '700' } : { color: colors.textSecondary }
+                        ]}
+                      >
+                        {itemCfg.short}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
-            </TouchableOpacity>
+            </View>
           );
         }}
         contentContainerStyle={styles.list}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.teacher} />}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyText}>No students found for this subject</Text>
+            <Users size={40} color={colors.textMuted} />
+            <Text style={styles.emptyText}>No students found in this roster</Text>
           </View>
         }
       />
 
-      {!submitted && students.length > 0 && (
-        <View style={styles.submitContainer}>
+      {/* Floating Submit Attendance Bar */}
+      {currentStudents.length > 0 && (
+        <View style={styles.bottomBar}>
           <TouchableOpacity
-            style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
-            onPress={handleSubmit}
+            style={[styles.submitBtn, submitting && { opacity: 0.7 }]}
+            onPress={handleSubmitAttendance}
             disabled={submitting}
             activeOpacity={0.8}
           >
             {submitting ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <Text style={styles.submitBtnText}>Submit Attendance</Text>
+              <>
+                <Check size={18} color="#fff" />
+                <Text style={styles.submitBtnText}>
+                  {submittedToday ? 'Update Attendance Record' : 'Submit Attendance'}
+                </Text>
+              </>
             )}
           </TouchableOpacity>
         </View>
@@ -198,63 +330,153 @@ const ManualAttendanceScreen = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
-  controls: { margin: spacing.md, marginBottom: 0, zIndex: 100 },
-  picker: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: colors.bgCard, borderRadius: radius.md, borderWidth: 1,
-    borderColor: colors.border, padding: spacing.md,
+  selectorContainer: { paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
+  groupChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  pickerText: { ...typography.base, color: colors.textPrimary, flex: 1 },
-  dropdown: {
-    backgroundColor: colors.bgCard, borderRadius: radius.md, borderWidth: 1,
-    borderColor: colors.border, marginTop: 4, overflow: 'hidden',
+  groupChipActive: { backgroundColor: colors.teacher, borderColor: colors.teacher },
+  groupChipText: { ...typography.xs, color: colors.textSecondary, fontWeight: '600' },
+  groupChipTextActive: { color: '#fff', fontWeight: '700' },
+  classPill: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgElevated,
   },
-  dropdownItem: { padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
-  dropdownText: { ...typography.sm, color: colors.textSecondary },
-  summaryBar: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
-    padding: spacing.md, paddingBottom: 0,
+  classPillText: { fontSize: 10, color: colors.textMuted, fontWeight: '600' },
+  slotRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    backgroundColor: colors.bgCard,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  summaryItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  summaryCount: { ...typography.sm, ...typography.semibold, color: colors.textSecondary },
-  summaryTotal: { ...typography.sm, color: colors.textMuted, marginLeft: 'auto' },
+  slotLabel: { ...typography.xs, color: colors.textMuted, fontWeight: '600' },
+  slotChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radius.sm,
+    backgroundColor: colors.bgElevated,
+    marginRight: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  slotChipActive: { borderColor: colors.teacher, backgroundColor: colors.teacher + '22' },
+  slotChipText: { fontSize: 11, color: colors.textMuted },
+  slotChipTextActive: { color: colors.teacher, fontWeight: '700' },
+  metaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  counters: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  badgePill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radius.full,
+    borderWidth: 1,
+  },
+  badgePillText: { ...typography.xs, fontWeight: '700' },
+  totalText: { ...typography.xs, color: colors.textMuted, marginLeft: 4 },
+  quickActions: { flexDirection: 'row', gap: 6 },
+  quickBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    backgroundColor: colors.bgCard,
+  },
+  quickBtnText: { fontSize: 11, fontWeight: '700' },
   submittedBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    backgroundColor: colors.success + '18', margin: spacing.md,
-    padding: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.success + '33',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.success + '18',
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.xs,
+    padding: spacing.xs,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.success + '33',
   },
-  submittedText: { ...typography.sm, color: colors.success },
-  list: { padding: spacing.md },
-  studentRow: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: colors.bgCard, borderRadius: radius.md,
-    padding: spacing.md, marginBottom: spacing.xs,
-    borderWidth: 1, borderColor: colors.border,
-  },
-  studentRowDisabled: { opacity: 0.7 },
-  studentInfo: { flex: 1 },
-  studentName: { ...typography.base, ...typography.semibold, color: colors.textPrimary },
-  studentMeta: { ...typography.xs, color: colors.textMuted },
-  statusBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    justifyContent: 'center', alignItems: 'center', borderWidth: 2,
-  },
-  statusBtnText: { fontSize: 13, fontWeight: '700' },
-  empty: { alignItems: 'center', paddingTop: spacing.xxl },
-  emptyText: { ...typography.base, color: colors.textMuted },
-  submitContainer: {
+  submittedText: { fontSize: 11, color: colors.success, flex: 1 },
+  list: { paddingHorizontal: spacing.md, paddingBottom: 100 },
+  studentCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.md,
     padding: spacing.md,
-    paddingBottom: spacing.lg,
+    marginBottom: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  studentInfo: { flex: 1, paddingRight: spacing.sm },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
+  studentName: { ...typography.base, ...typography.semibold, color: colors.textPrimary },
+  rollBadge: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.teacher,
+    backgroundColor: colors.teacher + '22',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: radius.sm,
+  },
+  studentMeta: { ...typography.xs, color: colors.textMuted },
+  statusButtonsGroup: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  singleStatusBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgElevated,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  singleStatusText: { fontSize: 13, fontWeight: '700' },
+  empty: { alignItems: 'center', paddingTop: spacing.xxl, gap: spacing.md },
+  emptyText: { ...typography.base, color: colors.textMuted },
+  bottomBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     backgroundColor: colors.bgPrimary,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+    padding: spacing.md,
   },
   submitBtn: {
-    backgroundColor: colors.teacher, borderRadius: radius.md,
-    padding: 14, alignItems: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.teacher,
+    borderRadius: radius.md,
+    paddingVertical: 14,
   },
-  submitBtnDisabled: { opacity: 0.6 },
   submitBtnText: { ...typography.base, ...typography.bold, color: '#fff' },
 });
 

@@ -137,7 +137,7 @@ const NotificationCenterModal = ({ visible, onClose, navigation }) => {
                         {item.message}
                       </Text>
                       <Text style={styles.itemTime}>
-                        {item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                        {item.created_at ? new Date(item.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
                       </Text>
                     </View>
                     {!item.is_read && <View style={styles.unreadDot} />}

@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity
+  View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Award, CalendarDays, TrendingUp, Clock } from 'lucide-react-native';
+import { Award, CalendarDays, TrendingUp, Clock, Download } from 'lucide-react-native';
 import Header from '../../components/Header';
 import { FullPageLoader } from '../../components/LoadingSkeleton';
 import api from '../../api/client';
 import { colors, spacing, radius, typography, shadows } from '../../styles/theme';
+import { exportText, generateReportCardText } from '../../utils/fileExporter';
 
 const getLetterGrade = (pct) => {
   if (pct >= 90) return { grade: 'A+', color: colors.success };
@@ -36,10 +37,14 @@ const ParentResultsScreen = () => {
     }
   };
 
-  useEffect(() => { fetchResults(); }, []);
-  const onRefresh = useCallback(() => { setRefreshing(true); fetchResults(); }, []);
+  useEffect(() => {
+    fetchResults();
+  }, []);
 
-  if (loading) return <FullPageLoader message="Loading exam results..." />;
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchResults();
+  }, []);
 
   const results = data?.examResults || [];
   const upcoming = data?.upcomingExams || [];
@@ -52,9 +57,49 @@ const ParentResultsScreen = () => {
       }, 0) / results.length)
     : 0;
 
+  const handleDownloadReportCard = async () => {
+    if (results.length === 0) {
+      Alert.alert('No Data', 'No academic results available to download.');
+      return;
+    }
+
+    const transcriptText = generateReportCardText({
+      studentName: student?.name,
+      className: student?.class_name,
+      rollNumber: student?.roll_number,
+      results: results.map((r) => ({
+        subject_name: r.subject_name,
+        subject_code: r.subject_code,
+        marks_obtained: r.marks_obtained,
+        max_marks: r.max_marks,
+        grade: r.grade || getLetterGrade((r.marks_obtained / (r.max_marks || 100)) * 100).grade,
+      })),
+      averageGpa: `${avgPct}% (${getLetterGrade(avgPct).grade})`,
+    });
+
+    const success = await exportText(
+      `ReportCard_${student?.roll_number || 'Student'}.txt`,
+      transcriptText,
+      'text/plain'
+    );
+    if (success) {
+      Alert.alert('✅ Downloaded', 'Official academic report card generated successfully.');
+    }
+  };
+
+  if (loading) return <FullPageLoader message="Loading exam results..." />;
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <Header title="Exam Results" subtitle={student?.name || 'Student'} />
+      <Header
+        title="Exam Results"
+        subtitle={student?.name || 'Student'}
+        rightAction={
+          <TouchableOpacity style={styles.exportBtn} onPress={handleDownloadReportCard}>
+            <Download size={17} color={colors.parent} />
+          </TouchableOpacity>
+        }
+      />
 
       {/* Average Banner */}
       {results.length > 0 && (() => {
@@ -111,7 +156,9 @@ const ParentResultsScreen = () => {
                 <View style={styles.barBg}>
                   <View style={[styles.barFill, { width: `${Math.min(pct, 100)}%`, backgroundColor: color }]} />
                 </View>
-                {item.remarks && <Text style={styles.remarks}>{item.remarks}</Text>}
+                {item.remarks ? (
+                  <Text style={styles.remarks}>{item.remarks}</Text>
+                ) : null}
               </View>
             );
           }}
@@ -120,7 +167,7 @@ const ParentResultsScreen = () => {
           ListEmptyComponent={
             <View style={styles.empty}>
               <Award size={40} color={colors.textMuted} />
-              <Text style={styles.emptyText}>No results yet</Text>
+              <Text style={styles.emptyText}>No results available yet</Text>
             </View>
           }
         />
@@ -138,27 +185,25 @@ const ParentResultsScreen = () => {
                 <Text style={styles.upcomingSubject}>{item.subject_name}</Text>
                 <View style={styles.upcomingMeta}>
                   <CalendarDays size={12} color={colors.textMuted} />
-                  <Text style={styles.upcomingDate}>
-                    {item.exam_date ? new Date(item.exam_date).toLocaleDateString() : '—'}
+                  <Text style={styles.upcomingMetaText}>
+                    {item.exam_date ? new Date(item.exam_date).toLocaleDateString() : 'TBA'}
                   </Text>
-                  {item.time_slot && (
+                  {item.time_slot ? (
                     <>
                       <Clock size={12} color={colors.textMuted} style={{ marginLeft: 8 }} />
-                      <Text style={styles.upcomingDate}>{item.time_slot}</Text>
+                      <Text style={styles.upcomingMetaText}>{item.time_slot}</Text>
                     </>
-                  )}
+                  ) : null}
                 </View>
               </View>
-              {item.max_marks && (
-                <Text style={styles.maxMarks}>{item.max_marks} marks</Text>
-              )}
             </View>
           )}
           contentContainerStyle={styles.list}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.parent} />}
           ListEmptyComponent={
             <View style={styles.empty}>
               <CalendarDays size={40} color={colors.textMuted} />
-              <Text style={styles.emptyText}>No upcoming exams</Text>
+              <Text style={styles.emptyText}>No upcoming exams scheduled</Text>
             </View>
           }
         />
@@ -169,36 +214,50 @@ const ParentResultsScreen = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
+  exportBtn: {
+    padding: spacing.sm, backgroundColor: colors.parent + '22',
+    borderRadius: radius.md, borderWidth: 1, borderColor: colors.parent + '44',
+  },
   avgBanner: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    margin: spacing.md, backgroundColor: colors.bgCard,
-    borderRadius: radius.lg, padding: spacing.md,
-    borderWidth: 1, borderColor: colors.border,
+    margin: spacing.md, marginBottom: 0, backgroundColor: colors.bgCard,
+    borderRadius: radius.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.border,
   },
   avgLabel: { ...typography.sm, color: colors.textSecondary, flex: 1 },
   avgValue: { ...typography.xl, ...typography.bold },
   gradePill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.full },
   gradeText: { fontSize: 12, fontWeight: '700' },
-  tabRow: { flexDirection: 'row', paddingHorizontal: spacing.md, gap: spacing.xs, marginBottom: spacing.sm },
-  tab: { flex: 1, padding: spacing.sm, borderRadius: radius.full, backgroundColor: colors.bgCard, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
+  tabRow: { flexDirection: 'row', padding: spacing.md, gap: spacing.xs },
+  tab: {
+    flex: 1, paddingVertical: 8, alignItems: 'center',
+    borderRadius: radius.full, backgroundColor: colors.bgCard,
+    borderWidth: 1, borderColor: colors.border,
+  },
   tabActive: { backgroundColor: colors.parent + '22', borderColor: colors.parent },
-  tabText: { ...typography.sm, color: colors.textMuted, fontWeight: '600' },
-  tabTextActive: { color: colors.parent },
+  tabText: { ...typography.xs, color: colors.textMuted, fontWeight: '600' },
+  tabTextActive: { color: colors.parent, fontWeight: '700' },
   list: { padding: spacing.md, paddingTop: 0 },
-  resultCard: { backgroundColor: colors.bgCard, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.border },
-  resultTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 },
-  resultInfo: { flex: 1 },
+  resultCard: {
+    backgroundColor: colors.bgCard, borderRadius: radius.md,
+    padding: spacing.md, marginBottom: spacing.sm,
+    borderWidth: 1, borderColor: colors.border, gap: 6,
+  },
+  resultTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  resultInfo: { flex: 1, marginRight: spacing.sm },
   examName: { ...typography.base, ...typography.semibold, color: colors.textPrimary },
-  subjectName: { ...typography.sm, color: colors.textSecondary },
+  subjectName: { ...typography.sm, color: colors.textSecondary, marginTop: 2 },
   examDate: { ...typography.xs, color: colors.textMuted, marginTop: 2 },
   scoreSection: { alignItems: 'center', gap: 4 },
-  gradeBadge: { width: 44, height: 44, borderRadius: radius.md, justifyContent: 'center', alignItems: 'center' },
-  gradeLetter: { ...typography.lg, ...typography.bold },
-  scorePct: { ...typography.sm, ...typography.semibold },
-  marksText: { ...typography.sm, color: colors.textMuted, marginBottom: 6 },
+  gradeBadge: {
+    width: 40, height: 40, borderRadius: radius.md,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  gradeLetter: { ...typography.base, ...typography.bold },
+  scorePct: { ...typography.xs, ...typography.semibold },
+  marksText: { ...typography.xs, color: colors.textMuted },
   barBg: { height: 5, backgroundColor: colors.bgElevated, borderRadius: radius.full, overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: radius.full },
-  remarks: { ...typography.xs, color: colors.textSecondary, marginTop: 4, fontStyle: 'italic' },
+  remarks: { ...typography.xs, color: colors.textSecondary, fontStyle: 'italic', marginTop: 2 },
   upcomingCard: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     backgroundColor: colors.bgCard, borderRadius: radius.md,
@@ -209,9 +268,8 @@ const styles = StyleSheet.create({
   upcomingInfo: { flex: 1 },
   upcomingName: { ...typography.base, ...typography.semibold, color: colors.textPrimary },
   upcomingSubject: { ...typography.sm, color: colors.textSecondary },
-  upcomingMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
-  upcomingDate: { ...typography.xs, color: colors.textMuted },
-  maxMarks: { ...typography.sm, color: colors.parent, fontWeight: '600' },
+  upcomingMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  upcomingMetaText: { ...typography.xs, color: colors.textMuted },
   empty: { alignItems: 'center', paddingTop: spacing.xxl, gap: spacing.md },
   emptyText: { ...typography.base, color: colors.textMuted },
 });

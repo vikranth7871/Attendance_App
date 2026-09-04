@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, FlatList
+  View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { DollarSign, CheckCircle, Clock, AlertTriangle, CreditCard } from 'lucide-react-native';
+import { DollarSign, CheckCircle, Clock, AlertTriangle, CreditCard, Download } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Header from '../../components/Header';
 import { FullPageLoader } from '../../components/LoadingSkeleton';
 import api from '../../api/client';
 import { colors, spacing, radius, typography, shadows } from '../../styles/theme';
+import { exportText, generateReceiptText } from '../../utils/fileExporter';
 
 const FEE_STATUS_CONFIG = {
   paid: { color: colors.success, label: 'Paid', icon: CheckCircle },
@@ -34,8 +35,14 @@ const ParentFeesScreen = () => {
     }
   };
 
-  useEffect(() => { fetchFees(); }, []);
-  const onRefresh = useCallback(() => { setRefreshing(true); fetchFees(); }, []);
+  useEffect(() => {
+    fetchFees();
+  }, []);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchFees();
+  }, []);
 
   if (loading) return <FullPageLoader message="Loading fee details..." />;
 
@@ -51,9 +58,29 @@ const ParentFeesScreen = () => {
   const pendingAmount = parseFloat(feeSummary.pending_amount) || 0;
   const paidPct = totalAmount > 0 ? (paidAmount / totalAmount) * 100 : 0;
 
+  const handleDownloadReceipt = async (payment) => {
+    const receiptText = generateReceiptText({
+      receiptNo: payment.receipt_no || payment.id,
+      studentName: student?.name,
+      amount: payment.amount_paid,
+      date: payment.payment_date,
+      method: payment.payment_method,
+      balance: pendingAmount,
+    });
+
+    const success = await exportText(
+      `Receipt_${payment.receipt_no || 'Fee'}.txt`,
+      receiptText,
+      'text/plain'
+    );
+    if (success) {
+      Alert.alert('✅ Downloaded', 'Official payment receipt downloaded and ready to share.');
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <Header title="Fee Details" subtitle={student?.name || 'Student'} />
+      <Header title="Fee Invoices" subtitle={student?.name || 'Student'} />
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.parent} />}
@@ -96,7 +123,7 @@ const ParentFeesScreen = () => {
         </LinearGradient>
 
         {/* Payment History */}
-        <Text style={styles.sectionTitle}>Payment History</Text>
+        <Text style={styles.sectionTitle}>Payment Receipts & History</Text>
         {paymentHistory.length === 0 ? (
           <View style={styles.empty}>
             <CreditCard size={36} color={colors.textMuted} />
@@ -105,23 +132,35 @@ const ParentFeesScreen = () => {
         ) : (
           paymentHistory.map((pay, i) => (
             <View key={i} style={[styles.paymentCard, shadows.sm]}>
-              <View style={styles.paymentLeft}>
-                <CheckCircle size={18} color={colors.success} />
-                <View style={styles.paymentInfo}>
-                  <Text style={styles.paymentAmount}>₹{parseFloat(pay.amount_paid).toLocaleString('en-IN')}</Text>
-                  <Text style={styles.paymentDate}>
-                    {pay.payment_date ? new Date(pay.payment_date).toLocaleDateString() : '—'}
-                  </Text>
+              <View style={styles.paymentCardTop}>
+                <View style={styles.paymentLeft}>
+                  <CheckCircle size={18} color={colors.success} />
+                  <View style={styles.paymentInfo}>
+                    <Text style={styles.paymentAmount}>₹{parseFloat(pay.amount_paid).toLocaleString('en-IN')}</Text>
+                    <Text style={styles.paymentDate}>
+                      {pay.payment_date ? new Date(pay.payment_date).toLocaleDateString() : '—'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.paymentRight}>
+                  <Text style={styles.paymentMethod}>{pay.payment_method || 'Online'}</Text>
+                  {pay.receipt_no ? (
+                    <Text style={styles.receiptNo}>#{pay.receipt_no}</Text>
+                  ) : null}
                 </View>
               </View>
-              <View style={styles.paymentRight}>
-                <Text style={styles.paymentMethod}>{pay.payment_method || 'Online'}</Text>
-                {pay.receipt_no && <Text style={styles.receiptNo}>#{pay.receipt_no}</Text>}
-              </View>
+
+              {/* 1-Click Download Receipt Action */}
+              <TouchableOpacity
+                style={styles.downloadBtn}
+                onPress={() => handleDownloadReceipt(pay)}
+              >
+                <Download size={13} color={colors.parent} />
+                <Text style={styles.downloadBtnText}>Download Receipt</Text>
+              </TouchableOpacity>
             </View>
           ))
         )}
-        <View style={{ height: spacing.xl }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -130,35 +169,48 @@ const ParentFeesScreen = () => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: spacing.md },
-  summaryCard: { borderRadius: radius.xl, padding: spacing.lg, marginBottom: spacing.md },
-  summaryTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: spacing.md },
-  summaryLabel: { fontSize: 12, color: 'rgba(255,255,255,0.7)', marginBottom: 4 },
-  totalAmount: { ...typography.xl, ...typography.bold, color: '#fff' },
-  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.full, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
-  statusPillText: { fontSize: 11, fontWeight: '700' },
-  progressBg: { height: 8, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: radius.full, marginBottom: spacing.md, overflow: 'hidden' },
+  summaryCard: {
+    borderRadius: radius.xl, padding: spacing.lg,
+    marginBottom: spacing.md, gap: spacing.sm,
+  },
+  summaryTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  summaryLabel: { ...typography.xs, color: 'rgba(255,255,255,0.8)' },
+  totalAmount: { ...typography.xxl, ...typography.bold, color: '#fff' },
+  statusPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.full,
+  },
+  statusPillText: { ...typography.xs, fontWeight: '700' },
+  progressBg: { height: 8, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: radius.full, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: '#fff', borderRadius: radius.full },
-  amountRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.sm },
-  amountLabel: { fontSize: 11, color: 'rgba(255,255,255,0.6)' },
-  amountValue: { ...typography.base, ...typography.bold },
-  dueRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  dueText: { fontSize: 12, color: 'rgba(255,255,255,0.7)' },
-  sectionTitle: { ...typography.base, ...typography.bold, color: colors.textPrimary, marginBottom: spacing.sm },
+  amountRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  amountLabel: { ...typography.xs, color: 'rgba(255,255,255,0.7)' },
+  amountValue: { ...typography.base, ...typography.bold, marginTop: 2 },
+  dueRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  dueText: { ...typography.xs, color: 'rgba(255,255,255,0.8)' },
+  sectionTitle: { ...typography.base, ...typography.bold, color: colors.textPrimary, marginVertical: spacing.sm },
   paymentCard: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     backgroundColor: colors.bgCard, borderRadius: radius.md,
     padding: spacing.md, marginBottom: spacing.xs,
-    borderWidth: 1, borderColor: colors.border,
+    borderWidth: 1, borderColor: colors.border, gap: spacing.xs,
   },
+  paymentCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   paymentLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   paymentInfo: {},
-  paymentAmount: { ...typography.base, ...typography.semibold, color: colors.textPrimary },
+  paymentAmount: { ...typography.base, ...typography.bold, color: colors.textPrimary },
   paymentDate: { ...typography.xs, color: colors.textMuted },
   paymentRight: { alignItems: 'flex-end' },
-  paymentMethod: { ...typography.sm, color: colors.textSecondary, textTransform: 'capitalize' },
+  paymentMethod: { ...typography.xs, color: colors.textSecondary, fontWeight: '600' },
   receiptNo: { ...typography.xs, color: colors.textMuted },
-  empty: { alignItems: 'center', paddingTop: spacing.xl, gap: spacing.sm },
-  emptyText: { ...typography.base, color: colors.textMuted },
+  downloadBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 6, backgroundColor: colors.parent + '15',
+    borderRadius: radius.sm, borderWidth: 1, borderColor: colors.parent + '33',
+    marginTop: 4,
+  },
+  downloadBtnText: { ...typography.xs, color: colors.parent, fontWeight: '700' },
+  empty: { alignItems: 'center', paddingVertical: spacing.xl, gap: spacing.sm },
+  emptyText: { ...typography.sm, color: colors.textMuted },
 });
 
 export default ParentFeesScreen;

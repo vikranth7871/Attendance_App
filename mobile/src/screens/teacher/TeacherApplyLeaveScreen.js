@@ -4,7 +4,8 @@ import {
   TouchableOpacity, TextInput, Alert, ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { CalendarDays, FileText, AlertCircle } from 'lucide-react-native';
+import { CalendarDays, FileText, AlertCircle, Paperclip, X, UploadCloud } from 'lucide-react-native';
+import * as DocumentPicker from 'expo-document-picker';
 import Header from '../../components/Header';
 import api from '../../api/client';
 import { colors, spacing, radius, typography, shadows } from '../../styles/theme';
@@ -13,6 +14,7 @@ const LEAVE_TYPES = ['sick', 'casual', 'emergency', 'personal', 'other'];
 
 const TeacherApplyLeaveScreen = ({ navigation }) => {
   const [form, setForm] = useState({ leave_type: 'casual', start_date: '', end_date: '', reason: '' });
+  const [attachment, setAttachment] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [myLeaves, setMyLeaves] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -20,14 +22,29 @@ const TeacherApplyLeaveScreen = ({ navigation }) => {
 
   const fetchLeaves = async () => {
     try {
-      const { data } = await api.get('/leave/my');
-      setMyLeaves(data || []);
+      const { data } = await api.get('/leave/my-leaves');
+      setMyLeaves(data?.leaves || data || []);
     } catch (err) { console.error('My leaves fetch error:', err); }
     finally { setLoading(false); setRefreshing(false); }
   };
 
   useEffect(() => { fetchLeaves(); }, []);
   const onRefresh = useCallback(() => { setRefreshing(true); fetchLeaves(); }, []);
+
+  const handlePickDocument = async () => {
+    try {
+      const res = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'image/*'],
+        copyToCacheDirectory: true,
+      });
+
+      if (!res.canceled && res.assets && res.assets.length > 0) {
+        setAttachment(res.assets[0]);
+      }
+    } catch (err) {
+      console.error('File pick error:', err);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!form.start_date.trim() || !form.end_date.trim() || !form.reason.trim()) {
@@ -37,8 +54,27 @@ const TeacherApplyLeaveScreen = ({ navigation }) => {
     setSubmitting(true);
     try {
       await api.post('/leave/apply', form);
+      const formData = new FormData();
+      formData.append('leaveType', form.leave_type);
+      formData.append('startDate', form.start_date.trim());
+      formData.append('endDate', form.end_date.trim());
+      formData.append('reason', form.reason.trim());
+
+      if (attachment) {
+        formData.append('document', {
+          uri: attachment.uri,
+          name: attachment.name || 'proof.pdf',
+          type: attachment.mimeType || 'application/octet-stream',
+        });
+      }
+
+      await api.post('/leave/apply', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
       Alert.alert('✅ Submitted', 'Your leave application has been submitted successfully.');
       setForm({ leave_type: 'casual', start_date: '', end_date: '', reason: '' });
+      setAttachment(null);
       fetchLeaves();
     } catch (err) {
       Alert.alert('Error', err.response?.data?.message || 'Failed to submit leave application.');
@@ -88,6 +124,22 @@ const TeacherApplyLeaveScreen = ({ navigation }) => {
             numberOfLines={3}
           />
 
+          <Text style={styles.label}>Supporting Proof / Certificate (Optional)</Text>
+          {attachment ? (
+            <View style={styles.attachmentBox}>
+              <FileText size={16} color={colors.primary} />
+              <Text style={styles.attachmentName} numberOfLines={1}>{attachment.name}</Text>
+              <TouchableOpacity onPress={() => setAttachment(null)}>
+                <X size={16} color={colors.danger} />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.uploadBtn} onPress={handlePickDocument}>
+              <UploadCloud size={16} color={colors.textSecondary} />
+              <Text style={styles.uploadBtnText}>Attach Medical / Proof Document</Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity style={[styles.submitBtn, submitting && { opacity: 0.6 }]} onPress={handleSubmit} disabled={submitting}>
             {submitting ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.submitBtnText}>Submit Application</Text>}
           </TouchableOpacity>
@@ -112,7 +164,7 @@ const TeacherApplyLeaveScreen = ({ navigation }) => {
                   </View>
                 </View>
                 <Text style={styles.leaveDates}>
-                  {new Date(leave.start_date).toLocaleDateString()} → {new Date(leave.end_date).toLocaleDateString()}
+                  {leave.start_date ? new Date(leave.start_date).toLocaleDateString() : '—'} → {leave.end_date ? new Date(leave.end_date).toLocaleDateString() : '—'}
                 </Text>
                 {leave.reason && <Text style={styles.leaveReason} numberOfLines={1}>{leave.reason}</Text>}
               </View>
@@ -140,6 +192,41 @@ const styles = StyleSheet.create({
   typeChip: { paddingHorizontal: spacing.sm, paddingVertical: 5, borderRadius: radius.full, backgroundColor: colors.bgElevated, borderWidth: 1, borderColor: colors.border },
   typeChipActive: { borderColor: colors.primary, backgroundColor: colors.primary + '22' },
   typeChipText: { ...typography.sm, color: colors.textMuted, textTransform: 'capitalize' },
+  uploadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.bgInput,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    borderRadius: radius.md,
+    paddingVertical: 12,
+    marginBottom: spacing.md,
+  },
+  uploadBtnText: {
+    ...typography.sm,
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
+  attachmentBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.primary + '15',
+    borderWidth: 1,
+    borderColor: colors.primary + '33',
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    marginBottom: spacing.md,
+  },
+  attachmentName: {
+    flex: 1,
+    ...typography.sm,
+    color: colors.textPrimary,
+  },
   submitBtn: { backgroundColor: colors.primary, borderRadius: radius.md, padding: 13, alignItems: 'center' },
   submitBtnText: { ...typography.base, ...typography.bold, color: '#fff' },
   historyTitle: { ...typography.base, ...typography.bold, color: colors.textPrimary, marginBottom: spacing.sm },

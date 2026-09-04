@@ -22,5 +22,6 @@
     "**/.git": true
   },
   "git.ignoreLimitWarning": true,
+  "git.autofetch": false,
   "github-actions.use-enterprise": false
 }

@@ -4,7 +4,7 @@ import {
   RefreshControl, Modal, TextInput, Alert, ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BookOpen, Plus, Calendar, X, ChevronDown } from 'lucide-react-native';
+import { BookOpen, Plus, Calendar, X, ChevronDown, Users, CheckCircle, FileText } from 'lucide-react-native';
 import Header from '../../components/Header';
 import { FullPageLoader } from '../../components/LoadingSkeleton';
 import api from '../../api/client';

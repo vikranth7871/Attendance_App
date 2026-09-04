@@ -15,6 +15,7 @@ import PermissionsScreen from '../screens/admin/PermissionsScreen';
 import TeacherAttendanceScreen from '../screens/admin/TeacherAttendanceScreen';
 import TeacherLeavesScreen from '../screens/admin/TeacherLeavesScreen';
 import AdminProfileScreen from '../screens/admin/AdminProfileScreen';
+import AssignmentsScreen from '../screens/admin/AssignmentsScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -80,6 +81,7 @@ const AdminNavigator = () => (
     <Stack.Screen name="SystemActivity" component={SystemActivityScreen} />
     <Stack.Screen name="Permissions" component={PermissionsScreen} />
     <Stack.Screen name="TeacherAttendance" component={TeacherAttendanceScreen} />
+    <Stack.Screen name="Assignments" component={AssignmentsScreen} />
   </Stack.Navigator>
 );
 

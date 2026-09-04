@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
-  KeyboardAvoidingView, Platform, ScrollView, Alert
+  KeyboardAvoidingView, Platform, ScrollView, Alert, ActivityIndicator
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -117,7 +117,7 @@ const LoginScreen = () => {
           >
             <LinearGradient colors={colors.gradientPrimary} style={styles.submitGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
               {loading ? (
-                <ActivityIndicatorInline />
+                <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <Text style={styles.submitText}>Sign In</Text>
               )}
@@ -147,11 +147,6 @@ const LoginScreen = () => {
       </ScrollView>
     </KeyboardAvoidingView>
   );
-};
-
-const ActivityIndicatorInline = () => {
-  const { ActivityIndicator } = require('react-native');
-  return <ActivityIndicator size="small" color="#fff" />;
 };
 
 const styles = StyleSheet.create({

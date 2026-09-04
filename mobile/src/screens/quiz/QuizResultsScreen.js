@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   CheckCircle, XCircle, Trophy, Clock, BarChart2,
-  Award, ChevronDown, ChevronUp, ArrowLeft, RotateCcw
+  Award, ChevronDown, ChevronUp, ArrowLeft, RotateCcw, Download
 } from 'lucide-react-native';
 import { colors, spacing, radius, typography, shadows } from '../../styles/theme';
+import { exportText, generateCertificateText } from '../../utils/fileExporter';
+import { useAuth } from '../../context/AuthContext';
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D'];
 
@@ -70,8 +72,17 @@ const ReviewCard = ({ answer, index }) => {
   );
 };
 
+const StatBox = ({ icon: Icon, label, value, color }) => (
+  <View style={[styles.statBox, shadows.sm]}>
+    <Icon size={18} color={color} />
+    <Text style={[styles.statVal, { color }]}>{value}</Text>
+    <Text style={styles.statLbl}>{label}</Text>
+  </View>
+);
+
 /* ── Main Screen ── */
 const QuizResultsScreen = ({ route, navigation }) => {
+  const { user } = useAuth();
   const { result, quiz, timeTaken } = route.params || {};
   const [showReview, setShowReview] = useState(false);
 
@@ -101,6 +112,26 @@ const QuizResultsScreen = ({ route, navigation }) => {
   const resultColor = passed ? colors.success : colors.danger;
   const resultGradient = passed ? colors.gradientTeacher : ['#b91c1c', '#ef4444'];
 
+  const handleDownloadCert = async () => {
+    if (!certificate) return;
+    const certText = generateCertificateText({
+      certId: certificate.certificate_id || certificate.certificateId,
+      studentName: user?.name,
+      quizTitle: quiz?.title || 'Quiz Assessment',
+      percentage: percentage,
+      date: certificate.issued_at || certificate.issuedAt || new Date(),
+    });
+
+    const success = await exportText(
+      `Certificate_${certificate.certificate_id || 'Merit'}.txt`,
+      certText,
+      'text/plain'
+    );
+    if (success) {
+      Alert.alert('🏆 Downloaded', 'Merit certificate saved and ready to share!');
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -110,7 +141,7 @@ const QuizResultsScreen = ({ route, navigation }) => {
             {passed ? <Trophy size={44} color="#fff" /> : <BarChart2 size={44} color="#fff" />}
           </View>
           <Text style={styles.resultTitle}>{passed ? '🎉 Congratulations!' : 'Quiz Completed'}</Text>
-          <Text style={styles.resultSubtitle}>{result.message}</Text>
+          <Text style={styles.resultSubtitle}>{result.message || (passed ? 'You cleared the assessment!' : 'Keep practicing to improve your score.')}</Text>
           <View style={styles.scoreBadge}>
             <Text style={styles.scoreText}>{percentage}%</Text>
           </View>
@@ -135,19 +166,25 @@ const QuizResultsScreen = ({ route, navigation }) => {
               {passed ? 'Passed!' : 'Not Passed'}
             </Text>
             <Text style={styles.statusDesc}>
-              Passing score: {quiz?.passingScore || 80}% · Your score: {percentage}%
+              Passing requirement: {quiz?.passingScore || 80}% · Your score: {percentage}%
             </Text>
           </View>
         </View>
 
-        {/* Certificate */}
+        {/* Certificate Card & 1-Click Download */}
         {certificate && (
           <LinearGradient colors={['#d97706', '#f59e0b']} style={[styles.certCard, shadows.md]}>
-            <Award size={28} color="#fff" />
-            <View style={styles.certInfo}>
-              <Text style={styles.certTitle}>🏆 Merit Certificate Earned!</Text>
-              <Text style={styles.certId}>ID: {certificate.certificate_id}</Text>
+            <View style={styles.certTop}>
+              <Award size={32} color="#fff" />
+              <View style={styles.certInfo}>
+                <Text style={styles.certTitle}>🏆 Merit Certificate Earned!</Text>
+                <Text style={styles.certId}>ID: {certificate.certificate_id || certificate.certificateId}</Text>
+              </View>
             </View>
+            <TouchableOpacity style={styles.downloadCertBtn} onPress={handleDownloadCert}>
+              <Download size={16} color="#d97706" />
+              <Text style={styles.downloadCertText}>Download & Share Certificate</Text>
+            </TouchableOpacity>
           </LinearGradient>
         )}
 
@@ -200,77 +237,93 @@ const QuizResultsScreen = ({ route, navigation }) => {
   );
 };
 
-const StatBox = ({ icon: Icon, label, value, color }) => (
-  <View style={[styles.statBox, shadows.sm]}>
-    <Icon size={18} color={color} />
-    <Text style={[styles.statValue, { color }]}>{value}</Text>
-    <Text style={styles.statLabel}>{label}</Text>
-  </View>
-);
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
-  content: { padding: spacing.md, paddingBottom: spacing.xxl },
-
-  // Error
-  errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: spacing.md },
-  errorText: { ...typography.base, color: colors.textMuted },
-  goBackBtn: { backgroundColor: colors.bgCard, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
-  goBackText: { ...typography.sm, color: colors.textSecondary },
-
-  // Banner
-  resultBanner: { borderRadius: radius.xl, padding: spacing.xl, alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md },
-  resultIcon: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
-  resultTitle: { ...typography.xl, ...typography.bold, color: '#fff', textAlign: 'center' },
-  resultSubtitle: { ...typography.sm, color: 'rgba(255,255,255,0.8)', textAlign: 'center' },
-  scoreBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: spacing.xl, paddingVertical: spacing.sm, borderRadius: radius.full, marginTop: spacing.xs },
-  scoreText: { fontSize: 36, fontWeight: '900', color: '#fff' },
-  quizTitleText: { ...typography.sm, color: 'rgba(255,255,255,0.7)', textAlign: 'center' },
-
-  // Stats
-  statsGrid: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
-  statBox: { flex: 1, backgroundColor: colors.bgCard, borderRadius: radius.md, padding: spacing.sm, alignItems: 'center', gap: 4, borderWidth: 1, borderColor: colors.border },
-  statValue: { ...typography.base, ...typography.bold },
-  statLabel: { ...typography.xs, color: colors.textMuted },
-
-  // Status card
-  statusCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.md, borderWidth: 1 },
-  statusIndicator: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
+  content: { padding: spacing.md },
+  errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.xl, gap: spacing.md },
+  errorText: { ...typography.base, color: colors.danger },
+  goBackBtn: { backgroundColor: colors.student, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radius.md },
+  goBackText: { ...typography.sm, ...typography.bold, color: '#fff' },
+  resultBanner: {
+    borderRadius: radius.xl, padding: spacing.xl, alignItems: 'center',
+    marginBottom: spacing.md, gap: 4,
+  },
+  resultIcon: { width: 70, height: 70, borderRadius: 35, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center', marginBottom: 6 },
+  resultTitle: { ...typography.xl, ...typography.bold, color: '#fff' },
+  resultSubtitle: { ...typography.xs, color: 'rgba(255,255,255,0.8)', textAlign: 'center', marginBottom: 6 },
+  scoreBadge: { backgroundColor: '#fff', paddingHorizontal: 16, paddingVertical: 4, borderRadius: radius.full, marginBottom: 4 },
+  scoreText: { ...typography.xxl, ...typography.bold, color: '#0f172a' },
+  quizTitleText: { ...typography.xs, color: 'rgba(255,255,255,0.85)', fontWeight: '600' },
+  statsGrid: { flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.md },
+  statBox: {
+    flex: 1, backgroundColor: colors.bgCard, padding: spacing.sm,
+    borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
+    alignItems: 'center', gap: 2,
+  },
+  statVal: { ...typography.base, ...typography.bold },
+  statLbl: { ...typography.xs, color: colors.textMuted },
+  statusCard: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
+    backgroundColor: colors.bgCard, borderRadius: radius.lg,
+    padding: spacing.md, borderWidth: 1, marginBottom: spacing.md,
+  },
+  statusIndicator: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
   statusInfo: { flex: 1 },
   statusTitle: { ...typography.base, ...typography.bold },
-  statusDesc: { ...typography.sm, color: colors.textMuted, marginTop: 2 },
-
-  // Certificate
-  certCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.md },
+  statusDesc: { ...typography.xs, color: colors.textMuted, marginTop: 2 },
+  certCard: {
+    borderRadius: radius.lg, padding: spacing.md,
+    marginBottom: spacing.md, gap: spacing.sm,
+  },
+  certTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   certInfo: { flex: 1 },
   certTitle: { ...typography.base, ...typography.bold, color: '#fff' },
-  certId: { ...typography.xs, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
-
-  // Review toggle
-  reviewToggle: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.bgCard, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.student + '44' },
-  reviewToggleText: { ...typography.base, ...typography.semibold, color: colors.student },
-
-  // Review list
-  reviewList: { gap: spacing.sm, marginBottom: spacing.md },
-  reviewCard: { backgroundColor: colors.bgCard, borderRadius: radius.md, padding: spacing.md, borderWidth: 1, borderColor: colors.border },
-  reviewHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.sm },
-  reviewTop: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, flex: 1 },
-  reviewQ: { ...typography.sm, color: colors.textPrimary, flex: 1, lineHeight: 20 },
-  skippedDot: { width: 18, height: 18, borderRadius: 9, backgroundColor: colors.textMuted, flexShrink: 0 },
-  reviewBody: { marginTop: spacing.sm, gap: spacing.xs },
-  reviewOption: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.sm, borderRadius: radius.sm, borderWidth: 1 },
-  reviewOptionLabel: { fontSize: 12, fontWeight: '700', width: 20 },
-  reviewOptionText: { flex: 1, ...typography.sm },
-  explanationBox: { backgroundColor: colors.bgElevated, borderRadius: radius.sm, padding: spacing.sm, marginTop: spacing.xs },
-  explanationTitle: { ...typography.xs, ...typography.semibold, color: colors.textSecondary, marginBottom: 4 },
-  explanationText: { ...typography.sm, color: colors.textPrimary, lineHeight: 18 },
-
-  // Actions
-  actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
-  retryBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, backgroundColor: colors.bgCard, borderRadius: radius.md, padding: 14, borderWidth: 1, borderColor: colors.student + '44' },
-  retryText: { ...typography.sm, ...typography.semibold, color: colors.student },
-  homeBtn: { flex: 1, borderRadius: radius.md, overflow: 'hidden' },
-  homeBtnGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, padding: 14 },
+  certId: { ...typography.xs, color: 'rgba(255,255,255,0.85)', fontFamily: 'monospace', marginTop: 2 },
+  downloadCertBtn: {
+    backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'center', gap: 6, paddingVertical: 10,
+    borderRadius: radius.md,
+  },
+  downloadCertText: { ...typography.sm, ...typography.bold, color: '#d97706' },
+  reviewToggle: {
+    flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
+    gap: 6, paddingVertical: spacing.sm, marginBottom: spacing.sm,
+  },
+  reviewToggleText: { ...typography.sm, ...typography.bold, color: colors.student },
+  reviewList: { gap: spacing.xs, marginBottom: spacing.md },
+  reviewCard: {
+    backgroundColor: colors.bgCard, borderRadius: radius.md,
+    padding: spacing.md, borderWidth: 1, borderColor: colors.border,
+  },
+  reviewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  reviewTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flex: 1, marginRight: spacing.sm },
+  skippedDot: { width: 14, height: 14, borderRadius: 7, backgroundColor: colors.textMuted },
+  reviewQ: { ...typography.sm, ...typography.semibold, color: colors.textPrimary, flex: 1 },
+  reviewBody: { marginTop: spacing.sm, gap: 6, paddingTop: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border + '44' },
+  reviewOption: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    padding: spacing.sm, borderRadius: radius.sm, borderWidth: 1,
+  },
+  reviewOptionLabel: { ...typography.xs, ...typography.bold, width: 16 },
+  reviewOptionText: { ...typography.xs, flex: 1 },
+  explanationBox: {
+    backgroundColor: colors.bgPrimary, borderRadius: radius.sm,
+    padding: spacing.sm, marginTop: 4, borderWidth: 1, borderColor: colors.border,
+  },
+  explanationTitle: { ...typography.xs, ...typography.bold, color: colors.warning, marginBottom: 2 },
+  explanationText: { ...typography.xs, color: colors.textSecondary },
+  actions: { flexDirection: 'row', gap: spacing.sm },
+  retryBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 12, borderRadius: radius.md,
+    backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.student,
+  },
+  retryText: { ...typography.sm, ...typography.bold, color: colors.student },
+  homeBtn: { flex: 1 },
+  homeBtnGradient: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 12, borderRadius: radius.md,
+  },
   homeBtnText: { ...typography.sm, ...typography.bold, color: '#fff' },
 });
 
