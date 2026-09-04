@@ -42,7 +42,7 @@ const AttendanceRing = ({ present, total }) => {
 
   return (
     <View style={styles.ringContainer}>
-      <Svg width={r * 2} height={r * 2}>
+      <Svg width={r * 2} height={r * 2} style={{ transform: [{ rotate: '-90deg' }] }}>
         <Circle cx={r} cy={r} r={normalR} stroke={colors.bgElevated} strokeWidth={stroke} fill="none" />
         <Circle
           cx={r} cy={r} r={normalR}
@@ -50,7 +50,6 @@ const AttendanceRing = ({ present, total }) => {
           strokeDasharray={`${circumference} ${circumference}`}
           strokeDashoffset={dashOffset}
           strokeLinecap="round"
-          rotation="-90" originX={r} originY={r}
         />
       </Svg>
       <View style={styles.ringLabel}>

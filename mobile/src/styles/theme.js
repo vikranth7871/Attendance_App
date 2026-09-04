@@ -1,5 +1,7 @@
 // iAttend Mobile - Design System / Theme
-export const colors = {
+import { StyleSheet, Platform } from 'react-native';
+
+export const darkColors = {
   // Brand
   primary: '#6366f1',
   primaryDark: '#4338ca',
@@ -42,6 +44,138 @@ export const colors = {
   gradientParent: ['#d97706', '#f59e0b'],
   gradientCard: ['#1e1e2e', '#252535'],
 };
+
+export const lightColors = {
+  // Brand
+  primary: '#5b50e6',
+  primaryDark: '#4338ca',
+  primaryLight: '#818cf8',
+  secondary: '#8b5cf6',
+
+  // Roles
+  admin: '#5b50e6',
+  teacher: '#10b981',
+  student: '#3b82f6',
+  parent: '#f59e0b',
+
+  // Status
+  success: '#10b981',
+  danger: '#ef4444',
+  warning: '#f59e0b',
+  info: '#3b82f6',
+
+  // Backgrounds (clean light slate dashboard, matching web application)
+  bgPrimary: '#f4f7fe',
+  bgSecondary: '#ffffff',
+  bgCard: '#ffffff',
+  bgElevated: '#f1f5f9',
+  bgInput: '#f8fafc',
+
+  // Text
+  textPrimary: '#1e293b',
+  textSecondary: '#64748b',
+  textMuted: '#94a3b8',
+
+  // Borders
+  border: '#e2e8f0',
+  borderLight: '#cbd5e1',
+
+  // Gradients
+  gradientPrimary: ['#4338ca', '#5b50e6', '#8b5cf6'],
+  gradientAdmin: ['#4338ca', '#5b50e6'],
+  gradientTeacher: ['#059669', '#10b981'],
+  gradientStudent: ['#2563eb', '#3b82f6'],
+  gradientParent: ['#d97706', '#f59e0b'],
+  gradientCard: ['#ffffff', '#f8fafc'],
+};
+
+// Mutable colors object that updates in-place so all direct imports stay updated
+export const colors = { ...darkColors };
+
+let currentTheme = 'dark';
+
+// Build dark -> light color mapping table including 2-digit hex opacity variants
+const darkToLightColorMap = {};
+for (const k in darkColors) {
+  const d = String(darkColors[k]).toLowerCase();
+  const l = lightColors[k];
+  if (typeof d === 'string' && typeof l === 'string') {
+    darkToLightColorMap[d] = l;
+    ['10', '12', '14', '18', '20', '22', '30', '33', '40', '44', '50', '60', '70', '80'].forEach(alpha => {
+      darkToLightColorMap[d + alpha] = l + alpha;
+    });
+  }
+}
+
+function transformRuleToTheme(rule) {
+  if (!rule || typeof rule !== 'object') return rule;
+  const res = {};
+  for (const k in rule) {
+    const val = rule[k];
+    if (typeof val === 'string') {
+      const lower = val.toLowerCase();
+      if (darkToLightColorMap[lower]) {
+        res[k] = darkToLightColorMap[lower];
+      } else {
+        res[k] = val;
+      }
+    } else if (Array.isArray(val)) {
+      res[k] = val.map(transformRuleToTheme);
+    } else if (val && typeof val === 'object') {
+      res[k] = transformRuleToTheme(val);
+    } else {
+      res[k] = val;
+    }
+  }
+  return res;
+}
+
+// Enhance StyleSheet.create with high-performance theme proxying
+const originalCreate = StyleSheet.create;
+StyleSheet.create = function (styles) {
+  if (!styles || typeof styles !== 'object') {
+    return originalCreate.call(this, styles);
+  }
+  const original = JSON.parse(JSON.stringify(styles));
+  const created = originalCreate.call(this, styles);
+  const lightCache = {};
+
+  return new Proxy(created, {
+    get(target, prop) {
+      if (typeof prop === 'symbol') return target[prop];
+      if (currentTheme === 'dark') {
+        return target[prop];
+      }
+      if (lightCache[prop]) {
+        return lightCache[prop];
+      }
+      const o = original[prop];
+      if (!o) return target[prop];
+      lightCache[prop] = transformRuleToTheme(o);
+      return lightCache[prop];
+    },
+  });
+};
+
+export const setGlobalTheme = (theme) => {
+  currentTheme = theme;
+  if (theme === 'light') {
+    Object.assign(colors, lightColors);
+  } else {
+    Object.assign(colors, darkColors);
+  }
+
+  if (Platform.OS === 'web' && typeof document !== 'undefined') {
+    try {
+      document.documentElement.setAttribute('data-theme', theme);
+      if (document.body) {
+        document.body.style.backgroundColor = colors.bgPrimary;
+      }
+    } catch {}
+  }
+};
+
+export const getGlobalTheme = () => currentTheme;
 
 export const spacing = {
   xs: 4,

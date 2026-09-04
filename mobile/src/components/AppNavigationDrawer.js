@@ -13,18 +13,19 @@ import {
 } from 'lucide-react-native';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing, radius, typography, getRoleColor, shadows } from '../styles/theme';
+import { useTheme } from '../context/ThemeContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.82, 340);
 
 const AppNavigationDrawer = ({ visible, onClose, navigation, currentRoute }) => {
   const { user, logout } = useAuth();
+  const { theme, isDark, setTheme } = useTheme();
   const insets = useSafeAreaInsets();
   const role = user?.role || 'student';
   const roleColor = getRoleColor(role);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [isDarkTheme, setIsDarkTheme] = useState(true);
 
   // Build role-specific menu sections mirroring the iAttend website portals
   const menuSections = useMemo(() => {
@@ -168,9 +169,8 @@ const AppNavigationDrawer = ({ visible, onClose, navigation, currentRoute }) => 
     if (!navigation) return;
     try {
       navigation.navigate(route);
-    } catch {
-      // Fallback
-      navigation.navigate('AdminTabs', { screen: route });
+    } catch (err) {
+      console.warn('Navigation failed for route:', route, err);
     }
   };
 
@@ -310,20 +310,20 @@ const AppNavigationDrawer = ({ visible, onClose, navigation, currentRoute }) => 
             {/* Theme Toggle Pill */}
             <View style={styles.themeTogglePill}>
               <TouchableOpacity
-                style={[styles.themeOption, !isDarkTheme && styles.themeOptionActive]}
-                onPress={() => setIsDarkTheme(false)}
+                style={[styles.themeOption, !isDark && styles.themeOptionActive]}
+                onPress={() => setTheme('light')}
                 activeOpacity={0.8}
               >
-                <Sun size={14} color={!isDarkTheme ? '#0f172a' : colors.textMuted} />
-                <Text style={[styles.themeOptionText, !isDarkTheme && styles.themeOptionTextActive]}>Light</Text>
+                <Sun size={14} color={!isDark ? colors.textPrimary : colors.textMuted} />
+                <Text style={[styles.themeOptionText, !isDark && styles.themeOptionTextActive]}>Light</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.themeOption, isDarkTheme && styles.themeOptionActive]}
-                onPress={() => setIsDarkTheme(true)}
+                style={[styles.themeOption, isDark && styles.themeOptionActive]}
+                onPress={() => setTheme('dark')}
                 activeOpacity={0.8}
               >
-                <Moon size={14} color={isDarkTheme ? '#fff' : colors.textMuted} />
-                <Text style={[styles.themeOptionText, isDarkTheme && styles.themeOptionTextActive]}>Dark</Text>
+                <Moon size={14} color={isDark ? colors.textPrimary : colors.textMuted} />
+                <Text style={[styles.themeOptionText, isDark && styles.themeOptionTextActive]}>Dark</Text>
               </TouchableOpacity>
             </View>
 
@@ -607,3 +607,4 @@ const styles = StyleSheet.create({
 });
 
 export default AppNavigationDrawer;
+

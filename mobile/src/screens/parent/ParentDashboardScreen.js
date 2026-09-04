@@ -25,11 +25,11 @@ const MiniRing = ({ pct }) => {
   const offset = circ - (Math.min(pct, 100) / 100) * circ;
   return (
     <View style={{ position: 'relative', justifyContent: 'center', alignItems: 'center' }}>
-      <Svg width={r * 2} height={r * 2}>
+      <Svg width={r * 2} height={r * 2} style={{ transform: [{ rotate: '-90deg' }] }}>
         <Circle cx={r} cy={r} r={nr} stroke={colors.bgElevated} strokeWidth={stroke} fill="none" />
         <Circle cx={r} cy={r} r={nr} stroke={color} strokeWidth={stroke} fill="none"
           strokeDasharray={`${circ} ${circ}`} strokeDashoffset={offset}
-          strokeLinecap="round" rotation="-90" originX={r} originY={r}
+          strokeLinecap="round"
         />
       </Svg>
       <Text style={{ position: 'absolute', fontSize: 10, fontWeight: '700', color }}>

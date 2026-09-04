@@ -163,7 +163,7 @@ const AdminDashboardScreen = ({ navigation }) => {
 
           {/* SVG Donut Ring */}
           <View style={styles.donutWrapper}>
-            <Svg width={128} height={128} viewBox="0 0 128 128">
+            <Svg width={128} height={128} viewBox="0 0 128 128" style={{ transform: [{ rotate: '-90deg' }] }}>
               {/* Background ring */}
               <Circle
                 cx="64"
@@ -185,9 +185,6 @@ const AdminDashboardScreen = ({ navigation }) => {
                   strokeDasharray={`${presentDash} ${donutCircumference}`}
                   strokeDashoffset={0}
                   strokeLinecap="round"
-                  rotation="-90"
-                  originX="64"
-                  originY="64"
                 />
               )}
               {/* Absent segment (Red) */}
@@ -202,9 +199,6 @@ const AdminDashboardScreen = ({ navigation }) => {
                   strokeDasharray={`${absentDash} ${donutCircumference}`}
                   strokeDashoffset={-presentDash}
                   strokeLinecap="round"
-                  rotation="-90"
-                  originX="64"
-                  originY="64"
                 />
               )}
               {/* On Leave segment (Amber) */}
@@ -219,9 +213,6 @@ const AdminDashboardScreen = ({ navigation }) => {
                   strokeDasharray={`${leaveDash} ${donutCircumference}`}
                   strokeDashoffset={-(presentDash + absentDash)}
                   strokeLinecap="round"
-                  rotation="-90"
-                  originX="64"
-                  originY="64"
                 />
               )}
             </Svg>

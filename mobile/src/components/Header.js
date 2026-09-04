@@ -14,7 +14,7 @@ const Header = ({
   title,
   subtitle,
   showNotifications = true,
-  showLogout = true,
+  showLogout = false,
   showSearch = true,
   showBack,
   onBack,

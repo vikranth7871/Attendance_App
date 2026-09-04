@@ -1720,7 +1720,8 @@ export const updateAdminProfile = async (req, res) => {
  */
 export const getSystemSettings = async (req, res) => {
     try {
-        const settings = await SystemSetting.find({});
+        const dbSettings = await SystemSetting.find({}).lean();
+        const settings = Array.isArray(dbSettings) ? [...dbSettings] : [];
 
         // Add environment fallback for universityEmail if not in DB
         const hasUniversityEmail = settings.some(s => s.key === 'universityEmail');
