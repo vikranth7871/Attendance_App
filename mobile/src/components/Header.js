@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { LogOut, Bell, Search, ArrowLeft } from 'lucide-react-native';
+import { LogOut, Bell, Search, ArrowLeft, Menu } from 'lucide-react-native';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing, radius, typography, getRoleColor } from '../styles/theme';
 import NotificationCenterModal from './NotificationCenterModal';
 import GlobalSearchModal from './GlobalSearchModal';
+import AppNavigationDrawer from './AppNavigationDrawer';
 import api from '../api/client';
 
 const Header = ({
@@ -33,6 +34,7 @@ const Header = ({
 
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
+  const [showDrawer, setShowDrawer] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
   const fetchUnread = async () => {
@@ -78,8 +80,19 @@ const Header = ({
     <>
       <View style={[styles.container, { paddingTop: insets.top + spacing.sm }]}>
         <View style={styles.inner}>
-          {/* Left: Back button (on subpages) OR Avatar (on Dashboard) */}
+          {/* Left: Menu Drawer Toggle + (Back button on subpages OR Avatar on Dashboard) */}
           <View style={styles.left}>
+            <TouchableOpacity
+              style={styles.menuBtn}
+              onPress={() => setShowDrawer(true)}
+              activeOpacity={0.7}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel="Open navigation menu"
+            >
+              <Menu size={20} color={colors.textPrimary} />
+            </TouchableOpacity>
+
             {showBackBtn ? (
               <TouchableOpacity
                 style={styles.backBtn}
@@ -167,6 +180,13 @@ const Header = ({
         onClose={() => setShowSearchModal(false)}
         navigation={navigation}
       />
+
+      <AppNavigationDrawer
+        visible={showDrawer}
+        onClose={() => setShowDrawer(false)}
+        navigation={nav}
+        currentRoute={title}
+      />
     </>
   );
 };
@@ -189,16 +209,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
   },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  menuBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: colors.bgElevated,
     borderWidth: 1,
     borderColor: colors.border,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: spacing.sm,
+    marginRight: spacing.xs,
+  },
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.bgElevated,
+    borderWidth: 1,
+    borderColor: colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.xs,
   },
   avatarRing: {
     width: 40,
