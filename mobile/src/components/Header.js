@@ -1,17 +1,35 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LogOut, Bell, Search } from 'lucide-react-native';
+import { useNavigation } from '@react-navigation/native';
+import { LogOut, Bell, Search, ArrowLeft } from 'lucide-react-native';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing, radius, typography, getRoleColor } from '../styles/theme';
 import NotificationCenterModal from './NotificationCenterModal';
 import GlobalSearchModal from './GlobalSearchModal';
 import api from '../api/client';
 
-const Header = ({ title, subtitle, showNotifications = true, showLogout = true, showSearch = true, rightAction, navigation }) => {
+const Header = ({
+  title,
+  subtitle,
+  showNotifications = true,
+  showLogout = true,
+  showSearch = true,
+  showBack,
+  onBack,
+  rightAction,
+  navigation,
+}) => {
   const { user, logout } = useAuth();
   const insets = useSafeAreaInsets();
   const roleColor = getRoleColor(user?.role);
+
+  let nav = navigation;
+  try {
+    if (!nav) nav = useNavigation();
+  } catch {
+    // silently fallback if rendered outside navigation container
+  }
 
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
@@ -35,23 +53,57 @@ const Header = ({ title, subtitle, showNotifications = true, showLogout = true, 
 
   const canSearch = user?.role === 'admin' || user?.role === 'teacher';
 
+  const isDashboard = Boolean(
+    title && (
+      title.toLowerCase().includes('dashboard') ||
+      title.toLowerCase().startsWith('hi,') ||
+      title.toLowerCase().startsWith('hello,')
+    )
+  );
+
+  const canGoBack = Boolean(nav?.canGoBack && nav.canGoBack());
+  const showBackBtn = showBack !== undefined ? showBack : (!isDashboard && (canGoBack || Boolean(nav)));
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else if (nav?.canGoBack && nav.canGoBack()) {
+      nav.goBack();
+    } else if (nav?.navigate) {
+      nav.navigate('Dashboard');
+    }
+  };
+
   return (
     <>
       <View style={[styles.container, { paddingTop: insets.top + spacing.sm }]}>
         <View style={styles.inner}>
-          {/* Left: Avatar + title */}
+          {/* Left: Back button (on subpages) OR Avatar (on Dashboard) */}
           <View style={styles.left}>
-            <View style={[styles.avatarRing, { borderColor: roleColor }]}>
-              {user?.avatar ? (
-                <Image source={{ uri: user.avatar }} style={styles.avatar} />
-              ) : (
-                <View style={[styles.avatarFallback, { backgroundColor: roleColor + '33' }]}>
-                  <Text style={[styles.avatarInitial, { color: roleColor }]}>
-                    {(user?.name || user?.email || '?')[0].toUpperCase()}
-                  </Text>
-                </View>
-              )}
-            </View>
+            {showBackBtn ? (
+              <TouchableOpacity
+                style={styles.backBtn}
+                onPress={handleBack}
+                activeOpacity={0.7}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                accessibilityRole="button"
+                accessibilityLabel="Go back"
+              >
+                <ArrowLeft size={20} color={colors.textPrimary} />
+              </TouchableOpacity>
+            ) : (
+              <View style={[styles.avatarRing, { borderColor: roleColor }]}>
+                {user?.avatar ? (
+                  <Image source={{ uri: user.avatar }} style={styles.avatar} />
+                ) : (
+                  <View style={[styles.avatarFallback, { backgroundColor: roleColor + '33' }]}>
+                    <Text style={[styles.avatarInitial, { color: roleColor }]}>
+                      {(user?.name || user?.email || '?')[0].toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
             <View style={styles.titleBlock}>
               <Text style={styles.title} numberOfLines={1}>{title || user?.name || 'Dashboard'}</Text>
               {subtitle ? (
@@ -136,6 +188,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.bgElevated,
+    borderWidth: 1,
+    borderColor: colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.sm,
   },
   avatarRing: {
     width: 40,

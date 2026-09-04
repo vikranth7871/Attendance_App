@@ -49,10 +49,6 @@ const AdminDashboardScreen = ({ navigation }) => {
   const totalSubjects = stats?.counts?.subjects ?? stats?.totalSubjects ?? '—';
 
   const statItems = [
-    { icon: Users, label: 'Total Students', value: stats?.totalStudents ?? '—', color: colors.student, gradient: [colors.student + 'CC', colors.student + '22'] },
-    { icon: UserCheck, label: 'Total Teachers', value: stats?.totalTeachers ?? '—', color: colors.teacher, gradient: [colors.teacher + 'CC', colors.teacher + '22'] },
-    { icon: School, label: 'Total Classes', value: stats?.totalClasses ?? '—', color: colors.primary, gradient: [colors.primary + 'CC', colors.primary + '22'] },
-    { icon: BookOpen, label: 'Total Subjects', value: stats?.totalSubjects ?? '—', color: colors.secondary, gradient: [colors.secondary + 'CC', colors.secondary + '22'] },
     { icon: Users, label: 'Total Students', value: totalStudents, color: colors.student, gradient: [colors.student + 'CC', colors.student + '22'] },
     { icon: UserCheck, label: 'Total Teachers', value: totalTeachers, color: colors.teacher, gradient: [colors.teacher + 'CC', colors.teacher + '22'] },
     { icon: School, label: 'Total Classes', value: totalClasses, color: colors.primary, gradient: [colors.primary + 'CC', colors.primary + '22'] },

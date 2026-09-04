@@ -134,6 +134,19 @@ const QuizResultsScreen = ({ route, navigation }) => {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Top Navigation Bar */}
+      <View style={styles.topBar}>
+        <TouchableOpacity
+          style={styles.topBackBtn}
+          onPress={() => navigation.navigate('QuizHub')}
+          activeOpacity={0.7}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <ArrowLeft size={20} color={colors.textPrimary} />
+          <Text style={styles.topBackText}>Quiz Arena</Text>
+        </TouchableOpacity>
+      </View>
+
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {/* Result Banner */}
         <LinearGradient colors={resultGradient} style={styles.resultBanner}>
@@ -239,6 +252,24 @@ const QuizResultsScreen = ({ route, navigation }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
+  topBar: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.bgCard,
+  },
+  topBackBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    alignSelf: 'flex-start',
+  },
+  topBackText: {
+    ...typography.sm,
+    ...typography.bold,
+    color: colors.textPrimary,
+  },
   content: { padding: spacing.md },
   errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.xl, gap: spacing.md },
   errorText: { ...typography.base, color: colors.danger },
