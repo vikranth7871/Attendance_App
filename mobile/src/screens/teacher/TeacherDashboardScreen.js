@@ -3,12 +3,13 @@ import {
   View, Text, StyleSheet, ScrollView, RefreshControl,
   TouchableOpacity, Alert, ActivityIndicator, Modal
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Users, BookOpen, ClipboardList, TrendingUp, Calendar, ChevronRight,
-  MessageSquare, Award, FileSpreadsheet, Download, Clock, Share2,
+  MessageSquare, Award, FileSpreadsheet, Download, Clock,
   CheckCircle2, Shield, ShieldCheck, ShieldAlert, Check, X, MapPin,
-  Sparkles, PlayCircle, ExternalLink, GraduationCap, Building2
+  PlayCircle, GraduationCap, Building2
 } from 'lucide-react-native';
 import Header from '../../components/Header';
 import StatCard from '../../components/StatCard';
@@ -54,26 +55,26 @@ const TeacherDashboardScreen = ({ navigation }) => {
   const [coordinatorLeaves, setCoordinatorLeaves] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [exportingTimetable, setExportingTimetable] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
 
   const todayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date().getDay()];
   const [selectedDay, setSelectedDay] = useState(DAYS.includes(todayName) ? todayName : 'Monday');
 
-  const isCoordinator = Boolean(user?.classCoordinatorFor);
+  const isCoordinator = Boolean(user?.classCoordinatorFor || user?.coordinatorClassName || user?.class_coordinator_for);
+  const coordClassName = user?.coordinatorClassName || 'CS101-A';
 
   const fetchData = async () => {
     try {
-      const calls = [
+      const [reportRes, subjRes, leavesRes] = await Promise.all([
         api.get('/teacher/report').catch(() => ({ data: null })),
         api.get('/teacher/subjects').catch(() => ({ data: [] })),
-      ];
+        isCoordinator
+          ? api.get('/leave/coordinator/all').catch(() => ({ data: [] }))
+          : Promise.resolve({ data: [] }),
+      ]);
 
-      if (isCoordinator) {
-        calls.push(api.get('/leave/coordinator/all').catch(() => ({ data: [] })));
-      }
-
-      const [reportRes, subjRes, leavesRes] = await Promise.all(calls);
       setReport(reportRes.data);
       setSubjects(Array.isArray(subjRes.data) ? subjRes.data : []);
 
@@ -88,9 +89,11 @@ const TeacherDashboardScreen = ({ navigation }) => {
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, [isCoordinator]);
+  useFocusEffect(
+    useCallback(() => {
+      fetchData();
+    }, [isCoordinator])
+  );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -141,6 +144,33 @@ const TeacherDashboardScreen = ({ navigation }) => {
     });
   }, [subjects, liveSlot]);
 
+  // Check if all today's slots have ended
+  const todayDone = useMemo(() => {
+    if (liveSlot || nextSlot) return false;
+    const now = new Date();
+    const curDay = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][now.getDay()];
+    const curMins = now.getHours() * 60 + now.getMinutes();
+
+    const todaySlots = subjects.filter((s) => {
+      const slotDay = s.dayOfWeek || s.day_of_week;
+      return slotDay && slotDay.toLowerCase() === curDay.toLowerCase();
+    });
+
+    if (todaySlots.length === 0) return false;
+
+    const lastSlot = todaySlots.reduce((latest, s) => {
+      let endM = 0;
+      if (s.endTime) endM = parseTimeMinutes(s.endTime);
+      else if (s.timeSlot) {
+        const [, et] = s.timeSlot.split(' - ');
+        endM = parseTimeMinutes(et);
+      }
+      return Math.max(latest, endM);
+    }, 0);
+
+    return curMins > lastSlot;
+  }, [subjects, liveSlot, nextSlot]);
+
   // Pending leaves count for coordinator
   const pendingLeavesCount = useMemo(() => {
     return coordinatorLeaves.filter((l) => l.status?.toLowerCase() === 'pending').length;
@@ -169,48 +199,65 @@ const TeacherDashboardScreen = ({ navigation }) => {
   }, [subjects, selectedDay]);
 
   const handleExportTimetable = async () => {
-    let text = `==========================================================\n`;
-    text += `          FACULTY WEEKLY TEACHING SCHEDULE (iAttend)       \n`;
-    text += `==========================================================\n`;
-    text += `Faculty Name : ${user?.name || 'Educator'}\n`;
-    text += `Generated On : ${new Date().toLocaleDateString()}\n\n`;
+    if (exportingTimetable) return;
+    setExportingTimetable(true);
+    try {
+      let text = `==========================================================\n`;
+      text += `          FACULTY WEEKLY TEACHING SCHEDULE (iAttend)       \n`;
+      text += `==========================================================\n`;
+      text += `Faculty Name : ${user?.name || 'Educator'}\n`;
+      text += `Generated On : ${new Date().toLocaleDateString()}\n\n`;
 
-    DAYS.forEach((day) => {
-      const slots = subjects.filter((s) => (s.dayOfWeek || s.day_of_week)?.toLowerCase() === day.toLowerCase());
-      text += `[${day.toUpperCase()}] (${slots.length} Lectures)\n`;
-      if (slots.length === 0) {
-        text += `  No lectures scheduled\n\n`;
-      } else {
-        slots.forEach((s, idx) => {
-          const subName = s.subjectId?.name || s.subjectId?.subjectName || s.subject_name || s.name || 'Subject';
-          const clsName = s.classId?.name || s.classId?.className || s.class_name || 'Class';
-          const time = s.timeSlot || `${s.startTime || ''} - ${s.endTime || ''}`;
-          const room = s.roomNumber || s.room_number ? ` (Room ${s.roomNumber || s.room_number})` : '';
-          text += `  ${idx + 1}. [${time}] ${subName} - ${clsName}${room}\n`;
-        });
-        text += `\n`;
-      }
-    });
+      DAYS.forEach((day) => {
+        const slots = subjects.filter((s) => (s.dayOfWeek || s.day_of_week)?.toLowerCase() === day.toLowerCase());
+        text += `[${day.toUpperCase()}] (${slots.length} Lectures)\n`;
+        if (slots.length === 0) {
+          text += `  No lectures scheduled\n\n`;
+        } else {
+          slots.forEach((s, idx) => {
+            const subName = s.subjectId?.name || s.subjectId?.subjectName || s.subject_name || s.name || 'Subject';
+            const clsName = s.classId?.name || s.classId?.className || s.class_name || 'Class';
+            const time = s.timeSlot || `${s.startTime || ''} - ${s.endTime || ''}`;
+            const room = s.roomNumber || s.room_number ? ` (Room ${s.roomNumber || s.room_number})` : '';
+            text += `  ${idx + 1}. [${time}] ${subName} - ${clsName}${room}\n`;
+          });
+          text += `\n`;
+        }
+      });
 
-    const filename = `teacher_timetable_${user?.name?.replace(/\s+/g, '_') || 'faculty'}.txt`;
-    const ok = await exportText(filename, text);
-    if (ok) Alert.alert('✅ Timetable Exported', `Saved to ${filename}`);
+      const filename = `teacher_timetable_${user?.name?.replace(/\s+/g, '_') || 'faculty'}.txt`;
+      const ok = await exportText(filename, text);
+      if (ok) Alert.alert('✅ Timetable Exported', `Saved to ${filename}`);
+    } catch (err) {
+      console.error('Failed to export timetable:', err);
+      Alert.alert('Export Error', 'Unable to export timetable.');
+    } finally {
+      setExportingTimetable(false);
+    }
   };
 
   if (loading) return <FullPageLoader message="Loading educator dashboard..." />;
 
   const quickActions = [
-    { label: 'Weekly Timetable', icon: Calendar, screen: 'TeacherTimetable', color: colors.teacher },
-    { label: 'Mark Attendance', icon: ClipboardList, screen: 'Attendance', color: colors.teacher },
+    { label: 'Weekly Timetable', sub: 'View full schedule', icon: Calendar, screen: 'TeacherTimetable', color: colors.teacher },
+    { label: 'Mark Attendance', sub: 'Live class marking', icon: ClipboardList, screen: 'Attendance', color: colors.success },
     ...(isCoordinator
-      ? [{ label: 'Class Leaves', icon: ShieldCheck, screen: 'TeacherCoordinatorLeaves', color: '#ef4444', badge: pendingLeavesCount ? `${pendingLeavesCount} New` : null }]
+      ? [{
+          label: 'Class Leaves',
+          sub: 'Student requests',
+          icon: ShieldCheck,
+          screen: 'TeacherCoordinatorLeaves',
+          color: '#ef4444',
+          badge: pendingLeavesCount ? `${pendingLeavesCount} New` : null
+        }]
       : []),
-    { label: 'Class Roster', icon: Users, screen: 'Roster', color: colors.primary },
-    { label: 'Assignments', icon: BookOpen, screen: 'Assignments', color: colors.student },
-    { label: 'Parent Messages', icon: MessageSquare, screen: 'TeacherMessages', color: colors.parent },
-    { label: 'AI Quiz Manager', icon: Award, screen: 'TeacherQuizManage', color: colors.student },
-    { label: 'Exam Marks', icon: FileSpreadsheet, screen: 'TeacherExams', color: colors.warning },
-    { label: 'Apply Leave', icon: Calendar, screen: 'TeacherApplyLeave', color: colors.danger },
+    { label: 'Class Roster', sub: 'Student directory', icon: Users, screen: 'Roster', color: colors.primary },
+    { label: 'Assignments', sub: 'Course homework', icon: BookOpen, screen: 'Assignments', color: colors.student },
+    { label: 'Parent Messages', sub: 'Direct messaging', icon: MessageSquare, screen: 'TeacherMessages', color: colors.parent },
+    { label: 'AI Quiz Manager', sub: 'Manage & generate', icon: Award, screen: 'TeacherQuizManage', color: colors.student },
+    { label: 'Exam Marks', sub: 'Grade entry', icon: FileSpreadsheet, screen: 'TeacherExams', color: colors.warning },
+    { label: 'Attendance Report', sub: 'Filter & CSV export', icon: Download, action: () => setShowReportModal(true), color: colors.primary },
+    { label: 'Apply Leave', sub: 'Faculty time-off', icon: Calendar, screen: 'TeacherApplyLeave', color: colors.danger },
   ];
 
   return (
@@ -239,19 +286,19 @@ const TeacherDashboardScreen = ({ navigation }) => {
 
             <View style={styles.profileInfoCol}>
               <View style={styles.profileNameRow}>
-                <Text style={styles.profileName}>{user?.name || 'Faculty Member'}</Text>
+                <Text style={styles.profileName} numberOfLines={1}>{user?.name || 'Faculty Member'}</Text>
                 <View style={styles.rolePill}>
                   <Text style={styles.rolePillText}>EDUCATOR</Text>
                 </View>
               </View>
 
-              <Text style={styles.profileEmail}>{user?.email}</Text>
+              <Text style={styles.profileEmail} numberOfLines={1}>{user?.email}</Text>
 
               {user?.departmentId && (
                 <View style={styles.deptRow}>
                   <Building2 size={11} color={colors.textMuted} />
-                  <Text style={styles.deptText}>
-                    {user?.departmentId?.departmentName || user?.departmentId?.name || 'Department'}
+                  <Text style={styles.deptText} numberOfLines={1}>
+                    {user?.departmentId?.departmentName || user?.departmentId?.name || 'Academic Department'}
                   </Text>
                 </View>
               )}
@@ -264,7 +311,7 @@ const TeacherDashboardScreen = ({ navigation }) => {
               <View style={styles.coordBadge}>
                 <GraduationCap size={13} color="#10b981" />
                 <Text style={styles.coordBadgeText}>
-                  Coordinator: {user?.coordinatorClassName || 'CS101-A'}
+                  Coordinator: {coordClassName}
                 </Text>
               </View>
             ) : (
@@ -277,7 +324,7 @@ const TeacherDashboardScreen = ({ navigation }) => {
             <TouchableOpacity
               style={styles.systemStatusBtn}
               onPress={() => setShowPermissionsModal(true)}
-              activeOpacity={0.7}
+              activeOpacity={0.75}
             >
               <Shield size={12} color={colors.primary} />
               <Text style={styles.systemStatusText}>System Status</Text>
@@ -286,12 +333,42 @@ const TeacherDashboardScreen = ({ navigation }) => {
         </View>
 
         {/* ============================================================ */}
-        {/* 2. LIVE NOW / NEXT LECTURE HERO BANNER                        */}
+        {/* 2. CLASS COORDINATOR PENDING LEAVES ALERT (STRICTLY PRESERVED)*/}
+        {/* ============================================================ */}
+        {isCoordinator && pendingLeavesCount > 0 && (
+          <TouchableOpacity
+            style={[styles.coordinatorAlertCard, shadows.sm]}
+            onPress={() => navigation.navigate('TeacherCoordinatorLeaves')}
+            activeOpacity={0.85}
+          >
+            <View style={styles.coordinatorAlertIconBox}>
+              <ShieldAlert size={22} color="#ef4444" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={styles.coordinatorAlertTitleRow}>
+                <Text style={styles.coordinatorAlertTitle}>
+                  {pendingLeavesCount} Student {pendingLeavesCount === 1 ? 'Leave' : 'Leaves'} Pending Review
+                </Text>
+                <View style={styles.newTag}>
+                  <Text style={styles.newTagText}>ACTION REQ</Text>
+                </View>
+              </View>
+              <Text style={styles.coordinatorAlertSub}>
+                Applications awaiting your approval as Class Coordinator ({coordClassName}).
+              </Text>
+            </View>
+            <ChevronRight size={18} color="#ef4444" />
+          </TouchableOpacity>
+        )}
+
+        {/* ============================================================ */}
+        {/* 3. LIVE NOW / NEXT LECTURE HERO BANNER                        */}
         {/* ============================================================ */}
         {liveSlot ? (
           <View style={[styles.liveHeroCard, shadows.md]}>
             <View style={styles.liveHeroHeader}>
               <View style={styles.liveNowTag}>
+                <View style={styles.livePulseDot} />
                 <PlayCircle size={12} color="#fff" />
                 <Text style={styles.liveNowTagText}>LIVE LECTURE IN PROGRESS</Text>
               </View>
@@ -361,46 +438,38 @@ const TeacherDashboardScreen = ({ navigation }) => {
               </TouchableOpacity>
             </View>
           </View>
+        ) : todayDone ? (
+          <View style={[styles.todayDoneCard, shadows.sm]}>
+            <View style={styles.todayDoneIconBox}>
+              <CheckCircle2 size={18} color="#10b981" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.todayDoneTitle}>All Lectures Completed For Today! 🎉</Text>
+              <Text style={styles.todayDoneSub}>You have wrapped up all your scheduled classes for today.</Text>
+            </View>
+          </View>
         ) : null}
 
         {/* ============================================================ */}
-        {/* 3. CLASS COORDINATOR PENDING LEAVES ALERT                     */}
+        {/* 4. ACADEMIC OVERVIEW STATS (MATCHING WEB TEMPLATE)            */}
         {/* ============================================================ */}
-        {isCoordinator && pendingLeavesCount > 0 && (
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Academic Overview</Text>
           <TouchableOpacity
-            style={[styles.coordinatorAlertCard, shadows.sm]}
-            onPress={() => navigation.navigate('TeacherCoordinatorLeaves')}
-            activeOpacity={0.85}
+            style={styles.reportShortcutBtn}
+            onPress={() => setShowReportModal(true)}
+            activeOpacity={0.7}
           >
-            <View style={styles.coordinatorAlertIconBox}>
-              <ShieldAlert size={20} color="#ef4444" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <View style={styles.coordinatorAlertTitleRow}>
-                <Text style={styles.coordinatorAlertTitle}>
-                  {pendingLeavesCount} Student {pendingLeavesCount === 1 ? 'Leave' : 'Leaves'} Pending Review
-                </Text>
-                <View style={styles.newTag}>
-                  <Text style={styles.newTagText}>ACTION REQ</Text>
-                </View>
-              </View>
-              <Text style={styles.coordinatorAlertSub}>
-                Applications awaiting your approval as Class Coordinator.
-              </Text>
-            </View>
-            <ChevronRight size={16} color="#ef4444" />
+            <Download size={12} color={colors.primary} />
+            <Text style={styles.reportShortcutText}>Reports</Text>
           </TouchableOpacity>
-        )}
+        </View>
 
-        {/* ============================================================ */}
-        {/* 4. OVERVIEW STATS GRID                                        */}
-        {/* ============================================================ */}
-        <Text style={styles.sectionTitle}>Academic Overview</Text>
         <View style={styles.statsGrid}>
           <StatCard
             icon={Users}
             label="My Students"
-            value={report?.totalStudents ?? '38'}
+            value={report?.totalStudents ?? (subjects.length ? `${subjects.length * 30}+` : '38')}
             color={colors.teacher}
             gradient={[colors.teacher + 'CC', colors.teacher + '22']}
             style={styles.statCard}
@@ -432,59 +501,41 @@ const TeacherDashboardScreen = ({ navigation }) => {
         </View>
 
         {/* ============================================================ */}
-        {/* 5. PRIMARY ACTION BUTTONS (TIMETABLE, REPORT, COORD LEAVES)   */}
+        {/* 5. TEACHER SCHEDULE & DOWNLOAD TIMETABLE (WEB PARITY)         */}
         {/* ============================================================ */}
-        <View style={styles.actionButtonsRow}>
-          <TouchableOpacity
-            style={[styles.primaryActionBtn, { backgroundColor: colors.teacher + '15', borderColor: colors.teacher + '44' }]}
-            onPress={() => navigation.navigate('TeacherTimetable')}
-            activeOpacity={0.8}
-          >
-            <Calendar size={15} color={colors.teacher} />
-            <Text style={[styles.primaryActionText, { color: colors.teacher }]}>Weekly Timetable</Text>
-          </TouchableOpacity>
+        <View style={[styles.sectionHeaderRow, { marginTop: spacing.md }]}>
+          <View>
+            <Text style={styles.sectionTitle}>Teacher Schedule</Text>
+            <Text style={styles.sectionSubTitle}>
+              {selectedDay} • {daySlots.length} {daySlots.length === 1 ? 'Lecture' : 'Lectures'}
+            </Text>
+          </View>
 
+          {/* Web-Style Download Timetable Button */}
           <TouchableOpacity
-            style={[styles.primaryActionBtn, { backgroundColor: colors.primary + '15', borderColor: colors.primary + '44' }]}
-            onPress={() => setShowReportModal(true)}
-            activeOpacity={0.8}
+            style={[styles.downloadTimetableBtn, shadows.sm]}
+            onPress={handleExportTimetable}
+            disabled={exportingTimetable}
+            activeOpacity={0.85}
           >
-            <Download size={15} color={colors.primary} />
-            <Text style={[styles.primaryActionText, { color: colors.primary }]}>Attendance Report</Text>
-          </TouchableOpacity>
-
-          {isCoordinator && (
-            <TouchableOpacity
-              style={[styles.primaryActionBtn, { backgroundColor: '#ef444415', borderColor: '#ef444444' }]}
-              onPress={() => navigation.navigate('TeacherCoordinatorLeaves')}
-              activeOpacity={0.8}
-            >
-              <ShieldCheck size={15} color="#ef4444" />
-              <Text style={[styles.primaryActionText, { color: '#ef4444' }]}>Class Leaves</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* ============================================================ */}
-        {/* 6. WEEKLY SCHEDULE SECTION                                    */}
-        {/* ============================================================ */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Daily Teaching Schedule</Text>
-          <TouchableOpacity
-            style={styles.viewFullTimetableBtn}
-            onPress={() => navigation.navigate('TeacherTimetable')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.viewFullTimetableText}>View Full Timetable</Text>
-            <ChevronRight size={13} color={colors.teacher} />
+            {exportingTimetable ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Download size={14} color="#fff" />
+                <Text style={styles.downloadTimetableText}>Download</Text>
+              </>
+            )}
           </TouchableOpacity>
         </View>
 
-        {/* Day Tabs */}
+        {/* Day Switcher Tabs */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dayTabsScroll}>
           {DAYS.map((day) => {
             const isSelected = selectedDay === day;
             const isToday = day.toLowerCase() === todayName.toLowerCase();
+            const slotCount = subjects.filter((s) => (s.dayOfWeek || s.day_of_week)?.toLowerCase() === day.toLowerCase()).length;
+
             return (
               <TouchableOpacity
                 key={day}
@@ -498,6 +549,11 @@ const TeacherDashboardScreen = ({ navigation }) => {
                 <Text style={[styles.dayTabText, isSelected && styles.dayTabTextActive]}>
                   {day.slice(0, 3)}
                 </Text>
+                {slotCount > 0 && (
+                  <View style={[styles.slotCountPill, isSelected && { backgroundColor: 'rgba(255,255,255,0.25)' }]}>
+                    <Text style={[styles.slotCountText, isSelected && { color: '#fff' }]}>{slotCount}</Text>
+                  </View>
+                )}
                 {isToday ? (
                   <View style={[styles.todayDot, isSelected && { backgroundColor: '#fff' }]} />
                 ) : null}
@@ -506,11 +562,18 @@ const TeacherDashboardScreen = ({ navigation }) => {
           })}
         </ScrollView>
 
-        {/* Scheduled Slots */}
+        {/* Scheduled Slot Cards for the Selected Day */}
         {daySlots.length === 0 ? (
           <View style={styles.emptySlotsCard}>
             <Calendar size={28} color={colors.textMuted} />
             <Text style={styles.emptySlotsText}>No lectures scheduled on {selectedDay}</Text>
+            <TouchableOpacity
+              style={styles.viewFullTimetableBtn}
+              onPress={() => navigation.navigate('TeacherTimetable')}
+            >
+              <Text style={styles.viewFullTimetableText}>Open Full Weekly View</Text>
+              <ChevronRight size={13} color={colors.teacher} />
+            </TouchableOpacity>
           </View>
         ) : (
           daySlots.map((slot, i) => {
@@ -530,10 +593,12 @@ const TeacherDashboardScreen = ({ navigation }) => {
                 ]}
               >
                 <View style={styles.slotTimeCol}>
-                  <Clock size={13} color={isCurrent ? colors.success : colors.textMuted} />
-                  <Text style={[styles.slotTimeText, isCurrent && { color: colors.success, fontWeight: '700' }]}>
-                    {timeStr}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Clock size={12} color={isCurrent ? colors.success : colors.textMuted} />
+                    <Text style={[styles.slotTimeText, isCurrent && { color: colors.success, fontWeight: '700' }]}>
+                      {timeStr}
+                    </Text>
+                  </View>
                   {isCurrent && (
                     <View style={styles.liveBadge}>
                       <Text style={styles.liveBadgeText}>LIVE NOW</Text>
@@ -542,12 +607,21 @@ const TeacherDashboardScreen = ({ navigation }) => {
                 </View>
 
                 <View style={styles.slotDetailsCol}>
-                  <Text style={styles.slotSubject}>{subName}</Text>
-                  <Text style={styles.slotMeta}>{clsName} • {roomStr}</Text>
+                  <Text style={styles.slotSubject} numberOfLines={1}>{subName}</Text>
+                  <View style={styles.slotPillRow}>
+                    <View style={styles.slotClassPill}>
+                      <Users size={10} color={colors.textSecondary} />
+                      <Text style={styles.slotClassText}>{clsName}</Text>
+                    </View>
+                    <View style={styles.slotRoomPill}>
+                      <MapPin size={10} color={colors.textMuted} />
+                      <Text style={styles.slotRoomText}>{roomStr}</Text>
+                    </View>
+                  </View>
                 </View>
 
                 <TouchableOpacity
-                  style={[styles.slotActionBtn, isCurrent ? { backgroundColor: colors.success } : { backgroundColor: colors.teacher + '22' }]}
+                  style={[styles.slotActionBtn, isCurrent ? { backgroundColor: colors.success } : { backgroundColor: colors.teacher + '20' }]}
                   onPress={() => navigation.navigate('Attendance')}
                   activeOpacity={0.8}
                 >
@@ -562,41 +636,54 @@ const TeacherDashboardScreen = ({ navigation }) => {
         )}
 
         {/* ============================================================ */}
-        {/* 7. QUICK ACTIONS                                              */}
+        {/* 6. QUICK ACTIONS (2-COLUMN GRID MATCHING WEB TEMPLATES)       */}
         {/* ============================================================ */}
-        <Text style={[styles.sectionTitle, { marginTop: spacing.lg }]}>Quick Actions</Text>
+        <View style={[styles.sectionHeaderRow, { marginTop: spacing.lg }]}>
+          <Text style={styles.sectionTitle}>Quick Actions</Text>
+          <Text style={styles.sectionSubTitle}>Tools & Workspaces</Text>
+        </View>
+
         <View style={styles.quickGrid}>
           {quickActions.map((action) => (
             <TouchableOpacity
               key={action.label}
               style={[styles.quickCard, shadows.sm]}
-              onPress={() => navigation.navigate(action.screen)}
+              onPress={() => {
+                if (action.action) action.action();
+                else if (action.screen) navigation.navigate(action.screen);
+              }}
               activeOpacity={0.8}
             >
               <View style={[styles.quickIcon, { backgroundColor: action.color + '20' }]}>
-                <action.icon size={22} color={action.color} />
+                <action.icon size={20} color={action.color} />
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.quickLabel}>{action.label}</Text>
-              </View>
-              {action.badge && (
-                <View style={styles.actionBadgePill}>
-                  <Text style={styles.actionBadgePillText}>{action.badge}</Text>
+              <View style={styles.quickTextCol}>
+                <View style={styles.quickLabelRow}>
+                  <Text style={styles.quickLabel} numberOfLines={1}>{action.label}</Text>
+                  {action.badge && (
+                    <View style={styles.actionBadgePill}>
+                      <Text style={styles.actionBadgePillText}>{action.badge}</Text>
+                    </View>
+                  )}
                 </View>
-              )}
-              <ChevronRight size={14} color={colors.textMuted} />
+                <Text style={styles.quickSub} numberOfLines={1}>{action.sub}</Text>
+              </View>
+              <ChevronRight size={13} color={colors.textMuted} />
             </TouchableOpacity>
           ))}
         </View>
 
         {/* ============================================================ */}
-        {/* 8. MY TEACHING COURSES                                        */}
+        {/* 7. MY TEACHING SUBJECTS (MATCHING WEB PROFILE LIST)           */}
         {/* ============================================================ */}
         {uniqueSubjects.length > 0 && (
           <>
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>My Teaching Subjects</Text>
-              <TouchableOpacity onPress={() => navigation.navigate('Roster')}>
+            <View style={[styles.sectionHeaderRow, { marginTop: spacing.md }]}>
+              <View>
+                <Text style={styles.sectionTitle}>My Teaching Subjects</Text>
+                <Text style={styles.sectionSubTitle}>{uniqueSubjects.length} Courses Assigned</Text>
+              </View>
+              <TouchableOpacity onPress={() => navigation.navigate('Roster')} activeOpacity={0.7}>
                 <Text style={styles.viewFullTimetableText}>View All Rosters</Text>
               </TouchableOpacity>
             </View>
@@ -608,10 +695,12 @@ const TeacherDashboardScreen = ({ navigation }) => {
                 onPress={() => navigation.navigate('Roster')}
                 activeOpacity={0.85}
               >
-                <View style={[styles.subjectDot, { backgroundColor: colors.teacher }]} />
+                <View style={[styles.subjectIconBox, { backgroundColor: colors.teacher + '15' }]}>
+                  <BookOpen size={16} color={colors.teacher} />
+                </View>
                 <View style={styles.subjectInfo}>
-                  <Text style={styles.subjectName}>{subj.name}</Text>
-                  <Text style={styles.subjectMeta}>
+                  <Text style={styles.subjectName} numberOfLines={1}>{subj.name}</Text>
+                  <Text style={styles.subjectMeta} numberOfLines={1}>
                     {subj.clsName} {subj.dept ? `• ${subj.dept}` : ''}
                   </Text>
                 </View>
@@ -625,7 +714,7 @@ const TeacherDashboardScreen = ({ navigation }) => {
       </ScrollView>
 
       {/* ============================================================ */}
-      {/* 9. SYSTEM STATUS / ACTIVE PERMISSIONS MODAL                  */}
+      {/* 8. SYSTEM STATUS / ACTIVE PERMISSIONS MODAL                  */}
       {/* ============================================================ */}
       <Modal
         visible={showPermissionsModal}
@@ -677,6 +766,7 @@ const TeacherDashboardScreen = ({ navigation }) => {
             <TouchableOpacity
               style={styles.closePermissionsBtn}
               onPress={() => setShowPermissionsModal(false)}
+              activeOpacity={0.8}
             >
               <Text style={styles.closePermissionsText}>Done</Text>
             </TouchableOpacity>
@@ -741,6 +831,7 @@ const styles = StyleSheet.create({
     ...typography.base,
     ...typography.bold,
     color: colors.textPrimary,
+    flexShrink: 1,
   },
   rolePill: {
     backgroundColor: colors.teacher + '22',
@@ -837,11 +928,17 @@ const styles = StyleSheet.create({
   liveNowTag: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 5,
     backgroundColor: colors.success,
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: radius.full,
+  },
+  livePulseDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#fff',
   },
   liveNowTagText: {
     fontSize: 9,
@@ -855,7 +952,7 @@ const styles = StyleSheet.create({
     color: colors.success,
   },
   liveSubjectTitle: {
-    ...typography.lg,
+    ...typography.base,
     ...typography.bold,
     color: colors.textPrimary,
     marginTop: 2,
@@ -957,22 +1054,53 @@ const styles = StyleSheet.create({
     color: colors.teacher,
   },
 
-  /* Coordinator Alert */
+  /* Today Done Card */
+  todayDoneCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.xl,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: '#10b98133',
+    marginBottom: spacing.md,
+  },
+  todayDoneIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#10b98115',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  todayDoneTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  todayDoneSub: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 1,
+  },
+
+  /* Coordinator Alert (Preserved Action Required) */
   coordinatorAlertCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: '#ef444410',
+    backgroundColor: '#ef444412',
     borderRadius: radius.xl,
     padding: spacing.md,
-    borderWidth: 1,
-    borderColor: '#ef444433',
+    borderWidth: 1.5,
+    borderColor: '#ef444444',
     marginBottom: spacing.md,
   },
   coordinatorAlertIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#ef444422',
     alignItems: 'center',
     justifyContent: 'center',
@@ -981,15 +1109,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flexWrap: 'wrap',
   },
   coordinatorAlertTitle: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '800',
     color: colors.textPrimary,
   },
   newTag: {
     backgroundColor: '#ef4444',
-    paddingHorizontal: 4,
+    paddingHorizontal: 5,
     paddingVertical: 1,
     borderRadius: radius.xs,
   },
@@ -997,6 +1126,7 @@ const styles = StyleSheet.create({
     fontSize: 8,
     fontWeight: '800',
     color: '#fff',
+    letterSpacing: 0.4,
   },
   coordinatorAlertSub: {
     fontSize: 11,
@@ -1004,13 +1134,39 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  /* Stats & Action row */
+  /* Section Header */
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
   sectionTitle: {
     ...typography.base,
     ...typography.bold,
     color: colors.textPrimary,
-    marginBottom: spacing.xs,
   },
+  sectionSubTitle: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 1,
+  },
+  reportShortcutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radius.full,
+    backgroundColor: colors.primary + '15',
+  },
+  reportShortcutText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+
+  /* Stats Grid */
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1018,65 +1174,43 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   statCard: {
-    minWidth: '47%',
-    maxWidth: '47%',
-  },
-  actionButtonsRow: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-    marginVertical: spacing.xs,
-    marginBottom: spacing.md,
-  },
-  primaryActionBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    paddingVertical: 10,
-    borderRadius: radius.md,
-    borderWidth: 1,
-  },
-  primaryActionText: {
-    fontSize: 11,
-    fontWeight: '700',
+    flexBasis: '48%',
+    flexGrow: 1,
   },
 
-  /* Weekly Schedule */
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: spacing.xs,
-    marginBottom: spacing.xs,
-  },
-  viewFullTimetableBtn: {
+  /* Download Timetable Button (Matching Web shiny button) */
+  downloadTimetableBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    borderRadius: radius.full,
-    backgroundColor: colors.teacher + '15',
+    gap: 5,
+    backgroundColor: colors.teacher,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.md,
   },
-  viewFullTimetableText: {
-    fontSize: 11,
+  downloadTimetableText: {
+    fontSize: 12,
     fontWeight: '700',
-    color: colors.teacher,
+    color: '#fff',
   },
+
+  /* Day Tabs */
   dayTabsScroll: {
     flexDirection: 'row',
+    marginVertical: spacing.xs,
     marginBottom: spacing.sm,
   },
   dayTab: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: radius.md,
     backgroundColor: colors.bgCard,
     borderWidth: 1,
     borderColor: colors.border,
     marginRight: 6,
-    alignItems: 'center',
   },
   dayTabActive: {
     backgroundColor: colors.teacher,
@@ -1091,13 +1225,25 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
   },
+  slotCountPill: {
+    backgroundColor: colors.bgElevated,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: radius.xs,
+  },
+  slotCountText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: colors.textMuted,
+  },
   todayDot: {
     width: 4,
     height: 4,
     borderRadius: 2,
     backgroundColor: colors.teacher,
-    marginTop: 3,
   },
+
+  /* Slot Cards */
   emptySlotsCard: {
     backgroundColor: colors.bgCard,
     borderRadius: radius.md,
@@ -1106,17 +1252,29 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     alignItems: 'center',
     gap: spacing.xs,
+    marginVertical: spacing.xs,
   },
   emptySlotsText: {
     ...typography.sm,
     color: colors.textMuted,
+  },
+  viewFullTimetableBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginTop: 4,
+  },
+  viewFullTimetableText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.teacher,
   },
   slotCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.bgCard,
     borderRadius: radius.md,
-    padding: spacing.md,
+    padding: spacing.sm,
     marginBottom: spacing.xs,
     borderWidth: 1,
     borderColor: colors.border,
@@ -1125,10 +1283,10 @@ const styles = StyleSheet.create({
   slotTimeCol: {
     alignItems: 'flex-start',
     gap: 3,
-    minWidth: 90,
+    minWidth: 85,
   },
   slotTimeText: {
-    fontSize: 11,
+    fontSize: 10,
     color: colors.textMuted,
     fontWeight: '600',
   },
@@ -1151,10 +1309,36 @@ const styles = StyleSheet.create({
     ...typography.bold,
     color: colors.textPrimary,
   },
-  slotMeta: {
-    fontSize: 11,
-    color: colors.textMuted,
+  slotPillRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     marginTop: 2,
+  },
+  slotClassPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: colors.bgElevated,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radius.xs,
+  },
+  slotClassText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  slotRoomPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
+  slotRoomText: {
+    fontSize: 10,
+    color: colors.textMuted,
   },
   slotActionBtn: {
     flexDirection: 'row',
@@ -1169,42 +1353,59 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  /* Quick Actions Grid */
+  /* Quick Actions (2-Column Grid) */
   quickGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.xs,
     marginBottom: spacing.md,
   },
   quickCard: {
+    flexBasis: '48.5%',
+    flexGrow: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: 8,
     backgroundColor: colors.bgCard,
     borderRadius: radius.md,
-    padding: spacing.md,
+    padding: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
   },
   quickIcon: {
-    width: 44,
-    height: 44,
+    width: 36,
+    height: 36,
     borderRadius: radius.md,
     justifyContent: 'center',
     alignItems: 'center',
   },
+  quickTextCol: {
+    flex: 1,
+  },
+  quickLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   quickLabel: {
-    ...typography.base,
-    ...typography.semibold,
+    fontSize: 12,
+    fontWeight: '700',
     color: colors.textPrimary,
+    flexShrink: 1,
+  },
+  quickSub: {
+    fontSize: 10,
+    color: colors.textMuted,
+    marginTop: 1,
   },
   actionBadgePill: {
     backgroundColor: '#ef4444',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
     borderRadius: radius.full,
-    marginRight: 4,
   },
   actionBadgePillText: {
-    fontSize: 9,
+    fontSize: 8,
     fontWeight: '800',
     color: '#fff',
   },
@@ -1215,30 +1416,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.bgCard,
     borderRadius: radius.md,
-    padding: spacing.md,
+    padding: spacing.sm,
     marginBottom: spacing.xs,
     borderWidth: 1,
     borderColor: colors.border,
+    gap: spacing.sm,
   },
-  subjectDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: spacing.sm,
-    flexShrink: 0,
+  subjectIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   subjectInfo: {
     flex: 1,
   },
   subjectName: {
-    ...typography.base,
-    ...typography.semibold,
+    fontSize: 13,
+    fontWeight: '700',
     color: colors.textPrimary,
   },
   subjectMeta: {
-    ...typography.sm,
+    fontSize: 11,
     color: colors.textMuted,
-    marginTop: 2,
+    marginTop: 1,
   },
 
   /* Permissions Modal */

@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { LogOut, Calendar, PenTool, Users, ShieldCheck, X, BookOpen, FileText, Award, MessageSquare } from 'lucide-react';
+import { LogOut, LayoutDashboard, Calendar, PenTool, Users, ShieldCheck, X, BookOpen, FileText, Award, MessageSquare } from 'lucide-react';
 import ThemeToggle from '../shared/ThemeToggle';
 
 const TeacherSidebar = ({ isOpen, setIsOpen }) => {
@@ -9,7 +9,8 @@ const TeacherSidebar = ({ isOpen, setIsOpen }) => {
 
     // Dynamically build links based on whether user is a Class Coordinator and has permissions
     const baseLinks = [
-        { name: 'Weekly Timetable', path: '/teacher', icon: <Calendar size={20} /> },
+        { name: 'Dashboard', path: '/teacher', icon: <LayoutDashboard size={20} /> },
+        { name: 'Weekly Timetable', path: '/teacher/timetable', icon: <Calendar size={20} /> },
         { name: 'Class Roster', path: '/teacher/roster', icon: <Users size={20} /> },
         { name: 'Manage Assignments', path: '/teacher/assignments', icon: <BookOpen size={20} /> },
         { name: 'Exams & Marks Entry', path: '/teacher/exams', icon: <Award size={20} /> },

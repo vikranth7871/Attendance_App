@@ -20,18 +20,44 @@ const getConnectionString = () => {
 
 const connectionString = getConnectionString();
 
-// Neon DB PostgreSQL connection pool
+// Neon DB PostgreSQL connection pool with serverless keepAlive and timeout resilience
 export const pool = new pg.Pool({
     connectionString,
     ssl: connectionString && !connectionString.includes('localhost') && !connectionString.includes('127.0.0.1')
         ? { rejectUnauthorized: false }
-        : false
+        : false,
+    max: 20,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 15000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10000
 });
 
 // Handle idle client errors gracefully to avoid server crashes
 pool.on('error', (err) => {
     console.error('Unexpected error on idle Neon DB client:', err.message);
 });
+
+// Resilient query execution with automatic retry on serverless connection drops
+const rawQuery = pool.query.bind(pool);
+pool.query = async (...args) => {
+    try {
+        return await rawQuery(...args);
+    } catch (err) {
+        const isConnDrop = err.code === '57P01' ||
+            err.code === 'ECONNRESET' ||
+            err.message?.includes('ETIMEDOUT') ||
+            err.message?.includes('ECONNRESET') ||
+            err.message?.includes('Connection terminated') ||
+            err.message?.includes('connection closed') ||
+            err.message?.includes('client has already been released');
+        if (isConnDrop) {
+            console.warn('⚠️ [Neon DB] Connection drop detected, retrying query once...', err.message);
+            return await rawQuery(...args);
+        }
+        throw err;
+    }
+};
 
 export const query = (text, params) => pool.query(text, params);
 

@@ -27,10 +27,17 @@ const TeacherCoordinatorLeavesScreen = ({ navigation }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedRowId, setExpandedRowId] = useState(null);
 
-  // Action modal state (reject or revoke)
-  const [actionModal, setActionModal] = useState(null); // { id, type: 'reject' | 'revoke', studentName }
+  // Action modal state (approve, reject, or revoke)
+  const [actionModal, setActionModal] = useState(null); // { id, type: 'approve' | 'reject' | 'revoke', studentName, dates }
   const [actionReason, setActionReason] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+
+  // Top feedback toast banner
+  const [banner, setBanner] = useState({ type: '', message: '' });
+  const showFeedback = (type, message) => {
+    setBanner({ type, message });
+    setTimeout(() => setBanner({ type: '', message: '' }), 4000);
+  };
 
   // Student Quick Info Modal
   const [quickInfoStudent, setQuickInfoStudent] = useState(null);
@@ -57,54 +64,42 @@ const TeacherCoordinatorLeavesScreen = ({ navigation }) => {
     fetchLeaves();
   }, []);
 
-  const handleApprove = async (id) => {
-    Alert.alert(
-      'Approve Leave',
-      'Are you sure you want to approve this student leave application?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Approve',
-          style: 'default',
-          onPress: async () => {
-            setActionLoading(true);
-            try {
-              await api.put(`/leave/approve/${id}`);
-              Alert.alert('✅ Approved', 'Student leave application approved.');
-              fetchLeaves();
-            } catch (err) {
-              Alert.alert('Error', err.response?.data?.message || 'Failed to approve leave');
-            } finally {
-              setActionLoading(false);
-            }
-          }
-        }
-      ]
-    );
+  const handleApprove = (id, studentName, dates) => {
+    setActionModal({
+      id,
+      type: 'approve',
+      studentName: studentName || 'Student',
+      dates: dates || '',
+    });
+    setActionReason('');
   };
 
   const handleActionSubmit = async () => {
     if (!actionModal) return;
-    if (!actionReason.trim()) {
-      Alert.alert('Required', `Please provide a reason for ${actionModal.type === 'reject' ? 'rejection' : 'revocation'}.`);
+    const { id, type } = actionModal;
+
+    if (type !== 'approve' && !actionReason.trim()) {
+      showFeedback('error', `Please provide a reason for ${type === 'reject' ? 'rejection' : 'revocation'}.`);
       return;
     }
 
-    const { id, type } = actionModal;
     setActionLoading(true);
     try {
-      if (type === 'reject') {
+      if (type === 'approve') {
+        await api.put(`/leave/approve/${id}`, { remarks: actionReason.trim() });
+        showFeedback('success', 'Student leave application approved successfully.');
+      } else if (type === 'reject') {
         await api.put(`/leave/reject/${id}`, { reason: actionReason.trim() });
-        Alert.alert('Leave Rejected', 'Leave application has been rejected.');
+        showFeedback('success', 'Leave application has been rejected.');
       } else {
         await api.put(`/leave/revoke/${id}`, { reason: actionReason.trim() });
-        Alert.alert('Leave Revoked', 'Approved leave has been revoked.');
+        showFeedback('success', 'Approved leave has been revoked.');
       }
       setActionModal(null);
       setActionReason('');
       fetchLeaves();
     } catch (err) {
-      Alert.alert('Action Failed', err.response?.data?.message || `Failed to ${type} leave.`);
+      showFeedback('error', err.response?.data?.message || `Failed to ${type} leave.`);
     } finally {
       setActionLoading(false);
     }
@@ -137,6 +132,23 @@ const TeacherCoordinatorLeavesScreen = ({ navigation }) => {
         subtitle="Review student leave applications"
         navigation={navigation}
       />
+
+      {/* Toast Feedback Banner */}
+      {Boolean(banner.message) && (
+        <View
+          style={[
+            styles.feedbackBanner,
+            banner.type === 'error' ? styles.feedbackBannerError : styles.feedbackBannerSuccess,
+          ]}
+        >
+          {banner.type === 'error' ? (
+            <AlertCircle size={15} color={colors.danger} />
+          ) : (
+            <Check size={15} color={colors.success} />
+          )}
+          <Text style={styles.feedbackBannerText}>{banner.message}</Text>
+        </View>
+      )}
 
       {/* Search & Filter Bar */}
       <View style={styles.topControlPanel}>
@@ -310,6 +322,7 @@ const TeacherCoordinatorLeavesScreen = ({ navigation }) => {
                         <TouchableOpacity
                           style={[styles.actionBtn, styles.approveBtn]}
                           onPress={() => handleApprove(rowId)}
+                          onPress={() => handleApprove(rowId, studentName, `${startDateStr} — ${endDateStr}`)}
                           activeOpacity={0.8}
                         >
                           <Check size={14} color="#fff" />
@@ -352,7 +365,7 @@ const TeacherCoordinatorLeavesScreen = ({ navigation }) => {
         <View style={{ height: spacing.xxl }} />
       </ScrollView>
 
-      {/* Reject / Revoke Reason Modal */}
+      {/* Approve / Reject / Revoke Modal */}
       <Modal
         visible={Boolean(actionModal)}
         transparent
@@ -362,8 +375,21 @@ const TeacherCoordinatorLeavesScreen = ({ navigation }) => {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, shadows.lg]}>
             <View style={styles.modalHeader}>
-              <View style={[styles.modalIconBox, { backgroundColor: actionModal?.type === 'reject' ? colors.danger + '22' : colors.warning + '22' }]}>
-                {actionModal?.type === 'reject' ? (
+              <View
+                style={[
+                  styles.modalIconBox,
+                  {
+                    backgroundColor: actionModal?.type === 'approve'
+                      ? colors.success + '22'
+                      : actionModal?.type === 'reject'
+                        ? colors.danger + '22'
+                        : colors.warning + '22',
+                  },
+                ]}
+              >
+                {actionModal?.type === 'approve' ? (
+                  <Check size={20} color={colors.success} />
+                ) : actionModal?.type === 'reject' ? (
                   <X size={20} color={colors.danger} />
                 ) : (
                   <ShieldAlert size={20} color={colors.warning} />
@@ -371,22 +397,37 @@ const TeacherCoordinatorLeavesScreen = ({ navigation }) => {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.modalTitle}>
-                  {actionModal?.type === 'reject' ? 'Reject Leave Application' : 'Revoke Approved Leave'}
+                  {actionModal?.type === 'approve'
+                    ? 'Approve Leave Application'
+                    : actionModal?.type === 'reject'
+                      ? 'Reject Leave Application'
+                      : 'Revoke Approved Leave'}
                 </Text>
                 <Text style={styles.modalSub}>
                   Student: <Text style={{ fontWeight: '700', color: colors.textPrimary }}>{actionModal?.studentName}</Text>
+                  {actionModal?.dates ? ` (${actionModal.dates})` : ''}
                 </Text>
               </View>
             </View>
 
             <Text style={styles.inputLabel}>
-              {actionModal?.type === 'reject' ? 'Reason for Rejection *' : 'Reason for Revocation *'}
+              {actionModal?.type === 'approve'
+                ? 'Approval Remarks / Note (Optional)'
+                : actionModal?.type === 'reject'
+                  ? 'Reason for Rejection *'
+                  : 'Reason for Revocation *'}
             </Text>
             <TextInput
               style={styles.modalTextArea}
               multiline
               numberOfLines={3}
-              placeholder={actionModal?.type === 'reject' ? 'Provide reason (e.g. Invalid document, exam clash, attendance short)...' : 'Provide reason (e.g. Mandatory practical on same day)...'}
+              placeholder={
+                actionModal?.type === 'approve'
+                  ? 'Add optional remarks (e.g. Approved. Submit assignments after return)...'
+                  : actionModal?.type === 'reject'
+                    ? 'Provide reason (e.g. Invalid document, exam clash, attendance short)...'
+                    : 'Provide reason (e.g. Mandatory practical on same day)...'
+              }
               placeholderTextColor={colors.textMuted}
               value={actionReason}
               onChangeText={setActionReason}
@@ -402,7 +443,16 @@ const TeacherCoordinatorLeavesScreen = ({ navigation }) => {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.modalSubmitBtn, { backgroundColor: actionModal?.type === 'reject' ? colors.danger : colors.warning }]}
+                style={[
+                  styles.modalSubmitBtn,
+                  {
+                    backgroundColor: actionModal?.type === 'approve'
+                      ? colors.success
+                      : actionModal?.type === 'reject'
+                        ? colors.danger
+                        : colors.warning,
+                  },
+                ]}
                 onPress={handleActionSubmit}
                 disabled={actionLoading}
               >
@@ -410,7 +460,11 @@ const TeacherCoordinatorLeavesScreen = ({ navigation }) => {
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
                   <Text style={styles.modalSubmitText}>
-                    {actionModal?.type === 'reject' ? 'Confirm Reject' : 'Confirm Revoke'}
+                    {actionModal?.type === 'approve'
+                      ? 'Confirm Approve'
+                      : actionModal?.type === 'reject'
+                        ? 'Confirm Reject'
+                        : 'Confirm Revoke'}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -871,6 +925,32 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: colors.textPrimary,
     marginTop: 1,
+  },
+  feedbackBanner: {
+    marginHorizontal: spacing.md,
+    marginTop: spacing.xs,
+    marginBottom: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    borderRadius: radius.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+  },
+  feedbackBannerSuccess: {
+    backgroundColor: 'rgba(34, 197, 94, 0.12)',
+    borderColor: 'rgba(34, 197, 94, 0.3)',
+  },
+  feedbackBannerError: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+  },
+  feedbackBannerText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    flex: 1,
   },
 });
 
