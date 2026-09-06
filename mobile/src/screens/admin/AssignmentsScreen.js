@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -88,6 +88,10 @@ const AssignmentsScreen = ({ navigation }) => {
     onSelect: null,
   });
 
+  // Coordinator revoke confirm modal
+  const [revokeTarget, setRevokeTarget]  = useState(null); // coord object
+  const [revoking,     setRevoking]      = useState(false);
+
   const fetchData = async () => {
     try {
       const [deptRes, teacherRes, subjRes, coordRes] = await Promise.all([
@@ -120,6 +124,7 @@ const AssignmentsScreen = ({ navigation }) => {
 
   // Fetch classes for Timetable tab when department changes
   useEffect(() => {
+    setSelectedSubject('');
     if (!selectedDept) {
       setClasses([]);
       setSelectedClass('');
@@ -329,29 +334,25 @@ const AssignmentsScreen = ({ navigation }) => {
   };
 
   const handleRevokeCoordinator = (coord) => {
-    Alert.alert(
-      'Revoke Coordinator',
-      `Are you sure you want to revoke ${coord.teacher_name} as Class Coordinator for ${coord.class_name}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Revoke',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await api.post('/admin/revoke-class-coordinator', {
-                teacherId: coord.teacher_id || coord.teacherId,
-              });
-              Alert.alert('Revoked', 'Class coordinator revoked successfully.');
-              const res = await api.get('/admin/coordinators');
-              setCoordinators(Array.isArray(res.data) ? res.data : []);
-            } catch (err) {
-              Alert.alert('Revoke Failed', err.response?.data?.message || 'Could not revoke coordinator.');
-            }
-          },
-        },
-      ]
-    );
+    setRevokeTarget(coord);
+  };
+
+  const handleExecuteRevoke = async () => {
+    if (!revokeTarget) return;
+    setRevoking(true);
+    try {
+      await api.post('/admin/revoke-class-coordinator', {
+        teacherId: revokeTarget.teacher_id || revokeTarget.teacherId,
+      });
+      const res = await api.get('/admin/coordinators');
+      setCoordinators(Array.isArray(res.data) ? res.data : []);
+      setRevokeTarget(null);
+    } catch (err) {
+      Alert.alert('Revoke Failed', err.response?.data?.message || 'Could not revoke coordinator.');
+      setRevokeTarget(null);
+    } finally {
+      setRevoking(false);
+    }
   };
 
   const openPicker = (title, items, selectedKey, onSelect) => {
@@ -387,8 +388,36 @@ const AssignmentsScreen = ({ navigation }) => {
 
   const getSubjName = (id) => {
     const s = subjects.find((item) => String(item.id || item._id) === String(id));
-    return s ? `${s.name || s.subjectName} (${s.code || ''})` : 'Select Subject';
+    if (!s) return 'Select Subject';
+    const name = (s.name || s.subjectName || '').trim();
+    const code = (s.code || '').trim();
+    return code ? `${name} (${code})` : name;
   };
+
+  const availableSubjects = useMemo(() => {
+    const list = selectedDept
+      ? subjects.filter((s) => {
+          const sDeptId = String(
+            s.departmentId?._id || s.departmentId?.id || s.department_id || s.departmentId || ''
+          );
+          if (sDeptId === String(selectedDept)) return true;
+          return (s.assignedDepartments || []).some(
+            (d) => String(d.id || d._id) === String(selectedDept)
+          );
+        })
+      : subjects;
+
+    // Deduplicate by normalized name so no redundant subjects appear
+    const seen = new Set();
+    const unique = [];
+    for (const s of list) {
+      const nameKey = (s.name || s.subjectName || '').trim().toLowerCase();
+      if (!nameKey || seen.has(nameKey)) continue;
+      seen.add(nameKey);
+      unique.push(s);
+    }
+    return unique;
+  }, [subjects, selectedDept]);
 
   const getTeacherName = (id) => {
     const t = teachers.find((item) => String(item.id || item._id) === String(id));
@@ -492,14 +521,19 @@ const AssignmentsScreen = ({ navigation }) => {
               {/* Subject Selector */}
               <Text style={styles.fieldLabel}>Subject Course</Text>
               <TouchableOpacity
-                style={styles.selectorBtn}
+                style={[styles.selectorBtn, !selectedDept && styles.selectorDisabled]}
+                disabled={!selectedDept}
                 onPress={() =>
                   openPicker(
                     'Select Subject',
-                    subjects.map((s) => ({
-                      key: String(s.id || s._id),
-                      label: `${s.name || s.subjectName} (${s.code || ''})`,
-                    })),
+                    availableSubjects.map((s) => {
+                      const name = (s.name || s.subjectName || '').trim();
+                      const code = (s.code || '').trim();
+                      return {
+                        key: String(s.id || s._id),
+                        label: code ? `${name} (${code})` : name,
+                      };
+                    }),
                     selectedSubject,
                     (key) => setSelectedSubject(key)
                   )
@@ -507,7 +541,7 @@ const AssignmentsScreen = ({ navigation }) => {
               >
                 <BookOpen size={16} color={colors.textMuted} />
                 <Text style={selectedSubject ? styles.selectorValueText : styles.selectorPlaceholderText}>
-                  {getSubjName(selectedSubject)}
+                  {selectedDept ? getSubjName(selectedSubject) : 'Select a department first'}
                 </Text>
               </TouchableOpacity>
 
@@ -818,6 +852,48 @@ const AssignmentsScreen = ({ navigation }) => {
 
         <View style={{ height: 60 }} />
       </ScrollView>
+
+      {/* ─── Revoke Coordinator Confirm Modal ─── */}
+      <Modal visible={!!revokeTarget} transparent animationType="fade" onRequestClose={() => !revoking && setRevokeTarget(null)}>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalBox, { alignItems: 'center', paddingVertical: spacing.lg }]}>
+            {/* Icon badge */}
+            <View style={{
+              width: 52, height: 52, borderRadius: 26,
+              backgroundColor: 'rgba(239,68,68,0.12)',
+              alignItems: 'center', justifyContent: 'center',
+              marginBottom: spacing.sm,
+            }}>
+              <Trash2 size={24} color={colors.danger} />
+            </View>
+            <Text style={[styles.modalTitle, { textAlign: 'center', marginBottom: 4 }]}>Revoke Coordinator?</Text>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.danger, marginBottom: 4, textAlign: 'center' }}>
+              {revokeTarget?.teacher_name}
+            </Text>
+            <Text style={{ fontSize: 12, color: colors.textMuted, textAlign: 'center', lineHeight: 18, marginBottom: spacing.lg, paddingHorizontal: spacing.sm }}>
+              {revokeTarget?.teacher_name} will no longer be Class Coordinator for {revokeTarget?.class_name}.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: spacing.sm, width: '100%' }}>
+              <TouchableOpacity
+                style={{ flex: 1, paddingVertical: 13, borderRadius: radius.md, backgroundColor: colors.bgElevated, alignItems: 'center', borderWidth: 1, borderColor: colors.border }}
+                onPress={() => setRevokeTarget(null)}
+                disabled={revoking}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textSecondary }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[{ flex: 1, paddingVertical: 13, borderRadius: radius.md, backgroundColor: colors.danger, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }, revoking && { opacity: 0.6 }]}
+                onPress={handleExecuteRevoke}
+                disabled={revoking}
+              >
+                {revoking
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <><Trash2 size={14} color="#fff" /><Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>Revoke</Text></>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Reusable Item Picker Modal */}
       <Modal visible={pickerModal.visible} transparent animationType="fade">

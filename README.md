@@ -1,98 +1,142 @@
-# 🎓 iAttend — Smart School ERP, Student Attendance & Academic Management System
+# 🎓 iAttend — Smart School ERP, Attendance & Academic Management System
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/vikranth7871/iAttend)
-[![Tech Stack](https://img.shields.io/badge/stack-React%20%7C%20Node.js%20%7C%20PostgreSQL-blue)](https://github.com/vikranth7871/iAttend)
-[![License](https://img.shields.io/badge/license-MIT-purple)](#-license)
+[![Web Stack](https://img.shields.io/badge/web-React%2019%20%7C%20Vite%20%7C%20Framer%20Motion-blue)](https://github.com/vikranth7871/iAttend)
+[![Mobile Stack](https://img.shields.io/badge/mobile-React%20Native%20%7C%20Expo%20SDK%2054-purple)](https://github.com/vikranth7871/iAttend)
+[![Backend Stack](https://img.shields.io/badge/backend-Node.js%20%7C%20Express%205%20%7C%20PostgreSQL-orange)](https://github.com/vikranth7871/iAttend)
+[![AI Integration](https://img.shields.io/badge/AI-Google%20Gemini-teal)](https://github.com/vikranth7871/iAttend)
+[![License](https://img.shields.io/badge/license-MIT-green)](#-license)
 
-**iAttend** is a full-featured, enterprise-grade School ERP (Enterprise Resource Planning) platform designed for modern K-12 and Higher Education institutions. It seamlessly connects **System Administrators**, **Educators**, **Students**, and **Parents** into a unified real-time portal ecosystem with glassmorphism UI, real-time notifications, strict slot-based attendance tracking, automated homework/exam workflows, fee receipt generation, and multi-child parent management.
+**iAttend** is an enterprise-grade, full-stack School ERP (Enterprise Resource Planning) and academic management platform built for K-12 and Higher Education institutions. It provides a unified ecosystem connecting **System Administrators**, **Educators**, **Students**, and **Parents** through both a **modern web portal** (React + Vite) and a **cross-platform mobile application** (React Native + Expo for iOS, Android, and Web).
 
 ---
 
-## 🚀 Quick Credentials for Demo
+## 🚀 Demo Credentials
 
-Access all 4 role portals using pre-configured test accounts:
+Access all role portals using pre-configured test accounts:
 
-| Role | Portal URL | Email | Password | Access Highlights |
+| Role | Portal Route | Email | Password | Access Highlights |
 | :--- | :--- | :--- | :--- | :--- |
-| **System Admin** | `/admin` | `admin@example.com` | `admin123` | Full Administrative, User Management & Leave Approvals |
-| **Educator / Teacher** | `/teacher` | `teacher@example.com` | `teacher123` | Timetable, Mark Attendance, Assignments, Exams & Parent Inbox |
-| **Student** | `/student` | `student@example.com` | `student123` | Attendance Streaks, Assignments, Exam Results & Quizzes |
-| **Parent** | `/parent` | `parent.doe@example.com` | `parent123` | Multi-Child Switcher, Fees, Attendance Analytics & Teacher Messaging |
+| **System Admin** | `/admin` | `admin@example.com` | `admin123` | Institutional Setup, Leaves Approval, User Roles & Permissions |
+| **Educator / Teacher** | `/teacher` | `teacher@example.com` | `teacher123` | Active Slot Attendance, Assignments, Exams & Parent Communication |
+| **Student** | `/student` | `student@example.com` | `student123` | Gamified Attendance Streaks, Assignments, Exams & Quiz Arena |
+| **Parent** | `/parent` | `parent.doe@example.com` | `parent123` | Multi-Child Switcher, Fee Invoices, Attendance Analytics & Teacher Inbox |
 
 ---
 
 ## 🌟 Comprehensive Feature Modules
 
-### 👨‍👩‍👧 1. Parent Portal (`/parent/*`)
-* **Multi-Child Switcher**: Easily switch between linked children (e.g. *John Student* & *Sarah Student*) with instant UI synchronization.
-* **Attendance Analytics**: Interactive charts, percentage gauges, monthly attendance trends, and detailed subject-wise attendance logs.
-* **Leave Application Hub**: Apply for student leaves on behalf of children with embedded visual date range pickers and live status tracking.
-* **Weekly Timetable & Schedule**: View daily period breakdowns, room numbers, and assigned subject teachers.
-* **Homework & Assignments Tracker**: Monitor assigned homework, submission statuses, due dates, and teacher feedback.
-* **Exam Results & Report Cards**: Real-time subject score display, grade breakdowns, and 1-click **Official Report Card Download** (`ReportCard_StudentName.txt`).
-* **Fee Details & Digital Receipts**: View tuition fee status (Paid, Pending, Overdue), breakdown of fee components, and generate downloadable digital payment receipts.
-* **Educator Communication Channel**: Direct messaging channel with an **Educator Selector Dropdown** (`Talk To: Jane Teacher`) and real-time reply notifications.
+### 🛡️ 1. System Admin Portal & Mobile Suite (`/admin/*`)
+* **Teacher Leaves Approval Hub**:
+  * Edge-to-edge data table with centered column alignment, status indicators, and responsive formatting.
+  * **Leave Application Dossier**: Detailed bottom-sheet/modal displaying leave duration, calculated day count, reason, and attached supporting documents.
+  * **Direct Approvals / Rejections / Revocations**: Contextual action modal with mandatory reason prompt for rejections and revocations.
+  * Multi-status filtering chips (*All*, *Pending*, *Approved*, *Rejected*, *Revoked*) with real-time keyword search.
+* **Departments & Classes Structure**:
+  * **Instant Department Creation**: Inline input row with instant validation and dynamic addition.
+  * **Responsive Department Chip Grid**: Interactive department tags with quick-delete triggers.
+  * **Custom In-App Delete Confirmation Modal**: Custom styled modal with cascade warnings preventing accidental deletions across web, emulation, and native mobile environments.
+  * **Classes Management Table**: Clean tabular layout displaying Class Name, Department, Academic Year, with integrated modal forms for adding and editing class details.
+* **User & Role Management**:
+  * Directory for Teachers, Students, and Parents with instant search and department/class filtering.
+  * Status management (Active / Suspended) and granular user profile editor.
+* **Granular Permissions Matrix**:
+  * Dynamic role-based permission toggles for institutional control over system features.
+* **Faculty Attendance & Institution Activity**:
+  * Real-time monitoring of educator check-ins and platform-wide audit activity logs.
 
 ---
 
 ### 👩‍🏫 2. Educator / Teacher Portal (`/teacher/*`)
-* **Strict Slot-Based Attendance Marking**: Live active class slot detection, strict timeframe enforcement, and manual attendance overrides.
-* **Class Roster & Student Profiles**: Interactive student roster, roll numbers, attendance percentages, and comprehensive student profile modals.
-* **Homework & Assignment Management**: Create assignments, attach instructions/links, specify due dates, and automatically dispatch notifications to both students and parents.
+* **Strict Slot-Based Attendance Marking**:
+  * Automatic active class slot detection, strict timeframe enforcement, and manual attendance overrides.
+* **Class Roster & Student Profiles**:
+  * Student roster with roll numbers, attendance rates, and comprehensive individual student profile views.
+* **Homework & Assignment Dispatcher**:
+  * Create assignments with instructions and resource links; automatically triggers alerts to student and parent dashboards.
 * **Examination & Grade Publishing**:
-  * **Structured Time Range Pickers**: Native Start Time & End Time range selectors (`<input type="time">`) with automated 12-hour AM/PM formatting.
-  * **Real-time Live Grade Evaluation**: Auto-calculates letter grades (`A+`, `A`, `B`, `C`, `D`, `F`) based on percentage with an optional **Manual Grade Override**.
-  * **Expired Exam Auto-Removal**: Automatically filters out expired/past exams from the "Scheduled Examinations" view once the exam date and end time pass.
-* **Parent Communication Inbox**: View incoming parent inquiries grouped by student name, reply in real-time, and trigger push notifications.
-* **Teacher Leave Management**: Apply for teacher leave with supporting document uploads for Admin review.
+  * Native 12-hour AM/PM start and end time pickers.
+  * Automated letter grade computation (`A+`, `A`, `B`, `C`, `D`, `F`) with manual grade override options.
+  * Auto-cleanup for expired examinations once the test window closes.
+* **Parent Communication Inbox**:
+  * Centralized message hub grouping parent inquiries by student with direct reply capabilities.
+* **Leave Application System**:
+  * Submit leave requests with document attachment uploads for administrative review.
 
 ---
 
 ### 🎓 3. Student Portal (`/student/*`)
-* **Gamified Attendance Streaks**: Visual streak badges, attendance percentage progress bars, and historical logs.
-* **Homework & Assignment Submissions**: Receive teacher homework assignments, submit completed work, and view teacher remarks.
-* **Exam Results & Performance**: View published grades, exam schedules, and download official academic report cards.
-* **Quiz Arena & Certificate Engine**: Participate in subject quizzes, view live leaderboards, and earn downloadable achievement certificates.
+* **Gamified Attendance Streaks**:
+  * Visual streak counters, attendance percentage progress rings, and historical check-in logs.
+* **Homework & Submissions Hub**:
+  * View pending assignments, submit completed homework, and inspect educator feedback and remarks.
+* **Academic Performance & Report Cards**:
+  * Published exam scores, timetable review, and 1-click **Official Report Card Download** (`ReportCard_StudentName.txt`).
+* **Quiz Arena & Achievement Certificates**:
+  * Interactive subject quizzes with live scoreboards, timers, and downloadable completion certificates.
 
 ---
 
-### 🛡️ 4. System Admin Portal (`/admin/*`)
-* **Institution Management**: Manage users (Teachers, Students, Parents), subject allocations, and class structures.
-* **Leave Approval Hub**: Review teacher leave applications with options to Approve, Reject (with mandatory rejection reasons), or Revoke approvals.
-* **Global System Auditing**: Monitor platform activity, attendance logs, and institution-wide statistics.
+### 👨‍👩‍👧 4. Parent Portal (`/parent/*`)
+* **Multi-Child Switcher**:
+  * Seamlessly toggle between linked children with instant state synchronization across all views.
+* **Attendance Analytics**:
+  * Percentage gauges, monthly attendance trends, and detailed subject-by-subject attendance logs.
+* **Student Leave Requests**:
+  * Apply for student leaves on behalf of children with date range pickers and real-time review status.
+* **Fee Status & Digital Receipts**:
+  * Monitor tuition fee status (*Paid*, *Pending*, *Overdue*), fee component breakdowns, and downloadable payment receipts.
+* **Direct Educator Messaging**:
+  * Dedicated channel to consult subject teachers directly with real-time response notifications.
+
+---
+
+### 📱 5. Cross-Platform Mobile Application (`mobile/`)
+* **React Native & Expo SDK 54**:
+  * Fully unified codebase powering **iOS**, **Android**, and **Web** (`react-native-web`).
+* **Dynamic Network Auto-Routing**:
+  * Intelligent API client that resolves connection hosts dynamically (browser hostname for web, Metro LAN host IP for Expo Go on physical phones, and localhost for simulators).
+* **Native & Web Optimized UI**:
+  * Edge-to-edge layouts, smooth bottom sheet modals, custom confirmation dialogs, loading skeletons, and theme consistency.
 
 ---
 
 ## 🛠️ Technology Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    React.js Frontend (Vite)                │
-│  Framer Motion • Lucide Icons • Vanilla CSS (Glassmorphism) │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ REST APIs (Axios)
-┌──────────────────────────────▼──────────────────────────────┐
-│                    Node.js / Express Backend                │
-│   JWT Auth • Role Middlewares • Node-Cron • Cloudinary SDK  │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ SQL Queries (pg Pool)
-┌──────────────────────────────▼──────────────────────────────┐
-│                  Neon DB (Cloud PostgreSQL)                 │
-│  Users • Attendance • Assignments • Exams • Messages • Fees │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────┐     ┌──────────────────────────────────────┐
+│       React Web Portal (Vite)        │     │     Expo Mobile App (React Native)   │
+│  React 19 • Framer Motion • Lucide   │     │  Expo 54 • React Navigation • Mobile │
+└──────────────────┬───────────────────┘     └──────────────────┬───────────────────┘
+                   │                                            │
+                   │ REST APIs (JWT Bearer / Axios)             │ REST APIs (Dynamic Host)
+                   └─────────────────────┬──────────────────────┘
+                                         ▼
+                   ┌───────────────────────────────────────────┐
+                   │         Node.js / Express 5 Backend       │
+                   │   JWT Auth • Role Middleware • Node-Cron  │
+                   │   Cloudinary SDK • Google Gemini AI       │
+                   └─────────────────────┬─────────────────────┘
+                                         ▼
+                   ┌───────────────────────────────────────────┐
+                   │         Neon Cloud PostgreSQL DB          │
+                   │  Users • Attendance • Classes • Leaves   │
+                   │  Assignments • Exams • Messages • Fees    │
+                   └───────────────────────────────────────────┘
 ```
 
 ---
 
 ## 💻 Developer Setup Guide
 
-Follow this step-by-step guide to set up the project locally for development.
+Follow these steps to run the complete iAttend ecosystem locally.
 
 ### 1. Prerequisites
-Ensure you have the following installed on your machine:
-- **Node.js**: `v18.0.0` or higher
-- **npm**: `v9.0.0` or higher
-- **Git**
+Ensure the following tools are installed:
+* **Node.js**: `v18.0.0` or higher
+* **npm**: `v9.0.0` or higher
+* **Git**
+* *(Optional for Mobile)*: **Expo Go** app on your iOS/Android device, or Xcode / Android Studio simulators.
 
 ---
 
@@ -105,13 +149,12 @@ cd iAttend
 ---
 
 ### 3. Backend Setup
-Navigate into the `backend/` directory and install dependencies:
 ```bash
 cd backend
 npm install
 ```
 
-Create a `.env` file inside the `backend/` folder:
+Create a `.env` file in `backend/`:
 ```env
 PORT=5005
 DATABASE_URL=postgres://user:password@ep-example-123456.us-east-2.aws.neon.tech/neondb?sslmode=require
@@ -121,35 +164,43 @@ CLOUDINARY_API_KEY=your_api_key
 CLOUDINARY_API_SECRET=your_api_secret
 ```
 
-> **Note for New Developers**: The database schema (tables, foreign keys, constraints, default seed data) is **automatically created and initialized** on server startup via `backend/config/db.js`. No manual SQL migrations are needed!
+> **Automatic Schema Initialization**: The PostgreSQL tables, foreign key relations, constraints, and initial seed accounts are **automatically created and verified** on startup via `backend/config/db.js`. No manual migration runs required!
 
 Start the backend development server:
 ```bash
 npm run dev
 ```
-*(The backend will start running on [http://localhost:5005](http://localhost:5005))*
+*Backend runs on: [http://localhost:5005](http://localhost:5005)*
 
 ---
 
-### 4. Frontend Setup
-Open a new terminal window, navigate into the `frontend/` directory, and install dependencies:
+### 4. Web Frontend Setup
+Open a new terminal window:
 ```bash
 cd frontend
 npm install
-```
-
-Start the Vite development server:
-```bash
 npm run dev
 ```
-*(The frontend will start running on [http://localhost:3000](http://localhost:3000))*
+*Web Portal runs on: [http://localhost:3000](http://localhost:3000)*
 
 ---
 
-### 5. Verify Local Setup
-1. Open your browser and navigate to **[http://localhost:3000](http://localhost:3000)**.
-2. Log in using any of the credentials listed in the [Quick Credentials Table](#-quick-credentials-for-demo).
-3. Test attendance marking, parent-teacher messaging, homework assignments, and exam schedule creation!
+### 5. Mobile App Setup (React Native / Expo)
+Open a new terminal window:
+```bash
+cd mobile
+npm install
+```
+
+Run on your preferred platform:
+```bash
+# Run on Web (Browser view on port 8081)
+npm run web
+
+# Or start Expo interactive CLI (scan QR code with Expo Go or run on simulator)
+npx expo start
+```
+*Mobile Web runs on: [http://localhost:8081](http://localhost:8081)*
 
 ---
 
@@ -159,30 +210,51 @@ npm run dev
 iAttend/
 ├── backend/
 │   ├── config/
-│   │   └── db.js                # PostgreSQL connection pool & auto-schema init
+│   │   └── db.js                 # PostgreSQL connection pool & auto-migration engine
 │   ├── controllers/
-│   │   ├── authController.js    # Login, registration, JWT handling
-│   │   ├── parentController.js  # Parent dashboard, fees, messages & results
-│   │   ├── studentController.js # Attendance, assignments & student schedule
-│   │   └── teacherController.js # Roster, attendance, homework & exams
+│   │   ├── adminController.js     # User, leave, department & academic management
+│   │   ├── authController.js      # Auth, login, tokens, password hashing
+│   │   ├── parentController.js    # Child switching, fees, messages & results
+│   │   ├── studentController.js   # Streaks, homework submissions, schedule
+│   │   └── teacherController.js   # Slot attendance, grade book & exams
 │   ├── middleware/
-│   │   └── authMiddleware.js    # Role-based authorization & permission checks
-│   ├── routes/                  # Express route handlers
-│   ├── jobs/                    # Automated CRON schedulers (weekly reports)
-│   └── server.js                # Express app entrypoint
+│   │   └── authMiddleware.js      # JWT verification & role authorization
+│   ├── routes/                    # Express route declarations
+│   ├── jobs/                      # Cron schedulers for attendance auto-save
+│   └── server.js                  # Backend entrypoint & middleware configuration
 │
-└── frontend/
-    ├── src/
-    │   ├── components/          # Reusable UI components & Sidebars
-    │   ├── context/             # AuthContext state management
-    │   ├── pages/               # Role-specific portal views
-    │   │   ├── admin/           # Admin pages
-    │   │   ├── parent/          # Parent Portal pages (Analytics, Fees, Messages)
-    │   │   ├── student/         # Student Portal pages (Streaks, Assignments)
-    │   │   └── teacher/         # Teacher Portal pages (Roster, Exams, Inbox)
-    │   ├── App.jsx              # Main router & page routes
-    │   └── main.jsx             # React DOM entrypoint
-    └── package.json
+├── frontend/                      # Web Application (Vite + React 19)
+│   ├── src/
+│   │   ├── components/            # Headers, sidebars, modals & navigation
+│   │   ├── context/               # AuthContext & global state providers
+│   │   ├── pages/
+│   │   │   ├── admin/             # Admin portal views
+│   │   │   ├── parent/            # Parent portal views
+│   │   │   ├── student/           # Student portal views
+│   │   │   └── teacher/           # Teacher portal views
+│   │   ├── App.jsx                # Route definitions & protected layouts
+│   │   └── main.jsx               # React DOM bootstrap
+│   └── package.json
+│
+├── mobile/                        # Cross-Platform Mobile App (React Native + Expo)
+│   ├── src/
+│   │   ├── api/
+│   │   │   └── client.js          # Axios client with dynamic host resolution
+│   │   ├── components/            # Mobile UI components (Header, Skeletons, Modals)
+│   │   ├── context/               # AuthContext & ThemeContext
+│   │   ├── navigation/            # Role-based Tab & Stack Navigators
+│   │   ├── screens/
+│   │   │   ├── admin/             # TeacherLeavesScreen, AcademicManageScreen, etc.
+│   │   │   ├── auth/              # Mobile login & auth screens
+│   │   │   ├── parent/            # Mobile parent screens
+│   │   │   ├── student/           # Mobile student screens
+│   │   │   ├── teacher/           # Mobile teacher screens
+│   │   │   └── quiz/              # Quiz screens
+│   │   └── styles/                # Mobile design tokens, colors & typography
+│   ├── app.json                   # Expo configuration
+│   └── package.json
+│
+└── README.md
 ```
 
 ---
@@ -206,10 +278,10 @@ iAttend/
 
 ---
 
-## 👤 Project Maintainer & Guide
+## 👤 Project Maintainer
 
 Developed and maintained by **[Vikranth](https://github.com/vikranth7871)**.  
-For developer onboarding questions, technical inquiries, or feature requests, feel free to reach out via GitHub Issues or discussions!
+Feel free to open an issue or start a discussion for feature requests, bug reports, or architecture suggestions!
 
 ---
 

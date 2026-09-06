@@ -1154,15 +1154,31 @@ export const revokeClassCoordinator = async (req, res) => {
 
 export const assignPermissions = async (req, res) => {
     try {
-        const { department, classId, role, permissions } = req.body;
-        let filter = {};
-        if (role) filter.role = role;
-        if (department) filter.departmentId = department;
-        if (classId) filter.classId = classId;
+        const { department, departmentId, classId, role, permissions } = req.body;
+        const dep = department || departmentId;
+        const perms = Array.isArray(permissions) ? permissions : [];
 
-        // Admin creates permissions for bulk users matching the scope
-        const result = await User.updateMany(filter, { $set: { permissions } });
-        res.json({ message: `${result.modifiedCount} users updated with new permissions` });
+        let queryStr = 'UPDATE users SET permissions = $1 WHERE 1=1';
+        const params = [perms];
+        let paramIdx = 2;
+
+        if (role) {
+            queryStr += ` AND role = $${paramIdx++}`;
+            params.push(role);
+        }
+        if (dep) {
+            queryStr += ` AND (department_id = $${paramIdx} OR department_id::text = $${paramIdx})`;
+            params.push(dep);
+            paramIdx++;
+        }
+        if (classId) {
+            queryStr += ` AND (class_id = $${paramIdx} OR class_id::text = $${paramIdx})`;
+            params.push(classId);
+            paramIdx++;
+        }
+
+        const result = await pool.query(queryStr, params);
+        res.json({ message: `${result.rowCount || 0} users updated with new permissions` });
     } catch (error) {
         res.status(400).json({ message: error.message });
     }
@@ -1176,16 +1192,24 @@ export const assignPermissions = async (req, res) => {
 export const updateUserPermissions = async (req, res) => {
     try {
         const { permissions } = req.body;
-        const user = await User.findByIdAndUpdate(
-            req.params.id,
-            { permissions },
-            { new: true }
-        ).select('-password');
+        const perms = Array.isArray(permissions) ? permissions : [];
+        const result = await pool.query(
+            'UPDATE users SET permissions = $1 WHERE id = $2 RETURNING id, name, email, role, permissions',
+            [perms, req.params.id]
+        );
 
-        if (!user) {
+        if (result.rows.length === 0) {
             return res.status(404).json({ message: 'User not found' });
         }
-        res.json(user);
+        const user = result.rows[0];
+        res.json({
+            _id: String(user.id),
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            permissions: user.permissions || []
+        });
     } catch (error) {
         res.status(400).json({ message: error.message });
     }

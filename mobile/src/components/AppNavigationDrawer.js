@@ -65,7 +65,8 @@ const AppNavigationDrawer = ({ visible, onClose, navigation, currentRoute }) => 
           {
             title: 'Menu',
             items: [
-              { name: 'Weekly Timetable', route: 'Dashboard', icon: Calendar },
+              { name: 'Dashboard', route: 'Dashboard', icon: LayoutDashboard },
+              { name: 'Weekly Timetable', route: 'TeacherTimetable', icon: Calendar },
               { name: 'Class Roster', route: 'Roster', icon: Users },
               { name: 'Manage Assignments', route: 'Assignments', icon: BookOpen },
               { name: 'Mark Attendance', route: 'Attendance', icon: PenTool },
@@ -79,7 +80,7 @@ const AppNavigationDrawer = ({ visible, onClose, navigation, currentRoute }) => 
               { name: 'Apply Leave', route: 'TeacherApplyLeave', icon: FileText, color: '#f59e0b' },
               { name: 'Parent Messages', route: 'TeacherMessages', icon: MessageSquare, color: '#3b82f6' },
               ...(user?.classCoordinatorFor ? [
-                { name: 'Class Coordinator Leaves', route: 'TeacherApplyLeave', icon: ShieldCheck, color: '#ef4444' }
+                { name: 'Class Coordinator Leaves', route: 'TeacherCoordinatorLeaves', icon: ShieldCheck, color: '#ef4444' }
               ] : []),
             ],
           },

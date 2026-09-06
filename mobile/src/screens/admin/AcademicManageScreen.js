@@ -1,557 +1,705 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, SectionList, TouchableOpacity, RefreshControl,
-  Alert, Modal, TextInput, ActivityIndicator, ScrollView
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl,
+  Modal, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Building2, Layers, BookOpen, Plus, Trash2, Edit2, X } from 'lucide-react-native';
+import { Plus, Trash2, Pencil, X, Save, Building2, Layers, CheckCircle, AlertCircle, AlertTriangle } from 'lucide-react-native';
 import Header from '../../components/Header';
-import { FullPageLoader } from '../../components/LoadingSkeleton';
 import api from '../../api/client';
-import { colors, spacing, radius, typography, shadows } from '../../styles/theme';
+import { colors, spacing, radius } from '../../styles/theme';
 
-const SectionHeader = ({ title, icon: Icon, count, color, onAdd }) => (
-  <View style={[styles.sectionHeader, { borderLeftColor: color }]}>
-    <Icon size={16} color={color} />
-    <Text style={[styles.sectionHeaderTitle, { color }]}>{title}</Text>
-    <View style={[styles.countBadge, { backgroundColor: color + '22' }]}>
-      <Text style={[styles.countText, { color }]}>{count}</Text>
-    </View>
-    {onAdd && (
-      <TouchableOpacity style={[styles.addSectionBtn, { backgroundColor: color + '22' }]} onPress={onAdd}>
-        <Plus size={14} color={color} />
-        <Text style={[styles.addSectionBtnText, { color }]}>Add</Text>
-      </TouchableOpacity>
-    )}
-  </View>
-);
+/* ─── helpers ─── */
+const getDeptName = (cls, departments) => {
+  if (cls.departmentId?.departmentName) return cls.departmentId.departmentName;
+  if (cls.departmentId?.name)           return cls.departmentId.name;
+  if (typeof cls.departmentId === 'string') {
+    const d = departments.find(d => d._id === cls.departmentId || d.id === cls.departmentId);
+    return d?.departmentName || d?.name || 'N/A';
+  }
+  return cls.department_name || 'N/A';
+};
+const getDeptId    = cls => typeof cls.departmentId === 'string' ? cls.departmentId : (cls.departmentId?._id || cls.departmentId?.id || cls.department_id || '');
+const getClassId   = c => c._id || c.id;
+const getDId       = d => d._id || d.id;
+const getClassName = c => c.className || c.name || '';
+const getAcYear    = c => c.academicYear || c.year || '';
 
-const ItemCard = ({ item, sectionKey, color, onEdit, onDelete }) => (
-  <View style={[styles.itemCard, shadows.sm]}>
-    <View style={[styles.itemDot, { backgroundColor: color }]} />
-    <View style={styles.itemInfo}>
-      <Text style={styles.itemName}>
-        {item.name || item.className || item.departmentName || item.subjectName}
-      </Text>
-      {item.code && <Text style={styles.itemMeta}>Code: {item.code}</Text>}
-      {item.academic_year && <Text style={styles.itemMeta}>Year: {item.academic_year}</Text>}
-      {item.department_name && <Text style={styles.itemMeta}>{item.department_name}</Text>}
-      {item.student_count !== undefined && (
-        <Text style={styles.itemMeta}>{item.student_count} students</Text>
-      )}
-    </View>
-
-    <View style={styles.cardActions}>
-      {sectionKey === 'classes' && onEdit && (
-        <TouchableOpacity style={styles.iconBtn} onPress={() => onEdit(item)}>
-          <Edit2 size={15} color={colors.primary} />
-        </TouchableOpacity>
-      )}
-      {(sectionKey === 'departments' || sectionKey === 'classes') && onDelete && (
-        <TouchableOpacity style={styles.iconBtn} onPress={() => onDelete(item)}>
-          <Trash2 size={15} color={colors.danger} />
+/* Inline banner component */
+const Banner = ({ type, message, onDismiss }) => {
+  if (!message) return null;
+  const isError = type === 'error';
+  return (
+    <View style={[bannerStyles.wrap, isError ? bannerStyles.errorWrap : bannerStyles.successWrap]}>
+      {isError
+        ? <AlertCircle size={15} color="#EF4444" />
+        : <CheckCircle size={15} color="#10B981" />}
+      <Text style={[bannerStyles.text, { color: isError ? '#EF4444' : '#10B981' }]}>{message}</Text>
+      {onDismiss && (
+        <TouchableOpacity onPress={onDismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <X size={13} color={isError ? '#EF4444' : '#10B981'} />
         </TouchableOpacity>
       )}
     </View>
-  </View>
-);
+  );
+};
+const bannerStyles = StyleSheet.create({
+  wrap:        { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 8, padding: 12, marginBottom: 12 },
+  errorWrap:   { backgroundColor: 'rgba(239,68,68,0.12)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)' },
+  successWrap: { backgroundColor: 'rgba(16,185,129,0.12)', borderWidth: 1, borderColor: 'rgba(16,185,129,0.3)' },
+  text:        { flex: 1, fontSize: 13, fontWeight: '600' },
+});
 
+/* ─────────────── main component ─────────────── */
 const AcademicManageScreen = () => {
   const [departments, setDepartments] = useState([]);
-  const [classes, setClasses] = useState([]);
-  const [subjects, setSubjects] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [classes,     setClasses]     = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [refreshing,  setRefreshing]  = useState(false);
 
-  // Modals
-  const [showDeptModal, setShowDeptModal] = useState(false);
+  /* Banner state */
+  const [banner, setBanner] = useState({ type: '', message: '' });
+  const showBanner = (type, message) => {
+    setBanner({ type, message });
+    setTimeout(() => setBanner({ type: '', message: '' }), 4500);
+  };
+
+  /* Dept form */
   const [newDeptName, setNewDeptName] = useState('');
-  const [submittingDept, setSubmittingDept] = useState(false);
+  const [savingDept,  setSavingDept]  = useState(false);
 
+  /* Class form */
   const [showClassModal, setShowClassModal] = useState(false);
-  const [classForm, setClassForm] = useState({
-    className: '',
-    departmentId: '',
-    year: new Date().getFullYear().toString(),
-  });
-  const [submittingClass, setSubmittingClass] = useState(false);
+  const [classForm,      setClassForm]      = useState({ className: '', departmentId: '', year: String(new Date().getFullYear()) });
+  const [savingClass,    setSavingClass]    = useState(false);
+  const [classError,     setClassError]     = useState('');
 
+  /* Edit class */
   const [editingClass, setEditingClass] = useState(null);
-  const [editClassForm, setEditClassForm] = useState({
-    className: '',
-    departmentId: '',
-    year: '',
-  });
-  const [submittingEditClass, setSubmittingEditClass] = useState(false);
+  const [editForm,     setEditForm]     = useState({ className: '', departmentId: '', year: '' });
+  const [savingEdit,   setSavingEdit]   = useState(false);
+  const [editError,    setEditError]    = useState('');
 
-  const fetchData = async () => {
+  /* Delete Confirmation Modal state */
+  const [deleteTarget, setDeleteTarget] = useState(null); // { type: 'dept' | 'class', id, name, warning }
+  const [deleting,     setDeleting]     = useState(false);
+
+  /* fetch */
+  const fetchData = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
     try {
-      const [depRes, classRes, subjRes] = await Promise.all([
+      const [dRes, cRes] = await Promise.all([
         api.get('/admin/departments').catch(() => ({ data: [] })),
         api.get('/admin/classes').catch(() => ({ data: [] })),
-        api.get('/admin/subjects').catch(() => ({ data: [] })),
       ]);
-      setDepartments(depRes.data || []);
-      setClasses(classRes.data || []);
-      setSubjects(subjRes.data || []);
-      if (depRes.data?.length > 0 && !classForm.departmentId) {
-        setClassForm(f => ({ ...f, departmentId: depRes.data[0].id }));
-      }
-    } catch (err) {
-      console.error('Academic fetch error:', err);
+      setDepartments(dRes.data || []);
+      setClasses(cRes.data || []);
+    } catch (e) {
+      console.error('AcademicManage fetch error:', e);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
-
-  useEffect(() => { fetchData(); }, []);
-
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    fetchData();
   }, []);
 
-  // Department Handlers
+  useEffect(() => { fetchData(); }, [fetchData]);
+  const onRefresh = useCallback(() => { setRefreshing(true); fetchData(true); }, [fetchData]);
+
+  /* ─── Department CRUD ─── */
   const handleCreateDept = async () => {
-    if (!newDeptName.trim()) {
-      Alert.alert('Required Field', 'Please enter a department name.');
-      return;
-    }
-    setSubmittingDept(true);
+    const name = newDeptName.trim();
+    if (!name) { showBanner('error', 'Please enter a department name.'); return; }
+    setSavingDept(true);
     try {
-      await api.post('/admin/create-department', { departmentName: newDeptName.trim() });
-      setShowDeptModal(false);
+      await api.post('/admin/create-department', { departmentName: name });
       setNewDeptName('');
-      Alert.alert('✅ Created', 'Department created successfully.');
-      fetchData();
+      showBanner('success', `Department "${name}" added successfully.`);
+      fetchData(true);
     } catch (err) {
-      Alert.alert('Error', err.response?.data?.message || 'Failed to create department.');
+      const msg = err.response?.data?.message || err.message || 'Failed to create department.';
+      console.error('createDept error:', err.response?.status, msg);
+      showBanner('error', `[${err.response?.status || 'ERR'}] ${msg}`);
     } finally {
-      setSubmittingDept(false);
+      setSavingDept(false);
     }
   };
 
-  const handleDeleteDept = (dept) => {
-    Alert.alert(
-      'Delete Department',
-      `Deleting "${dept.name || dept.departmentName}" may affect associated classes and subjects. Proceed?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await api.delete(`/admin/department/${dept.id}`);
-              Alert.alert('Success', 'Department deleted.');
-              fetchData();
-            } catch (err) {
-              Alert.alert('Error', err.response?.data?.message || 'Failed to delete department.');
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  // Class Handlers
-  const handleCreateClass = async () => {
-    if (!classForm.className.trim()) {
-      Alert.alert('Required Field', 'Please enter a class name.');
-      return;
-    }
-    setSubmittingClass(true);
-    try {
-      await api.post('/admin/create-class', {
-        className: classForm.className.trim(),
-        departmentId: classForm.departmentId || (departments[0]?.id || null),
-        year: classForm.year || new Date().getFullYear().toString(),
-      });
-      setShowClassModal(false);
-      setClassForm({
-        className: '',
-        departmentId: departments[0]?.id || '',
-        year: new Date().getFullYear().toString(),
-      });
-      Alert.alert('✅ Created', 'Class created successfully.');
-      fetchData();
-    } catch (err) {
-      Alert.alert('Error', err.response?.data?.message || 'Failed to create class.');
-    } finally {
-      setSubmittingClass(false);
-    }
-  };
-
-  const handleOpenEditClass = (cls) => {
-    setEditingClass(cls);
-    setEditClassForm({
-      className: cls.name || cls.className || '',
-      departmentId: cls.department_id || cls.departmentId || '',
-      year: cls.academic_year || cls.year || new Date().getFullYear().toString(),
+  const promptDeleteDept = (dept) => {
+    const name = dept.departmentName || dept.name;
+    setDeleteTarget({
+      type: 'dept',
+      id: getDId(dept),
+      name: name,
+      warning: `Deleting "${name}" will also remove all associated classes and subjects within it.`,
     });
   };
 
-  const handleUpdateClass = async () => {
-    if (!editClassForm.className.trim()) {
-      Alert.alert('Required Field', 'Class name is required.');
-      return;
-    }
-    setSubmittingEditClass(true);
+  /* ─── Class CRUD ─── */
+  const handleCreateClass = async () => {
+    setClassError('');
+    const name = classForm.className.trim();
+    if (!name) { setClassError('Please enter a class name.'); return; }
+    setSavingClass(true);
     try {
-      await api.put(`/admin/class/${editingClass.id}`, {
-        className: editClassForm.className.trim(),
-        departmentId: editClassForm.departmentId,
-        year: editClassForm.year,
+      await api.post('/admin/create-class', {
+        className:    name,
+        departmentId: classForm.departmentId || getDId(departments[0]) || null,
+        year:         classForm.year || String(new Date().getFullYear()),
+      });
+      setShowClassModal(false);
+      setClassForm({ className: '', departmentId: '', year: String(new Date().getFullYear()) });
+      showBanner('success', `Class "${name}" created.`);
+      fetchData(true);
+    } catch (err) {
+      setClassError(err.response?.data?.message || err.message || 'Failed to create class.');
+    } finally {
+      setSavingClass(false);
+    }
+  };
+
+  const openEditClass = (cls) => {
+    setEditError('');
+    setEditingClass(cls);
+    setEditForm({ className: getClassName(cls), departmentId: getDeptId(cls), year: String(getAcYear(cls)) });
+  };
+
+  const handleUpdateClass = async () => {
+    setEditError('');
+    const name = editForm.className.trim();
+    if (!name) { setEditError('Class name is required.'); return; }
+    setSavingEdit(true);
+    try {
+      await api.put(`/admin/class/${getClassId(editingClass)}`, {
+        className:    name,
+        departmentId: editForm.departmentId,
+        year:         editForm.year,
       });
       setEditingClass(null);
-      Alert.alert('✅ Updated', 'Class updated successfully.');
-      fetchData();
+      showBanner('success', `Class "${name}" updated.`);
+      fetchData(true);
     } catch (err) {
-      Alert.alert('Error', err.response?.data?.message || 'Failed to update class.');
+      setEditError(err.response?.data?.message || err.message || 'Failed to update class.');
     } finally {
-      setSubmittingEditClass(false);
+      setSavingEdit(false);
     }
   };
 
-  const handleDeleteClass = (cls) => {
-    Alert.alert(
-      'Delete Class',
-      `Are you sure you want to delete class "${cls.name || cls.className}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await api.delete(`/admin/class/${cls.id}`);
-              Alert.alert('Success', 'Class deleted.');
-              fetchData();
-            } catch (err) {
-              Alert.alert('Error', err.response?.data?.message || 'Failed to delete class.');
-            }
-          },
-        },
-      ]
-    );
+  const promptDeleteClass = (cls) => {
+    const name = getClassName(cls);
+    setDeleteTarget({
+      type: 'class',
+      id: getClassId(cls),
+      name: name,
+      warning: `Deleting "${name}" will remove all subject allocations for this class.`,
+    });
   };
 
-  if (loading) return <FullPageLoader message="Loading academic data..." />;
+  /* ─── Confirm Delete Action ─── */
+  const handleExecuteDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      if (deleteTarget.type === 'dept') {
+        await api.delete(`/admin/department/${deleteTarget.id}`);
+        showBanner('success', `Department "${deleteTarget.name}" deleted.`);
+      } else {
+        await api.delete(`/admin/class/${deleteTarget.id}`);
+        showBanner('success', `Class "${deleteTarget.name}" deleted.`);
+      }
+      setDeleteTarget(null);
+      fetchData(true);
+    } catch (err) {
+      const msg = err.response?.data?.message || err.message || 'Failed to delete.';
+      console.error('Delete error:', err.response?.status, msg);
+      showBanner('error', `[${err.response?.status || 'ERR'}] ${msg}`);
+      setDeleteTarget(null);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
-  const sections = [
-    {
-      key: 'departments',
-      title: 'Departments',
-      icon: Building2,
-      color: colors.primary,
-      data: departments,
-      onAdd: () => setShowDeptModal(true),
-    },
-    {
-      key: 'classes',
-      title: 'Classes',
-      icon: Layers,
-      color: colors.teacher,
-      data: classes,
-      onAdd: () => setShowClassModal(true),
-    },
-    {
-      key: 'subjects',
-      title: 'Subjects',
-      icon: BookOpen,
-      color: colors.student,
-      data: subjects,
-      onAdd: null,
-    },
-  ];
+  /* ─── Dept chip picker (shared between modals) ─── */
+  const DeptChipPicker = ({ value, onChange }) => (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+      {departments.map(d => {
+        const did = getDId(d);
+        const active = value === did;
+        return (
+          <TouchableOpacity
+            key={did}
+            style={[styles.filterChip, active && styles.filterChipActive]}
+            onPress={() => onChange(did)}
+          >
+            <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+              {d.departmentName || d.name}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
+  );
 
+  /* ─────────────── render ─────────────── */
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <Header title="Academic Structure" subtitle="Departments, Classes & Subjects" />
-      <SectionList
-        sections={sections}
-        keyExtractor={(item, i) => item.id?.toString() || i.toString()}
-        contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
-        renderSectionHeader={({ section }) => (
-          <SectionHeader
-            title={section.title}
-            icon={section.icon}
-            count={section.data.length}
-            color={section.color}
-            onAdd={section.onAdd}
-          />
-        )}
-        renderItem={({ item, section }) => (
-          <ItemCard
-            item={item}
-            sectionKey={section.key}
-            color={section.color}
-            onEdit={section.key === 'classes' ? handleOpenEditClass : null}
-            onDelete={section.key === 'departments' ? handleDeleteDept : section.key === 'classes' ? handleDeleteClass : null}
-          />
-        )}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyText}>No academic data found</Text>
-          </View>
-        }
-        stickySectionHeadersEnabled={false}
-      />
+      <Header title="Departments & Classes" subtitle="Manage academic structure" />
 
-      {/* Add Department Modal */}
-      <Modal visible={showDeptModal} transparent animationType="slide" onRequestClose={() => setShowDeptModal(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Add Department</Text>
-            <Text style={styles.formLabel}>Department Name *</Text>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Global banner */}
+        <Banner type={banner.type} message={banner.message} onDismiss={() => setBanner({ type: '', message: '' })} />
+
+        {/* ══ DEPARTMENTS ══ */}
+        <View style={styles.section}>
+          <View style={styles.sectionTitleRow}>
+            <Building2 size={18} color={colors.primary} />
+            <Text style={[styles.sectionTitle, { color: colors.primary }]}>Departments</Text>
+          </View>
+
+          {/* Inline add row */}
+          <View style={styles.addRow}>
             <TextInput
-              style={styles.formInput}
+              style={styles.addInput}
+              placeholder="New Department Name"
+              placeholderTextColor={colors.textMuted}
               value={newDeptName}
               onChangeText={setNewDeptName}
-              placeholder="e.g. Computer Science & Engineering"
-              placeholderTextColor={colors.textMuted}
-              autoFocus
+              onSubmitEditing={handleCreateDept}
+              returnKeyType="done"
             />
-            <View style={styles.formButtons}>
-              <TouchableOpacity style={styles.formCancelBtn} onPress={() => setShowDeptModal(false)} disabled={submittingDept}>
-                <Text style={styles.formCancelText}>Cancel</Text>
+            <TouchableOpacity
+              style={[styles.addBtn, savingDept && { opacity: 0.6 }]}
+              onPress={handleCreateDept}
+              activeOpacity={0.8}
+            >
+              {savingDept
+                ? <ActivityIndicator size="small" color="#fff" />
+                : <><Plus size={14} color="#fff" /><Text style={styles.addBtnText}>Add</Text></>
+              }
+            </TouchableOpacity>
+          </View>
+
+          {/* Dept chip grid */}
+          {loading ? (
+            <View style={styles.deptGrid}>
+              {[...Array(6)].map((_, i) => (
+                <View key={i} style={[styles.deptChipSkeleton, { width: i % 2 === 0 ? '47%' : '40%' }]} />
+              ))}
+            </View>
+          ) : departments.length === 0 ? (
+            <Text style={styles.emptyHint}>No departments yet. Add one above.</Text>
+          ) : (
+            <View style={styles.deptGrid}>
+              {departments.map(dept => (
+                <View key={getDId(dept)} style={styles.deptChip}>
+                  <Text style={styles.deptChipText} numberOfLines={1}>
+                    {dept.departmentName || dept.name}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => promptDeleteDept(dept)}
+                    style={styles.deptDeleteBtn}
+                    activeOpacity={0.6}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Trash2 size={15} color={colors.danger} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+
+        {/* ══ CLASSES ══ */}
+        <View style={[styles.section, { marginTop: spacing.md }]}>
+          <View style={styles.sectionTitleRow}>
+            <Layers size={18} color={colors.teacher || '#a78bfa'} />
+            <Text style={[styles.sectionTitle, { color: colors.teacher || '#a78bfa', flex: 1 }]}>Classes</Text>
+            <TouchableOpacity style={styles.addClassBtn} onPress={() => { setClassError(''); setShowClassModal(true); }} activeOpacity={0.8}>
+              <Plus size={13} color="#fff" />
+              <Text style={styles.addClassBtnText}>Add Class</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.tableCard}>
+            <View style={styles.tableHeaderRow}>
+              <Text style={[styles.tableHeaderCell, { flex: 1.2 }]}>Class Name</Text>
+              <Text style={[styles.tableHeaderCell, { flex: 1.4 }]}>Department</Text>
+              <Text style={[styles.tableHeaderCell, { width: 46, textAlign: 'center' }]}>Year</Text>
+              <Text style={[styles.tableHeaderCell, { width: 72, textAlign: 'center' }]}>Actions</Text>
+            </View>
+
+            {loading ? (
+              [...Array(5)].map((_, i) => (
+                <View key={i} style={[styles.tableRow, i % 2 === 1 && styles.tableRowAlt]}>
+                  <View style={[styles.skeletonBox, { flex: 1.2, height: 11 }]} />
+                  <View style={[styles.skeletonBox, { flex: 1.4, height: 11, marginHorizontal: 6 }]} />
+                  <View style={[styles.skeletonBox, { width: 46, height: 11 }]} />
+                  <View style={[styles.skeletonBox, { width: 72, height: 11 }]} />
+                </View>
+              ))
+            ) : classes.length === 0 ? (
+              <View style={styles.tableEmptyRow}>
+                <Text style={styles.tableEmptyText}>No classes found.</Text>
+              </View>
+            ) : (
+              classes.map((cls, index) => (
+                <View key={getClassId(cls)} style={[styles.tableRow, index % 2 === 1 && styles.tableRowAlt]}>
+                  <Text style={[styles.tableCell, { flex: 1.2 }]} numberOfLines={1}>{getClassName(cls)}</Text>
+                  <Text style={[styles.tableCell, { flex: 1.4, color: colors.textSecondary }]} numberOfLines={1}>{getDeptName(cls, departments)}</Text>
+                  <Text style={[styles.tableCell, { width: 46, textAlign: 'center', color: colors.textSecondary }]} numberOfLines={1}>{getAcYear(cls)}</Text>
+                  <View style={styles.tableActions}>
+                    <TouchableOpacity style={styles.actionIconBtn} onPress={() => openEditClass(cls)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                      <Pencil size={14} color={colors.primary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.actionIconBtn} onPress={() => promptDeleteClass(cls)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                      <Trash2 size={14} color={colors.danger} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+        </View>
+      </ScrollView>
+
+      {/* ══ DELETE CONFIRMATION MODAL ══ */}
+      <Modal
+        visible={!!deleteTarget}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !deleting && setDeleteTarget(null)}
+      >
+        <View style={styles.modalOverlayCenter}>
+          <View style={styles.deleteDialogCard}>
+            <View style={styles.deleteIconBadge}>
+              <AlertTriangle size={24} color={colors.danger} />
+            </View>
+
+            <Text style={styles.deleteDialogTitle}>
+              Delete {deleteTarget?.type === 'dept' ? 'Department' : 'Class'}?
+            </Text>
+
+            <Text style={styles.deleteDialogItemName}>
+              "{deleteTarget?.name}"
+            </Text>
+
+            <Text style={styles.deleteDialogWarning}>
+              {deleteTarget?.warning}
+            </Text>
+
+            <View style={styles.deleteDialogActions}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => setDeleteTarget(null)}
+                disabled={deleting}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.formSaveBtn, submittingDept && { opacity: 0.6 }]} onPress={handleCreateDept} disabled={submittingDept}>
-                {submittingDept ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.formSaveText}>Save</Text>}
+
+              <TouchableOpacity
+                style={[styles.deleteConfirmBtn, deleting && { opacity: 0.6 }]}
+                onPress={handleExecuteDelete}
+                disabled={deleting}
+              >
+                {deleting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <Trash2 size={15} color="#fff" />
+                    <Text style={styles.deleteConfirmBtnText}>Delete</Text>
+                  </>
+                )}
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* Add Class Modal */}
+      {/* ══ ADD CLASS MODAL ══ */}
       <Modal visible={showClassModal} transparent animationType="slide" onRequestClose={() => setShowClassModal(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Add Class / Section</Text>
-
-            <Text style={styles.formLabel}>Class Name *</Text>
-            <TextInput
-              style={styles.formInput}
-              value={classForm.className}
-              onChangeText={v => setClassForm(f => ({ ...f, className: v }))}
-              placeholder="e.g. CS101-A"
-              placeholderTextColor={colors.textMuted}
-            />
-
-            <Text style={styles.formLabel}>Academic Year</Text>
-            <TextInput
-              style={styles.formInput}
-              value={classForm.year}
-              onChangeText={v => setClassForm(f => ({ ...f, year: v }))}
-              placeholder="e.g. 2026"
-              placeholderTextColor={colors.textMuted}
-              keyboardType="numeric"
-            />
-
-            {departments.length > 0 && (
-              <>
-                <Text style={styles.formLabel}>Select Department</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.sm }}>
-                  {departments.map(d => (
-                    <TouchableOpacity
-                      key={d.id}
-                      style={[styles.chip, classForm.departmentId === d.id && styles.chipActive]}
-                      onPress={() => setClassForm(f => ({ ...f, departmentId: d.id }))}
-                    >
-                      <Text style={[styles.chipText, classForm.departmentId === d.id && styles.chipTextActive]}>
-                        {d.name || d.departmentName}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </>
-            )}
-
-            <View style={styles.formButtons}>
-              <TouchableOpacity style={styles.formCancelBtn} onPress={() => setShowClassModal(false)} disabled={submittingClass}>
-                <Text style={styles.formCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.formSaveBtn, submittingClass && { opacity: 0.6 }]} onPress={handleCreateClass} disabled={submittingClass}>
-                {submittingClass ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.formSaveText}>Create Class</Text>}
-              </TouchableOpacity>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalSheet}>
+              <View style={styles.modalHandle} />
+              <View style={styles.modalTitleRow}>
+                <Text style={styles.modalTitle}>Add Class / Section</Text>
+                <TouchableOpacity onPress={() => setShowClassModal(false)}>
+                  <X size={20} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+              <Banner type="error" message={classError} onDismiss={() => setClassError('')} />
+              <Text style={styles.formLabel}>Class Name (e.g. CS101-A) *</Text>
+              <TextInput style={styles.formInput} value={classForm.className} onChangeText={v => setClassForm(f => ({ ...f, className: v }))} placeholder="Name & Section" placeholderTextColor={colors.textMuted} />
+              <Text style={styles.formLabel}>Academic Year</Text>
+              <TextInput style={styles.formInput} value={classForm.year} onChangeText={v => setClassForm(f => ({ ...f, year: v }))} placeholder={String(new Date().getFullYear())} placeholderTextColor={colors.textMuted} keyboardType="numeric" />
+              {departments.length > 0 && (
+                <>
+                  <Text style={styles.formLabel}>Select Department</Text>
+                  <DeptChipPicker value={classForm.departmentId} onChange={v => setClassForm(f => ({ ...f, departmentId: v }))} />
+                </>
+              )}
+              <View style={styles.formBtns}>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowClassModal(false)}>
+                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.saveBtn, savingClass && { opacity: 0.6 }]} onPress={handleCreateClass}>
+                  {savingClass ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.saveBtnText}>Add Class</Text>}
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
-      {/* Edit Class Modal */}
+      {/* ══ EDIT CLASS MODAL ══ */}
       <Modal visible={!!editingClass} transparent animationType="slide" onRequestClose={() => setEditingClass(null)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Edit Class</Text>
-
-            <Text style={styles.formLabel}>Class Name *</Text>
-            <TextInput
-              style={styles.formInput}
-              value={editClassForm.className}
-              onChangeText={v => setEditClassForm(f => ({ ...f, className: v }))}
-              placeholder="Class Name"
-              placeholderTextColor={colors.textMuted}
-            />
-
-            <Text style={styles.formLabel}>Academic Year</Text>
-            <TextInput
-              style={styles.formInput}
-              value={editClassForm.year}
-              onChangeText={v => setEditClassForm(f => ({ ...f, year: v }))}
-              placeholder="Academic Year"
-              placeholderTextColor={colors.textMuted}
-              keyboardType="numeric"
-            />
-
-            {departments.length > 0 && (
-              <>
-                <Text style={styles.formLabel}>Department</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.sm }}>
-                  {departments.map(d => (
-                    <TouchableOpacity
-                      key={d.id}
-                      style={[styles.chip, editClassForm.departmentId === d.id && styles.chipActive]}
-                      onPress={() => setEditClassForm(f => ({ ...f, departmentId: d.id }))}
-                    >
-                      <Text style={[styles.chipText, editClassForm.departmentId === d.id && styles.chipTextActive]}>
-                        {d.name || d.departmentName}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </>
-            )}
-
-            <View style={styles.formButtons}>
-              <TouchableOpacity style={styles.formCancelBtn} onPress={() => setEditingClass(null)} disabled={submittingEditClass}>
-                <Text style={styles.formCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.formSaveBtn, submittingEditClass && { opacity: 0.6 }]} onPress={handleUpdateClass} disabled={submittingEditClass}>
-                {submittingEditClass ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.formSaveText}>Save Changes</Text>}
-              </TouchableOpacity>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalSheet}>
+              <View style={styles.modalHandle} />
+              <View style={styles.modalTitleRow}>
+                <Text style={styles.modalTitle}>Edit Class Details</Text>
+                <TouchableOpacity onPress={() => setEditingClass(null)}>
+                  <X size={20} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+              <Banner type="error" message={editError} onDismiss={() => setEditError('')} />
+              <Text style={styles.formLabel}>Class Name *</Text>
+              <TextInput style={styles.formInput} value={editForm.className} onChangeText={v => setEditForm(f => ({ ...f, className: v }))} placeholder="Name & Section" placeholderTextColor={colors.textMuted} />
+              <Text style={styles.formLabel}>Academic Year</Text>
+              <TextInput style={styles.formInput} value={editForm.year} onChangeText={v => setEditForm(f => ({ ...f, year: v }))} placeholder="e.g. 2026" placeholderTextColor={colors.textMuted} keyboardType="numeric" />
+              {departments.length > 0 && (
+                <>
+                  <Text style={styles.formLabel}>Department</Text>
+                  <DeptChipPicker value={editForm.departmentId} onChange={v => setEditForm(f => ({ ...f, departmentId: v }))} />
+                </>
+              )}
+              <View style={styles.formBtns}>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditingClass(null)}>
+                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.saveBtn, savingEdit && { opacity: 0.6 }]} onPress={handleUpdateClass}>
+                  {savingEdit
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <><Save size={13} color="#fff" /><Text style={[styles.saveBtnText, { marginLeft: 4 }]}>Save Changes</Text></>
+                  }
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
 };
 
+/* ─────────────── styles ─────────────── */
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bgPrimary },
-  list: { padding: spacing.md },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    borderLeftWidth: 3,
-    paddingLeft: spacing.sm,
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  sectionHeaderTitle: {
-    ...typography.base,
-    ...typography.bold,
-    flex: 1,
-  },
-  countBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: radius.full,
-  },
-  countText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  addSectionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radius.sm,
-  },
-  addSectionBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  itemCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  container:     { flex: 1, backgroundColor: colors.bgPrimary },
+  scroll:        { flex: 1 },
+  scrollContent: { padding: spacing.md, paddingBottom: 60 },
+
+  section: {
     backgroundColor: colors.bgCard,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     padding: spacing.md,
-    marginBottom: spacing.xs,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  itemDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: spacing.sm,
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.md },
+  sectionTitle:    { fontSize: 16, fontWeight: '700' },
+
+  addRow:   { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
+  addInput: {
+    flex: 1,
+    backgroundColor: colors.bgInput || colors.bgElevated,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    color: colors.textPrimary,
+    fontSize: 13,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 9,
+  },
+  addBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    paddingHorizontal: 14, paddingVertical: 9,
+  },
+  addBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+
+  deptGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  deptChip: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: colors.bgElevated,
+    borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
+    paddingLeft: spacing.sm, paddingRight: 4, paddingVertical: 6,
+    gap: 4, maxWidth: '48%',
+  },
+  deptChipText: {
+    fontSize: 13, fontWeight: '500', color: colors.textPrimary,
+    flex: 1, minWidth: 0,
+  },
+  deptDeleteBtn: {
+    padding: 6,
+    borderRadius: radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
     flexShrink: 0,
   },
-  itemInfo: { flex: 1 },
-  itemName: { ...typography.base, ...typography.semibold, color: colors.textPrimary },
-  itemMeta: { ...typography.sm, color: colors.textMuted, marginTop: 2 },
-  cardActions: { flexDirection: 'row', gap: spacing.xs },
-  iconBtn: { padding: 6, borderRadius: radius.sm, backgroundColor: colors.bgElevated },
-  empty: { alignItems: 'center', paddingTop: spacing.xxl },
-  emptyText: { ...typography.base, color: colors.textMuted },
-  // Modals
+  deptChipSkeleton: { height: 36, borderRadius: radius.md, backgroundColor: colors.border, opacity: 0.35 },
+  emptyHint:        { fontSize: 13, color: colors.textMuted, marginTop: spacing.xs },
+
+  addClassBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: colors.primary,
+    borderRadius: radius.md, paddingHorizontal: 10, paddingVertical: 6,
+  },
+  addClassBtnText: { color: '#fff', fontWeight: '700', fontSize: 12 },
+
+  tableCard:       { borderRadius: radius.md, overflow: 'hidden', borderWidth: 1, borderColor: colors.border },
+  tableHeaderRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: colors.bgElevated,
+    paddingVertical: 9, paddingHorizontal: spacing.sm,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
+  },
+  tableHeaderCell: { fontSize: 11, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.4 },
+  tableRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 11, paddingHorizontal: spacing.sm,
+    borderBottomWidth: 1, borderBottomColor: colors.border + '55',
+  },
+  tableRowAlt:    { backgroundColor: 'rgba(255,255,255,0.02)' },
+  tableCell:      { fontSize: 13, fontWeight: '500', color: colors.textPrimary },
+  tableActions:   { width: 72, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  actionIconBtn:  {
+    padding: 6, borderRadius: radius.sm, backgroundColor: colors.bgElevated,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  tableEmptyRow:  { padding: spacing.lg, alignItems: 'center' },
+  tableEmptyText: { fontSize: 13, color: colors.textMuted },
+  skeletonBox:    { borderRadius: 4, backgroundColor: colors.border, opacity: 0.35, marginRight: 4 },
+
+  /* Bottom sheet modal styles */
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   modalSheet: {
     backgroundColor: colors.bgCard,
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
-    padding: spacing.lg,
-    paddingBottom: spacing.xxl,
+    borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl,
+    padding: spacing.lg, paddingBottom: 40,
   },
   modalHandle: {
     width: 40, height: 4, borderRadius: 2,
     backgroundColor: colors.border, alignSelf: 'center', marginBottom: spacing.md,
   },
-  modalTitle: { ...typography.xl, ...typography.bold, color: colors.textPrimary, marginBottom: spacing.md },
-  formLabel: { ...typography.xs, color: colors.textSecondary, fontWeight: '600', marginBottom: 4, marginTop: spacing.xs },
-  formInput: {
-    backgroundColor: colors.bgInput,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    color: colors.textPrimary,
-    ...typography.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    marginBottom: spacing.xs,
+  modalTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md },
+  modalTitle:    { fontSize: 17, fontWeight: '700', color: colors.textPrimary },
+  formLabel: {
+    fontSize: 11, color: colors.textSecondary, fontWeight: '600',
+    marginBottom: 4, marginTop: spacing.sm,
+    textTransform: 'uppercase', letterSpacing: 0.4,
   },
-  chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
+  formInput: {
+    backgroundColor: colors.bgInput || colors.bgElevated,
+    borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
+    color: colors.textPrimary, fontSize: 14,
+    paddingHorizontal: spacing.md, paddingVertical: 11, marginBottom: 4,
+  },
+  chipScroll: { marginTop: 4, marginBottom: spacing.sm },
+  filterChip: {
+    paddingHorizontal: spacing.md, paddingVertical: 7,
     borderRadius: radius.full,
-    backgroundColor: colors.bgElevated,
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: colors.bgElevated, borderWidth: 1, borderColor: colors.border,
     marginRight: spacing.xs,
   },
-  chipActive: {
-    backgroundColor: colors.primary + '22',
-    borderColor: colors.primary,
+  filterChipActive:     { backgroundColor: colors.primary + '22', borderColor: colors.primary },
+  filterChipText:       { fontSize: 12, color: colors.textMuted },
+  filterChipTextActive: { color: colors.primary, fontWeight: '700' },
+  formBtns:      { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg },
+  cancelBtn: {
+    flex: 1, paddingVertical: 13, borderRadius: radius.md,
+    backgroundColor: colors.bgElevated, alignItems: 'center',
+    borderWidth: 1, borderColor: colors.border,
   },
-  chipText: { ...typography.xs, color: colors.textMuted },
-  chipTextActive: { color: colors.primary, fontWeight: '700' },
-  formButtons: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg },
-  formCancelBtn: { flex: 1, paddingVertical: 12, borderRadius: radius.md, backgroundColor: colors.bgElevated, alignItems: 'center' },
-  formCancelText: { ...typography.sm, ...typography.semibold, color: colors.textSecondary },
-  formSaveBtn: { flex: 1, paddingVertical: 12, borderRadius: radius.md, backgroundColor: colors.primary, alignItems: 'center' },
-  formSaveText: { ...typography.sm, ...typography.bold, color: '#fff' },
+  cancelBtnText: { fontSize: 14, fontWeight: '600', color: colors.textSecondary },
+  saveBtn: {
+    flex: 1, paddingVertical: 13, borderRadius: radius.md,
+    backgroundColor: colors.primary,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+  },
+  saveBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+
+  /* Delete Confirmation Center Dialog */
+  modalOverlayCenter: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  deleteDialogCard: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    alignItems: 'center',
+  },
+  deleteIconBadge: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(239,68,68,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  deleteDialogTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 4,
+  },
+  deleteDialogItemName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.danger,
+    marginBottom: spacing.xs,
+  },
+  deleteDialogWarning: {
+    fontSize: 12,
+    color: colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: spacing.lg,
+  },
+  deleteDialogActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    width: '100%',
+  },
+  deleteConfirmBtn: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: radius.md,
+    backgroundColor: colors.danger,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  deleteConfirmBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#fff',
+  },
 });
 
 export default AcademicManageScreen;

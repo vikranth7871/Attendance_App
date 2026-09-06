@@ -38,12 +38,18 @@ const corsOptions = {
     origin: function (origin, callback) {
         // Allow requests with no origin (like mobile apps or curl)
         if (!origin) return callback(null, true);
-        if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes('*')) {
+        if (
+            process.env.NODE_ENV !== 'production' ||
+            allowedOrigins.indexOf(origin) !== -1 ||
+            allowedOrigins.includes('*') ||
+            /^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin)
+        ) {
             callback(null, true);
         } else {
             callback(new Error(`Origin ${origin} not allowed by CORS`));
         }
     },
+    credentials: true,
     optionsSuccessStatus: 200
 };
 app.use(cors(corsOptions));

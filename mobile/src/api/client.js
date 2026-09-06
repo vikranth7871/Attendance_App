@@ -3,12 +3,23 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import Constants from 'expo-constants';
 
-// Get LAN host IP dynamically from Expo Go / Metro bundler if available
-const debuggerHost = Constants.expoConfig?.hostUri || Constants.manifest2?.extra?.expoClient?.hostUri || '';
-const lanIp = debuggerHost ? debuggerHost.split(':')[0] : 'localhost';
+import { Platform } from 'react-native';
 
-// Default to LAN IP so physical devices on Wi-Fi reach the backend at port 5005
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL || `http://${lanIp}:5005/api`;
+// Dynamically determine backend host IP:
+// - On web: use the current browser hostname (e.g. localhost or 127.0.0.1)
+// - On native mobile: get LAN host IP dynamically from Expo Go / Metro hostUri
+let host = 'localhost';
+if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.hostname) {
+  host = window.location.hostname;
+} else {
+  const debuggerHost = Constants.expoConfig?.hostUri || Constants.manifest2?.extra?.expoClient?.hostUri || '';
+  if (debuggerHost) {
+    host = debuggerHost.split(':')[0];
+  }
+}
+
+// Default to port 5005
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL || `http://${host}:5005/api`;
 
 const api = axios.create({
   baseURL: BASE_URL,
@@ -24,6 +35,8 @@ api.interceptors.request.use(
       const token = await AsyncStorage.getItem('token');
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
+        // Also keep defaults in sync so subsequent calls without interceptor work
+        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       }
     } catch (e) {
       console.warn('Could not read token from storage:', e);

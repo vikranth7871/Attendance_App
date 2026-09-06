@@ -39,6 +39,7 @@ const ClassRosterScreen = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [search, setSearch] = useState('');
 
   // Profile Dossier & Coordinator Edit State
   const [profileStats, setProfileStats] = useState(null);

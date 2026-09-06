@@ -439,10 +439,23 @@ export const getManageQuizzes = async (req, res) => {
     try {
         const userId = req.user.id || req.user._id;
         let sql = `
-            SELECT q.*, s.name as subject_name, u.name as creator_name
+            SELECT 
+                q.*, 
+                s.name as subject_name, 
+                u.name as creator_name,
+                COALESCE(qa_stats.total_attempts, 0)::int as total_attempts,
+                COALESCE(qa_stats.unique_students, 0)::int as unique_students
             FROM quizzes q
             LEFT JOIN subjects s ON q.subject_id = s.id
             LEFT JOIN users u ON q.creator_id = u.id
+            LEFT JOIN (
+                SELECT 
+                    quiz_id, 
+                    COUNT(*)::int as total_attempts,
+                    COUNT(DISTINCT student_id)::int as unique_students
+                FROM quiz_attempts
+                GROUP BY quiz_id
+            ) qa_stats ON qa_stats.quiz_id = q.id
         `;
         const params = [];
         if (req.user.role === 'teacher') {
@@ -459,9 +472,14 @@ export const getManageQuizzes = async (req, res) => {
             description: q.description,
             isPublished: q.is_active ?? true,
             type: q.type || 'practice',
+            difficulty: q.difficulty || 'mixed',
+            timeLimit: q.time_limit || 30,
+            passingScore: q.passing_score || 80,
+            maxAttempts: q.max_attempts || 3,
             subjectId: q.subject_id ? { _id: String(q.subject_id), id: q.subject_id, subjectName: q.subject_name } : null,
             createdBy: { _id: String(q.creator_id), name: q.creator_name },
-            totalAttempts: 0,
+            totalAttempts: parseInt(q.total_attempts || 0, 10),
+            uniqueStudents: parseInt(q.unique_students || 0, 10),
             questionCount: Array.isArray(q.questions) ? q.questions.length : 0,
             questions: q.questions || []
         }));
@@ -809,6 +827,8 @@ export const getMyCertificates = async (req, res) => {
 export const deleteQuiz = async (req, res) => {
     try {
         const { id } = req.params;
+        await pool.query('DELETE FROM quiz_attempts WHERE quiz_id = $1', [id]);
+        await pool.query('DELETE FROM certificates WHERE quiz_id = $1', [id]);
         await pool.query('DELETE FROM quizzes WHERE id = $1', [id]);
         res.json({ message: 'Quiz deleted successfully' });
     } catch (error) {
