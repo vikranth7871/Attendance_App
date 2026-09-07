@@ -1,12 +1,26 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, RefreshControl, ActivityIndicator, Alert
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TextInput,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  RefreshControl,
+  ActivityIndicator,
+  Alert,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  MessageSquare, Send, User, ChevronLeft, Search, Check,
-  Clock, Sparkles
+  MessageSquare,
+  Send,
+  User,
+  ChevronLeft,
+  Search,
+  X,
 } from 'lucide-react-native';
 import Header from '../../components/Header';
 import { CardSkeleton } from '../../components/LoadingSkeleton';
@@ -14,12 +28,32 @@ import { useAuth } from '../../context/AuthContext';
 import api from '../../api/client';
 import { colors, spacing, radius, typography, shadows } from '../../styles/theme';
 
+/**
+ * Format timestamp into exact web format: "Aug 1 at 06:30 PM"
+ */
+const formatMsgDate = (dateStr) => {
+  if (!dateStr) return 'Recently';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return 'Recently';
+    const month = d.toLocaleDateString('en-US', { month: 'short' });
+    const day = d.getDate();
+    const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    return `${month} ${day} at ${time}`;
+  } catch {
+    return 'Recently';
+  }
+};
+
 const TeacherMessagesScreen = ({ navigation }) => {
   const { user } = useAuth();
+  const { width } = useWindowDimensions();
+  const isWide = width >= 768; // Tablet / Web 2-column view
+
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedParent, setSelectedParent] = useState(null);
+  const [selectedParentId, setSelectedParentId] = useState(null);
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
   const [search, setSearch] = useState('');
@@ -37,149 +71,170 @@ const TeacherMessagesScreen = ({ navigation }) => {
     }
   };
 
-  useEffect(() => { fetchMessages(); }, []);
-  const onRefresh = useCallback(() => { setRefreshing(true); fetchMessages(); }, []);
+  useEffect(() => {
+    fetchMessages();
+  }, []);
 
-  // Group messages by parent
-  const conversations = React.useMemo(() => {
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchMessages();
+  }, []);
+
+  const teacherId = user?.id || user?._id;
+
+  // Group conversations by Parent ID and calculate unread counts dynamically
+  const parentMap = useMemo(() => {
     const map = {};
-    messages.forEach(m => {
-      const isMe = m.sender_id === user?.id;
-      const partnerId = isMe ? m.receiver_id : m.sender_id;
-      const partnerName = isMe ? m.receiver_name : m.sender_name;
-      if (!map[partnerId]) {
-        map[partnerId] = {
-          partnerId,
-          partnerName: partnerName || 'Parent',
-          studentName: m.student_name,
+    messages.forEach((m) => {
+      const isParentSender = m.sender_role === 'parent';
+      const parentId = isParentSender ? m.sender_id : m.receiver_id;
+      const parentName = isParentSender ? m.sender_name : m.receiver_name;
+      if (!parentId) return;
+
+      if (!map[parentId]) {
+        map[parentId] = {
+          parentId,
+          parentName: parentName || 'Parent',
+          studentName: m.student_name || 'Student',
+          studentId: m.student_id || null,
+          messages: [],
           lastMessage: m.message,
           lastDate: m.created_at,
-          messages: [],
+          unreadCount: 0,
         };
       }
-      map[partnerId].messages.push(m);
-      map[partnerId].lastMessage = m.message;
-      map[partnerId].lastDate = m.created_at;
-    });
-    return Object.values(map);
-  }, [messages, user]);
+      map[parentId].messages.push(m);
+      map[parentId].lastMessage = m.message;
+      map[parentId].lastDate = m.created_at;
 
+      if (m.student_name && map[parentId].studentName === 'Student') {
+        map[parentId].studentName = m.student_name;
+      }
+      if (m.student_id && !map[parentId].studentId) {
+        map[parentId].studentId = m.student_id;
+      }
+
+      // Check if this message is unread for the teacher
+      const isIncoming = m.sender_role === 'parent' || (teacherId && String(m.receiver_id) === String(teacherId));
+      const isUnread = isIncoming && (m.is_read === false || m.is_read === 0 || m.is_read === 'false' || !m.is_read);
+      if (isUnread) {
+        map[parentId].unreadCount += 1;
+      }
+    });
+    return map;
+  }, [messages, teacherId]);
+
+  const conversationList = useMemo(() => Object.values(parentMap), [parentMap]);
+
+  // Dynamic count of total unread messages across all parent inquiries
+  const totalUnreadCount = useMemo(() => {
+    return conversationList.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+  }, [conversationList]);
+
+  // Mark messages from parent as read locally and persist to backend
+  const markConversationAsRead = useCallback(async (parentId) => {
+    if (!parentId) return;
+
+    // 1. Instantly update local state so badge responds with 0 delay
+    setMessages((prev) =>
+      prev.map((m) => {
+        const isFromThisParent =
+          (m.sender_role === 'parent' && String(m.sender_id) === String(parentId)) ||
+          (String(m.receiver_id) === String(teacherId) && String(m.sender_id) === String(parentId));
+        if (isFromThisParent && !m.is_read) {
+          return { ...m, is_read: true };
+        }
+        return m;
+      })
+    );
+
+    // 2. Persist to backend
+    try {
+      await api.put(`/teacher/messages/read/${parentId}`);
+    } catch (e) {
+      console.warn('Failed to mark messages as read on server:', e);
+    }
+  }, [teacherId]);
+
+  const handleSelectParent = (parentId) => {
+    setSelectedParentId(parentId);
+    markConversationAsRead(parentId);
+  };
+
+  // Auto-select first conversation on wide screens if none selected
+  useEffect(() => {
+    if (isWide && conversationList.length > 0 && !selectedParentId) {
+      setSelectedParentId(conversationList[0].parentId);
+      markConversationAsRead(conversationList[0].parentId);
+    }
+  }, [isWide, conversationList, selectedParentId, markConversationAsRead]);
+
+  const activeConversation = selectedParentId
+    ? parentMap[selectedParentId]
+    : isWide && conversationList.length > 0
+    ? conversationList[0]
+    : null;
+
+  // Search filtering
+  const filteredConversations = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return conversationList;
+    return conversationList.filter(
+      (c) =>
+        c.parentName?.toLowerCase().includes(q) ||
+        c.studentName?.toLowerCase().includes(q) ||
+        c.lastMessage?.toLowerCase().includes(q)
+    );
+  }, [conversationList, search]);
+
+  // Send reply
   const handleSendReply = async () => {
-    if (!replyText.trim() || !selectedParent) return;
+    if (!replyText.trim() || !activeConversation) return;
     setSending(true);
     try {
-      const activeConvo = conversations.find(c => c.partnerId === selectedParent.partnerId);
-      const studentId = activeConvo?.messages[0]?.student_id || null;
-
       await api.post('/teacher/messages/reply', {
-        receiverId: selectedParent.partnerId,
-        studentId,
-        subject: 'Reply from Teacher',
+        receiverId: activeConversation.parentId,
+        studentId: activeConversation.studentId || null,
+        subject: 'Teacher Response',
         message: replyText.trim(),
       });
       setReplyText('');
-      fetchMessages();
+      await fetchMessages();
     } catch (err) {
+      console.error('Error sending teacher reply:', err);
       Alert.alert('Send Error', err.response?.data?.message || 'Could not send message.');
     } finally {
       setSending(false);
     }
   };
 
-  const filteredConversations = conversations.filter(c => {
-    const q = search.toLowerCase();
-    return !q ||
-      c.partnerName?.toLowerCase().includes(q) ||
-      c.studentName?.toLowerCase().includes(q) ||
-      c.lastMessage?.toLowerCase().includes(q);
-  });
-
-  /* ── Thread View ── */
-  if (selectedParent) {
-    const activeConvo = conversations.find(c => c.partnerId === selectedParent.partnerId);
-    const threadMessages = activeConvo?.messages || [];
-
-    return (
-      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-        {/* Thread Header */}
-        <View style={styles.threadHeader}>
-          <TouchableOpacity onPress={() => setSelectedParent(null)} style={styles.backBtn}>
-            <ChevronLeft size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <View style={styles.threadPartnerInfo}>
-            <Text style={styles.threadPartnerName}>{selectedParent.partnerName}</Text>
-            {activeConvo?.studentName && (
-              <Text style={styles.threadStudentTag}>Parent of {activeConvo.studentName}</Text>
-            )}
-          </View>
+  /* ─────────────────────────────────────────────────────────────
+     1. PARENT INQUIRIES LIST SUB-TREE
+     ───────────────────────────────────────────────────────────── */
+  const renderInquiriesList = (fullWidth = false) => (
+    <View style={[styles.inquiriesContainer, fullWidth && { width: '100%', flex: 1 }]}>
+      <View style={styles.inquiriesHeaderRow}>
+        <Text style={styles.inquiriesSectionTitle}>PARENT INQUIRIES</Text>
+        <View
+          style={[
+            styles.inquiriesBadge,
+            totalUnreadCount > 0 ? styles.inquiriesBadgeUnread : styles.inquiriesBadgeZero,
+          ]}
+        >
+          <Text
+            style={[
+              styles.inquiriesBadgeText,
+              totalUnreadCount > 0 ? styles.inquiriesBadgeTextUnread : styles.inquiriesBadgeTextZero,
+            ]}
+          >
+            {totalUnreadCount}
+          </Text>
         </View>
+      </View>
 
-        {/* Message bubbles */}
-        <FlatList
-          ref={flatListRef}
-          data={threadMessages}
-          keyExtractor={(item, i) => item.id?.toString() || i.toString()}
-          renderItem={({ item }) => {
-            const isMe = item.sender_id === user?.id;
-            return (
-              <View style={[styles.bubbleWrap, isMe ? styles.bubbleWrapRight : styles.bubbleWrapLeft]}>
-                <View style={[styles.bubble, isMe ? styles.bubbleRight : styles.bubbleLeft]}>
-                  {item.subject && item.subject !== 'Reply from Teacher' && (
-                    <Text style={[styles.bubbleSubject, isMe && { color: 'rgba(255,255,255,0.85)' }]}>
-                      {item.subject}
-                    </Text>
-                  )}
-                  <Text style={[styles.bubbleText, isMe && styles.bubbleTextRight]}>
-                    {item.message}
-                  </Text>
-                  <Text style={[styles.bubbleTime, isMe && styles.bubbleTimeRight]}>
-                    {item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                  </Text>
-                </View>
-              </View>
-            );
-          }}
-          contentContainerStyle={styles.threadList}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-        />
-
-        {/* Reply Input Bar */}
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={styles.replyBar}>
-            <TextInput
-              style={styles.replyInput}
-              placeholder={`Message ${selectedParent.partnerName}...`}
-              placeholderTextColor={colors.textMuted}
-              value={replyText}
-              onChangeText={setReplyText}
-              multiline
-              maxLength={500}
-            />
-            <TouchableOpacity
-              style={[styles.sendBtn, (!replyText.trim() || sending) && { opacity: 0.5 }]}
-              onPress={handleSendReply}
-              disabled={!replyText.trim() || sending}
-            >
-              {sending ? <ActivityIndicator size="small" color="#fff" /> : <Send size={18} color="#fff" />}
-            </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    );
-  }
-
-  /* ── Conversation List View ── */
-  return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <Header
-        title="Parent Communications"
-        subtitle={`${conversations.length} active conversations`}
-        navigation={navigation}
-      />
-
-      {/* Search Row */}
-      <View style={styles.searchRow}>
-        <Search size={16} color={colors.textMuted} style={{ marginRight: spacing.sm }} />
+      {/* Search Input */}
+      <View style={styles.searchBox}>
+        <Search size={15} color={colors.textMuted} style={{ marginRight: 8 }} />
         <TextInput
           style={styles.searchInput}
           placeholder="Search parents or students..."
@@ -187,93 +242,588 @@ const TeacherMessagesScreen = ({ navigation }) => {
           value={search}
           onChangeText={setSearch}
         />
+        {search ? (
+          <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <X size={14} color={colors.textMuted} />
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       {loading ? (
-        <View style={{ padding: spacing.md }}>
-          {[...Array(4)].map((_, i) => <CardSkeleton key={i} style={{ marginBottom: spacing.sm }} />)}
+        <View style={{ padding: spacing.sm }}>
+          {[...Array(3)].map((_, i) => (
+            <CardSkeleton key={i} style={{ marginBottom: spacing.sm, height: 74 }} />
+          ))}
+        </View>
+      ) : filteredConversations.length === 0 ? (
+        <View style={styles.emptyInquiries}>
+          <MessageSquare size={36} color={colors.textMuted} />
+          <Text style={styles.emptyInquiriesTitle}>No parent messages</Text>
+          <Text style={styles.emptyInquiriesSub}>Parent inquiries will appear here</Text>
         </View>
       ) : (
         <FlatList
           data={filteredConversations}
-          keyExtractor={item => item.partnerId?.toString()}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={[styles.convoCard, shadows.sm]}
-              onPress={() => setSelectedParent(item)}
-              activeOpacity={0.75}
-            >
-              <View style={[styles.avatar, { backgroundColor: colors.parent + '22' }]}>
-                <User size={22} color={colors.parent} />
-              </View>
-              <View style={styles.convoInfo}>
-                <View style={styles.convoTop}>
-                  <Text style={styles.convoName}>{item.partnerName}</Text>
-                  <Text style={styles.convoTime}>
-                    {item.lastDate ? new Date(item.lastDate).toLocaleDateString([], { month: 'short', day: 'numeric' }) : ''}
-                  </Text>
+          keyExtractor={(item) => String(item.parentId)}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#8b5cf6" />
+          }
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: spacing.lg }}
+          renderItem={({ item }) => {
+            const isSelected = String(activeConversation?.parentId) === String(item.parentId);
+            return (
+              <TouchableOpacity
+                style={[
+                  styles.inquiryCard,
+                  isSelected && styles.inquiryCardActive,
+                ]}
+                onPress={() => handleSelectParent(item.parentId)}
+                activeOpacity={0.75}
+              >
+                <View style={styles.inquiryCardHeader}>
+                  <View style={styles.inquiryHeaderLeft}>
+                    <Text style={[styles.inquiryParentName, isSelected && { color: '#fff' }]}>
+                      {item.parentName}
+                    </Text>
+                    {item.unreadCount > 0 && (
+                      <View style={styles.cardUnreadBadge}>
+                        <Text style={styles.cardUnreadBadgeText}>{item.unreadCount} new</Text>
+                      </View>
+                    )}
+                  </View>
+                  {item.lastDate && (
+                    <Text style={styles.inquiryDate}>
+                      {new Date(item.lastDate).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                    </Text>
+                  )}
                 </View>
-                {item.studentName && (
-                  <Text style={styles.convoStudent}>Parent of {item.studentName}</Text>
-                )}
-                <Text style={styles.convoSnippet} numberOfLines={1}>
-                  {item.lastMessage}
+
+                <Text style={styles.inquiryChildTag}>
+                  Child: {item.studentName}
                 </Text>
-              </View>
+
+                {item.lastMessage && (
+                  <Text style={styles.inquirySnippet} numberOfLines={1} ellipsizeMode="tail">
+                    {item.lastMessage}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            );
+          }}
+        />
+      )}
+    </View>
+  );
+
+  /* ─────────────────────────────────────────────────────────────
+     2. CHAT THREAD VIEW SUB-TREE
+     ───────────────────────────────────────────────────────────── */
+  const renderChatThread = (showBackButton = false) => {
+    if (!activeConversation) {
+      return (
+        <View style={styles.emptyThreadContainer}>
+          <MessageSquare size={44} color={colors.textMuted} />
+          <Text style={styles.emptyThreadText}>
+            Select a parent conversation from the left to view messages.
+          </Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.chatThreadContainer}>
+        {/* Chat Thread Header */}
+        <View style={styles.chatHeader}>
+          {showBackButton && (
+            <TouchableOpacity
+              onPress={() => setSelectedParentId(null)}
+              style={styles.backBtn}
+              activeOpacity={0.7}
+              accessibilityLabel="Back to inquiries list"
+            >
+              <ChevronLeft size={22} color={colors.textPrimary} />
             </TouchableOpacity>
           )}
-          contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.teacher} />}
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <MessageSquare size={40} color={colors.textMuted} />
-              <Text style={styles.emptyTitle}>No Conversations</Text>
-              <Text style={styles.emptySub}>Messages from parents will appear here</Text>
-            </View>
-          }
+
+          <View style={{ flex: 1 }}>
+            <Text style={styles.chatHeaderName}>{activeConversation.parentName}</Text>
+            <Text style={styles.chatHeaderSub}>
+              Parent of: <Text style={{ fontWeight: '700', color: colors.textPrimary }}>{activeConversation.studentName}</Text>
+            </Text>
+          </View>
+        </View>
+
+        {/* Message Stream */}
+        <FlatList
+          ref={flatListRef}
+          data={activeConversation.messages}
+          keyExtractor={(m, i) => m.id?.toString() || i.toString()}
+          contentContainerStyle={styles.messagesListContent}
+          showsVerticalScrollIndicator={false}
+          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+          renderItem={({ item: msg }) => {
+            const isTeacher = msg.sender_role === 'teacher' || msg.sender_id === user?.id;
+            const senderDisplayName = isTeacher
+              ? msg.sender_name || user?.name || 'Jane Teacher'
+              : msg.sender_name || activeConversation.parentName;
+
+            return (
+              <View
+                style={[
+                  styles.msgWrapper,
+                  isTeacher ? styles.msgWrapperRight : styles.msgWrapperLeft,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.msgBubble,
+                    isTeacher ? styles.msgBubbleTeacher : styles.msgBubbleParent,
+                  ]}
+                >
+                  <View style={styles.msgTopRow}>
+                    <Text style={styles.msgSenderLabel}>{senderDisplayName}</Text>
+                    <Text style={styles.msgTimestamp}>{formatMsgDate(msg.created_at)}</Text>
+                  </View>
+                  <Text style={styles.msgBodyText}>{msg.message}</Text>
+                </View>
+              </View>
+            );
+          }}
         />
+
+        {/* Reply Input Bar */}
+        <View style={styles.replyBar}>
+          <TextInput
+            style={styles.replyInput}
+            value={replyText}
+            onChangeText={setReplyText}
+            placeholder={`Reply to ${activeConversation.parentName}...`}
+            placeholderTextColor={colors.textMuted}
+            multiline
+            maxLength={1000}
+          />
+          <TouchableOpacity
+            style={[
+              styles.sendBtn,
+              (!replyText.trim() || sending) && styles.sendBtnDisabled,
+            ]}
+            onPress={handleSendReply}
+            disabled={!replyText.trim() || sending}
+            activeOpacity={0.8}
+          >
+            {sending ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Send size={15} color="#fff" style={{ marginRight: 6 }} />
+                <Text style={styles.sendBtnText}>Send Reply</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
+  /* ─────────────────────────────────────────────────────────────
+     3. MAIN RESPONSIVE RENDER
+     ───────────────────────────────────────────────────────────── */
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Sleek Header */}
+      <Header
+        title="Parent Communication"
+        subtitle="Educator Overview"
+        navigation={navigation}
+      />
+
+      {/* Top Banner Matching Web Screenshot */}
+      <View style={styles.topBanner}>
+        <View style={styles.bannerTitleRow}>
+          <View style={styles.bannerIconBox}>
+            <MessageSquare size={20} color="#8b5cf6" />
+          </View>
+          <Text style={styles.bannerTitle}>Parent Communication & Inbox</Text>
+        </View>
+        <Text style={styles.bannerSubtitle}>
+          Receive inquiries from parents, view child details, and send direct responses.
+        </Text>
+      </View>
+
+      {/* Responsive Viewport */}
+      {isWide ? (
+        /* Tablet / Desktop Split Grid View (Exact match to web screenshot) */
+        <View style={styles.splitGrid}>
+          <View style={styles.sidebarColumn}>{renderInquiriesList(false)}</View>
+          <View style={styles.chatColumn}>{renderChatThread(false)}</View>
+        </View>
+      ) : (
+        /* Mobile Portrait View (Responsive flow) */
+        selectedParentId ? (
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+          >
+            {renderChatThread(true)}
+          </KeyboardAvoidingView>
+        ) : (
+          renderInquiriesList(true)
+        )
       )}
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bgPrimary },
-  searchRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgInput, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, margin: spacing.md, paddingHorizontal: spacing.md, paddingVertical: 10 },
-  searchInput: { flex: 1, color: colors.textPrimary, ...typography.sm },
-  list: { padding: spacing.md, paddingTop: 0 },
-  convoCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgCard, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.xs, borderWidth: 1, borderColor: colors.border },
-  avatar: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', marginRight: spacing.sm },
-  convoInfo: { flex: 1 },
-  convoTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 },
-  convoName: { ...typography.base, ...typography.bold, color: colors.textPrimary },
-  convoTime: { ...typography.xs, color: colors.textMuted },
-  convoStudent: { ...typography.xs, color: colors.parent, fontWeight: '600', marginBottom: 2 },
-  convoSnippet: { ...typography.xs, color: colors.textSecondary },
-  empty: { alignItems: 'center', paddingTop: spacing.xxl, gap: spacing.sm },
-  emptyTitle: { ...typography.base, ...typography.semibold, color: colors.textSecondary },
-  emptySub: { ...typography.sm, color: colors.textMuted },
-  // Thread
-  threadHeader: { flexDirection: 'row', alignItems: 'center', padding: spacing.md, backgroundColor: colors.bgCard, borderBottomWidth: 1, borderBottomColor: colors.border },
-  backBtn: { paddingRight: spacing.sm },
-  threadPartnerInfo: { flex: 1 },
-  threadPartnerName: { ...typography.base, ...typography.bold, color: colors.textPrimary },
-  threadStudentTag: { ...typography.xs, color: colors.parent },
-  threadList: { padding: spacing.md },
-  bubbleWrap: { marginVertical: 4, flexDirection: 'row' },
-  bubbleWrapLeft: { justifyContent: 'flex-start' },
-  bubbleWrapRight: { justifyContent: 'flex-end' },
-  bubble: { maxWidth: '78%', padding: spacing.md, borderRadius: radius.lg },
-  bubbleLeft: { backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border, borderBottomLeftRadius: 4 },
-  bubbleRight: { backgroundColor: colors.teacher, borderBottomRightRadius: 4 },
-  bubbleSubject: { ...typography.xs, ...typography.bold, color: colors.parent, marginBottom: 4 },
-  bubbleText: { ...typography.sm, color: colors.textPrimary, lineHeight: 20 },
-  bubbleTextRight: { color: '#fff' },
-  bubbleTime: { ...typography.xs, color: colors.textMuted, alignSelf: 'flex-end', marginTop: 4 },
-  bubbleTimeRight: { color: 'rgba(255,255,255,0.7)' },
-  replyBar: { flexDirection: 'row', alignItems: 'center', padding: spacing.sm, backgroundColor: colors.bgCard, borderTopWidth: 1, borderTopColor: colors.border, gap: spacing.xs },
-  replyInput: { flex: 1, backgroundColor: colors.bgInput, borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: 8, color: colors.textPrimary, ...typography.sm, maxHeight: 100 },
-  sendBtn: { backgroundColor: colors.teacher, width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
+  container: {
+    flex: 1,
+    backgroundColor: '#0c0f17',
+  },
+
+  /* Top Banner */
+  topBanner: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  bannerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  bannerIconBox: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    letterSpacing: -0.2,
+  },
+  bannerSubtitle: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 3,
+    lineHeight: 16,
+  },
+
+  /* Wide Split Grid */
+  splitGrid: {
+    flex: 1,
+    flexDirection: 'row',
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+    gap: spacing.md,
+  },
+  sidebarColumn: {
+    width: 290,
+    height: '100%',
+  },
+  chatColumn: {
+    flex: 1,
+    height: '100%',
+  },
+
+  /* Inquiries List (Left Panel / Mobile Screen 1) */
+  inquiriesContainer: {
+    backgroundColor: '#141824',
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    padding: spacing.md,
+  },
+  inquiriesHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: spacing.xs,
+  },
+  inquiriesSectionTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.textMuted,
+    letterSpacing: 0.8,
+  },
+  inquiriesBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    minWidth: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inquiriesBadgeUnread: {
+    backgroundColor: 'rgba(139, 92, 246, 0.25)',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.45)',
+  },
+  inquiriesBadgeZero: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  inquiriesBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  inquiriesBadgeTextUnread: {
+    color: '#c4b5fd',
+  },
+  inquiriesBadgeTextZero: {
+    color: colors.textMuted,
+  },
+
+  /* Search */
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1a1f2e',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginVertical: spacing.sm,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 12,
+    color: colors.textPrimary,
+    padding: 0,
+  },
+
+  /* Inquiry Card */
+  inquiryCard: {
+    backgroundColor: '#181d2a',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    padding: 12,
+    marginBottom: 8,
+  },
+  inquiryCardActive: {
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    borderColor: '#8b5cf6',
+  },
+  inquiryCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  inquiryHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+  },
+  cardUnreadBadge: {
+    backgroundColor: '#8b5cf6',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: radius.full,
+  },
+  cardUnreadBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#fff',
+    textTransform: 'uppercase',
+  },
+  inquiryParentName: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.textPrimary,
+  },
+  inquiryDate: {
+    fontSize: 10,
+    color: colors.textMuted,
+  },
+  inquiryChildTag: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#8b5cf6',
+    marginBottom: 4,
+  },
+  inquirySnippet: {
+    fontSize: 11,
+    color: colors.textMuted,
+    lineHeight: 15,
+  },
+
+  /* Empty Inquiries */
+  emptyInquiries: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    gap: 6,
+  },
+  emptyInquiriesTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  emptyInquiriesSub: {
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+
+  /* Chat Thread Container (Right Panel / Mobile Screen 2) */
+  chatThreadContainer: {
+    flex: 1,
+    backgroundColor: '#141824',
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+  },
+  chatHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: 'rgba(255, 255, 255, 0.01)',
+  },
+  backBtn: {
+    paddingRight: 10,
+  },
+  chatHeaderName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.textPrimary,
+  },
+  chatHeaderSub: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 1,
+  },
+
+  /* Message Stream */
+  messagesListContent: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: 12,
+  },
+  msgWrapper: {
+    width: '100%',
+    flexDirection: 'row',
+  },
+  msgWrapperLeft: {
+    justifyContent: 'flex-start',
+  },
+  msgWrapperRight: {
+    justifyContent: 'flex-end',
+  },
+  msgBubble: {
+    maxWidth: '85%',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: radius.lg,
+  },
+  msgBubbleParent: {
+    backgroundColor: '#191f2e',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderBottomLeftRadius: 3,
+  },
+  msgBubbleTeacher: {
+    backgroundColor: 'rgba(139, 92, 246, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.28)',
+    borderBottomRightRadius: 3,
+  },
+  msgTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 4,
+  },
+  msgSenderLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#8b5cf6',
+  },
+  msgTimestamp: {
+    fontSize: 10,
+    color: colors.textMuted,
+  },
+  msgBodyText: {
+    fontSize: 13,
+    color: colors.textPrimary,
+    lineHeight: 18,
+  },
+
+  /* Empty Thread */
+  emptyThreadContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#141824',
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    padding: spacing.xl,
+    gap: spacing.sm,
+  },
+  emptyThreadText: {
+    fontSize: 13,
+    color: colors.textMuted,
+    textAlign: 'center',
+    maxWidth: 260,
+  },
+
+  /* Reply Bar */
+  replyBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: '#141824',
+    gap: 8,
+  },
+  replyInput: {
+    flex: 1,
+    backgroundColor: '#1a1f2e',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    color: colors.textPrimary,
+    fontSize: 13,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    maxHeight: 90,
+  },
+  sendBtn: {
+    backgroundColor: '#8b5cf6',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: radius.md,
+  },
+  sendBtnDisabled: {
+    opacity: 0.5,
+  },
+  sendBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#fff',
+  },
 });
 
 export default TeacherMessagesScreen;

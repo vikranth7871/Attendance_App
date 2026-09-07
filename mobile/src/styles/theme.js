@@ -171,9 +171,43 @@ export const setGlobalTheme = (theme) => {
       if (document.body) {
         document.body.style.backgroundColor = colors.bgPrimary;
       }
+      injectWebFocusResets();
     } catch {}
   }
 };
+
+// Web outline and focus resets to prevent browser focus rings on inputs while retaining caret
+export const injectWebFocusResets = () => {
+  if (Platform.OS === 'web' && typeof document !== 'undefined') {
+    try {
+      const styleId = 'iattend-global-focus-resets';
+      let styleTag = document.getElementById(styleId);
+      if (!styleTag) {
+        styleTag = document.createElement('style');
+        styleTag.id = styleId;
+        document.head.appendChild(styleTag);
+      }
+      styleTag.textContent = `
+        input, textarea, select, [contenteditable], [data-focusable="true"] {
+          outline: none !important;
+          outline-style: none !important;
+          box-shadow: none !important;
+          -webkit-tap-highlight-color: transparent !important;
+        }
+        input:focus, textarea:focus, select:focus, [contenteditable]:focus, [data-focusable="true"]:focus {
+          outline: none !important;
+          outline-style: none !important;
+          box-shadow: none !important;
+        }
+        *:focus {
+          outline: none !important;
+        }
+      `;
+    } catch {}
+  }
+};
+
+injectWebFocusResets();
 
 export const getGlobalTheme = () => currentTheme;
 
@@ -208,27 +242,36 @@ export const typography = {
 };
 
 export const shadows = {
-  sm: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 3,
-  },
-  md: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  lg: {
-    shadowColor: '#6366f1',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 10,
-  },
+  sm: Platform.select({
+    web: { boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.30)' },
+    default: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.3,
+      shadowRadius: 3,
+      elevation: 3,
+    },
+  }),
+  md: Platform.select({
+    web: { boxShadow: '0px 4px 8px rgba(0, 0, 0, 0.40)' },
+    default: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.4,
+      shadowRadius: 8,
+      elevation: 6,
+    },
+  }),
+  lg: Platform.select({
+    web: { boxShadow: '0px 8px 16px rgba(99, 102, 241, 0.30)' },
+    default: {
+      shadowColor: '#6366f1',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.3,
+      shadowRadius: 16,
+      elevation: 10,
+    },
+  }),
 };
 
 export const getRoleColor = (role) => {

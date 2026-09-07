@@ -13,6 +13,7 @@ import { FullPageLoader } from '../../components/LoadingSkeleton';
 import api from '../../api/client';
 import { colors, spacing, radius, typography, shadows } from '../../styles/theme';
 import { exportText } from '../../utils/fileExporter';
+import { exportTimetableAsImage } from '../../utils/timetableImageExporter';
 import { useAuth } from '../../context/AuthContext';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -54,7 +55,8 @@ const TeacherTimetableScreen = ({ navigation }) => {
   const [subjects, setSubjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'list'
+  const [downloadingImage, setDownloadingImage] = useState(false);
+  const [viewMode, setViewMode] = useState('list'); // 'grid' | 'list'
 
   const todayIndex = new Date().getDay() === 0 ? 0 : new Date().getDay() - 1;
   const [selectedDayIndex, setSelectedDayIndex] = useState(Math.min(todayIndex, 5));
@@ -144,57 +146,34 @@ const TeacherTimetableScreen = ({ navigation }) => {
   };
 
   const handleExportTimetable = async () => {
+    if (downloadingImage) return;
     if (subjects.length === 0) {
       Alert.alert('No Data', 'No timetable entries found to export.');
       return;
     }
 
-    let text = `==========================================================\n`;
-    text += `          FACULTY WEEKLY TEACHING SCHEDULE (iAttend)       \n`;
-    text += `==========================================================\n`;
-    text += `Faculty Name : ${user?.name || 'Educator'}\n`;
-    text += `Generated On : ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}\n`;
-    text += `Total Lectures: ${scheduledSubjects.length}\n`;
-    text += `Assigned Courses: ${uniqueSubjectsCount}\n\n`;
+    setDownloadingImage(true);
+    try {
+      const safeName = (user?.name || 'faculty').replace(/\s+/g, '_');
+      const filename = `teacher_timetable_${safeName}.png`;
 
-    DAYS.forEach((day) => {
-      const daySlots = scheduledSubjects.filter(
-        (s) => (s.dayOfWeek || s.day_of_week)?.toLowerCase() === day.toLowerCase()
-      );
-
-      text += `--- ${day.toUpperCase()} (${daySlots.length} Lectures) ---\n`;
-      if (daySlots.length === 0) {
-        text += `  No lectures scheduled\n\n`;
-      } else {
-        daySlots
-          .sort((a, b) => parseTimeMinutes(a.startTime || a.timeSlot) - parseTimeMinutes(b.startTime || b.timeSlot))
-          .forEach((s, idx) => {
-            const subName = s.subjectId?.name || s.subjectId?.subjectName || s.subject_name || s.name || 'Subject';
-            const clsName = s.classId?.name || s.classId?.className || s.class_name || 'Class';
-            const room = s.roomNumber || s.room_number ? `Room ${s.roomNumber || s.room_number}` : 'Room TBA';
-            const time = s.timeSlot || `${s.startTime || ''} - ${s.endTime || ''}`;
-            text += `  ${idx + 1}. [${time}] ${subName} - ${clsName} (${room})\n`;
-          });
-        text += `\n`;
-      }
-    });
-
-    if (unscheduledSubjects.length > 0) {
-      text += `--- INDIVIDUALLY ASSIGNED / UNSCHEDULED SUBJECTS ---\n`;
-      unscheduledSubjects.forEach((s, idx) => {
-        const subName = s.subjectId?.name || s.subjectId?.subjectName || s.subject_name || s.name || 'Subject';
-        text += `  ${idx + 1}. ${subName} (Schedule Pending)\n`;
+      const ok = await exportTimetableAsImage({
+        subjects,
+        user,
+        days: DAYS,
+        timeSlots: TIME_SLOTS,
+        periodColors: PERIOD_COLORS,
+        filename,
       });
-      text += `\n`;
-    }
 
-    text += `==========================================================\n`;
-    text += `Exported from iAttend Mobile App\n`;
-
-    const filename = `teacher_timetable_${user?.name?.replace(/\s+/g, '_') || 'faculty'}.txt`;
-    const ok = await exportText(filename, text, 'text/plain');
-    if (ok) {
-      Alert.alert('✅ Export Complete', 'Timetable file downloaded successfully.');
+      if (ok) {
+        Alert.alert('✅ Download Complete', 'Timetable grid picture downloaded successfully.');
+      }
+    } catch (err) {
+      console.error('Failed to export timetable image:', err);
+      Alert.alert('Download Error', 'Unable to download timetable picture.');
+    } finally {
+      setDownloadingImage(false);
     }
   };
 
@@ -216,8 +195,13 @@ const TeacherTimetableScreen = ({ navigation }) => {
             style={styles.exportBtn}
             onPress={handleExportTimetable}
             activeOpacity={0.8}
+            disabled={downloadingImage}
           >
-            <Download size={16} color={colors.teacher} />
+            {downloadingImage ? (
+              <ActivityIndicator size="small" color={colors.teacher} />
+            ) : (
+              <Download size={16} color={colors.teacher} />
+            )}
           </TouchableOpacity>
         }
       />
@@ -327,7 +311,6 @@ const TeacherTimetableScreen = ({ navigation }) => {
                       {DAYS.map((day, colIndex) => {
                         const sub = getSubjectForSlot(day, slot);
                         const isLastCol = colIndex === DAYS.length - 1;
-                        const subColor = PERIOD_COLORS[(colIndex + rowIndex) % PERIOD_COLORS.length];
                         const isLive = sub ? isSlotLive(sub) : false;
 
                         return (
@@ -344,7 +327,7 @@ const TeacherTimetableScreen = ({ navigation }) => {
                               <TouchableOpacity
                                 style={[
                                   styles.gridSlotCard,
-                                  { borderLeftColor: isLive ? colors.success : subColor },
+                                  { borderLeftColor: isLive ? colors.success : colors.primary },
                                   isLive && styles.gridSlotCardLive
                                 ]}
                                 activeOpacity={0.85}
@@ -454,7 +437,6 @@ const TeacherTimetableScreen = ({ navigation }) => {
                 .sort((a, b) => parseTimeMinutes(a.startTime || a.timeSlot) - parseTimeMinutes(b.startTime || b.timeSlot))
                 .map((slot, idx) => {
                   const isLive = isSlotLive(slot);
-                  const color = PERIOD_COLORS[idx % PERIOD_COLORS.length];
                   const subName = slot.subjectId?.name || slot.subjectId?.subjectName || slot.subject_name || slot.name || 'Subject';
                   const clsName = slot.classId?.name || slot.classId?.className || slot.class_name || 'Class Section';
                   const roomStr = slot.roomNumber || slot.room_number ? `Room ${slot.roomNumber || slot.room_number}` : 'Room TBA';
@@ -466,7 +448,7 @@ const TeacherTimetableScreen = ({ navigation }) => {
                       style={[
                         styles.lectureCard,
                         shadows.sm,
-                        { borderLeftColor: isLive ? colors.success : color },
+                        { borderLeftColor: isLive ? colors.success : colors.primary },
                         isLive && { borderColor: colors.success, borderWidth: 1.5, backgroundColor: colors.success + '0A' }
                       ]}
                     >

@@ -762,9 +762,10 @@ const s = StyleSheet.create({
     width: 56, height: 56, borderRadius: 28,
     backgroundColor: colors.primary,
     alignItems: 'center', justifyContent: 'center',
-    shadowColor: colors.primary, shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4, shadowRadius: 12,
-    elevation: 8,
+    ...Platform.select({
+      web: { boxShadow: '0px 6px 12px rgba(99, 102, 241, 0.40)' },
+      default: { shadowColor: colors.primary, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 12, elevation: 8 },
+    }),
   },
 
   /* Modal */

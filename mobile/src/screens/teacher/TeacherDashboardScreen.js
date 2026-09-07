@@ -17,6 +17,7 @@ import { FullPageLoader } from '../../components/LoadingSkeleton';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api/client';
 import { exportText } from '../../utils/fileExporter';
+import { exportTimetableAsImage } from '../../utils/timetableImageExporter';
 import ReportModal from '../../components/ReportModal';
 import { colors, spacing, radius, typography, shadows } from '../../styles/theme';
 
@@ -200,37 +201,25 @@ const TeacherDashboardScreen = ({ navigation }) => {
 
   const handleExportTimetable = async () => {
     if (exportingTimetable) return;
+    if (subjects.length === 0) {
+      Alert.alert('No Data', 'No timetable entries found to download.');
+      return;
+    }
     setExportingTimetable(true);
     try {
-      let text = `==========================================================\n`;
-      text += `          FACULTY WEEKLY TEACHING SCHEDULE (iAttend)       \n`;
-      text += `==========================================================\n`;
-      text += `Faculty Name : ${user?.name || 'Educator'}\n`;
-      text += `Generated On : ${new Date().toLocaleDateString()}\n\n`;
+      const safeName = (user?.name || 'faculty').replace(/\s+/g, '_');
+      const filename = `teacher_timetable_${safeName}.png`;
 
-      DAYS.forEach((day) => {
-        const slots = subjects.filter((s) => (s.dayOfWeek || s.day_of_week)?.toLowerCase() === day.toLowerCase());
-        text += `[${day.toUpperCase()}] (${slots.length} Lectures)\n`;
-        if (slots.length === 0) {
-          text += `  No lectures scheduled\n\n`;
-        } else {
-          slots.forEach((s, idx) => {
-            const subName = s.subjectId?.name || s.subjectId?.subjectName || s.subject_name || s.name || 'Subject';
-            const clsName = s.classId?.name || s.classId?.className || s.class_name || 'Class';
-            const time = s.timeSlot || `${s.startTime || ''} - ${s.endTime || ''}`;
-            const room = s.roomNumber || s.room_number ? ` (Room ${s.roomNumber || s.room_number})` : '';
-            text += `  ${idx + 1}. [${time}] ${subName} - ${clsName}${room}\n`;
-          });
-          text += `\n`;
-        }
+      const ok = await exportTimetableAsImage({
+        subjects,
+        user,
+        days: DAYS,
+        filename,
       });
-
-      const filename = `teacher_timetable_${user?.name?.replace(/\s+/g, '_') || 'faculty'}.txt`;
-      const ok = await exportText(filename, text);
-      if (ok) Alert.alert('✅ Timetable Exported', `Saved to ${filename}`);
+      if (ok) Alert.alert('✅ Download Complete', 'Timetable grid picture downloaded successfully.');
     } catch (err) {
-      console.error('Failed to export timetable:', err);
-      Alert.alert('Export Error', 'Unable to export timetable.');
+      console.error('Failed to export timetable image:', err);
+      Alert.alert('Download Error', 'Unable to download timetable picture.');
     } finally {
       setExportingTimetable(false);
     }
@@ -589,47 +578,73 @@ const TeacherDashboardScreen = ({ navigation }) => {
                 style={[
                   styles.slotCard,
                   shadows.sm,
-                  isCurrent && { borderColor: colors.success, borderWidth: 1.5, backgroundColor: colors.success + '0A' }
+                  isCurrent && styles.slotCardLive,
                 ]}
               >
-                <View style={styles.slotTimeCol}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <Clock size={12} color={isCurrent ? colors.success : colors.textMuted} />
-                    <Text style={[styles.slotTimeText, isCurrent && { color: colors.success, fontWeight: '700' }]}>
-                      {timeStr}
-                    </Text>
-                  </View>
-                  {isCurrent && (
-                    <View style={styles.liveBadge}>
-                      <Text style={styles.liveBadgeText}>LIVE NOW</Text>
-                    </View>
-                  )}
-                </View>
+                {/* 4px Left Accent Bar */}
+                <View
+                  style={[
+                    styles.slotAccentBar,
+                    { backgroundColor: isCurrent ? colors.success : colors.teacher }
+                  ]}
+                />
 
-                <View style={styles.slotDetailsCol}>
-                  <Text style={styles.slotSubject} numberOfLines={1}>{subName}</Text>
+                {/* Card Content Area */}
+                <View style={styles.slotContent}>
+                  {/* Row 1: Header (Subject Name + Live Badge & Action Button) */}
+                  <View style={styles.slotHeaderRow}>
+                    <View style={styles.slotTitleGroup}>
+                      <Text style={styles.slotSubject} numberOfLines={1}>
+                        {subName}
+                      </Text>
+                      {isCurrent && (
+                        <View style={styles.liveBadge}>
+                          <View style={styles.liveDot} />
+                          <Text style={styles.liveBadgeText}>LIVE NOW</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.slotActionBtn,
+                        isCurrent ? styles.slotActionBtnLive : styles.slotActionBtnNormal
+                      ]}
+                      onPress={() => navigation.navigate('Attendance')}
+                      activeOpacity={0.8}
+                    >
+                      <ClipboardList size={12} color={isCurrent ? '#fff' : colors.teacher} />
+                      <Text
+                        style={[
+                          styles.slotActionText,
+                          isCurrent ? styles.slotActionTextLive : styles.slotActionTextNormal
+                        ]}
+                      >
+                        Mark
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Row 2: Details Pills / Chips (Time, Class, Room) */}
                   <View style={styles.slotPillRow}>
-                    <View style={styles.slotClassPill}>
-                      <Users size={10} color={colors.textSecondary} />
-                      <Text style={styles.slotClassText}>{clsName}</Text>
+                    <View style={[styles.slotChip, isCurrent && styles.slotChipLive]}>
+                      <Clock size={11} color={isCurrent ? colors.success : colors.textMuted} />
+                      <Text style={[styles.slotChipText, isCurrent && styles.slotChipTextLive]}>
+                        {timeStr}
+                      </Text>
                     </View>
-                    <View style={styles.slotRoomPill}>
-                      <MapPin size={10} color={colors.textMuted} />
-                      <Text style={styles.slotRoomText}>{roomStr}</Text>
+
+                    <View style={styles.slotChip}>
+                      <Users size={11} color={colors.textSecondary} />
+                      <Text style={styles.slotChipText}>{clsName}</Text>
+                    </View>
+
+                    <View style={styles.slotChip}>
+                      <MapPin size={11} color={colors.textMuted} />
+                      <Text style={styles.slotChipText}>{roomStr}</Text>
                     </View>
                   </View>
                 </View>
-
-                <TouchableOpacity
-                  style={[styles.slotActionBtn, isCurrent ? { backgroundColor: colors.success } : { backgroundColor: colors.teacher + '20' }]}
-                  onPress={() => navigation.navigate('Attendance')}
-                  activeOpacity={0.8}
-                >
-                  <ClipboardList size={13} color={isCurrent ? '#fff' : colors.teacher} />
-                  <Text style={[styles.slotActionText, isCurrent ? { color: '#fff' } : { color: colors.teacher }]}>
-                    Mark
-                  </Text>
-                </TouchableOpacity>
               </View>
             );
           })
@@ -655,11 +670,11 @@ const TeacherDashboardScreen = ({ navigation }) => {
               activeOpacity={0.8}
             >
               <View style={[styles.quickIcon, { backgroundColor: action.color + '20' }]}>
-                <action.icon size={20} color={action.color} />
+                <action.icon size={18} color={action.color} />
               </View>
               <View style={styles.quickTextCol}>
                 <View style={styles.quickLabelRow}>
-                  <Text style={styles.quickLabel} numberOfLines={1}>{action.label}</Text>
+                  <Text style={styles.quickLabel} numberOfLines={2}>{action.label}</Text>
                   {action.badge && (
                     <View style={styles.actionBadgePill}>
                       <Text style={styles.actionBadgePillText}>{action.badge}</Text>
@@ -668,7 +683,7 @@ const TeacherDashboardScreen = ({ navigation }) => {
                 </View>
                 <Text style={styles.quickSub} numberOfLines={1}>{action.sub}</Text>
               </View>
-              <ChevronRight size={13} color={colors.textMuted} />
+              <ChevronRight size={12} color={colors.textMuted} />
             </TouchableOpacity>
           ))}
         </View>
@@ -1271,85 +1286,119 @@ const styles = StyleSheet.create({
   },
   slotCard: {
     flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: colors.bgCard,
     borderRadius: radius.md,
-    padding: spacing.sm,
-    marginBottom: spacing.xs,
+    marginBottom: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
-    gap: spacing.sm,
+    overflow: 'hidden',
   },
-  slotTimeCol: {
-    alignItems: 'flex-start',
-    gap: 3,
-    minWidth: 85,
+  slotCardLive: {
+    borderColor: colors.success + '80',
+    backgroundColor: colors.success + '08',
   },
-  slotTimeText: {
-    fontSize: 10,
-    color: colors.textMuted,
-    fontWeight: '600',
+  slotAccentBar: {
+    width: 4,
   },
-  liveBadge: {
-    backgroundColor: colors.success,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: radius.xs,
-  },
-  liveBadgeText: {
-    fontSize: 8,
-    fontWeight: '800',
-    color: '#fff',
-  },
-  slotDetailsCol: {
+  slotContent: {
     flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    gap: 8,
+  },
+  slotHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  slotTitleGroup: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   slotSubject: {
-    ...typography.sm,
-    ...typography.bold,
+    fontSize: 15,
+    fontWeight: '700',
     color: colors.textPrimary,
+    flexShrink: 1,
   },
-  slotPillRow: {
+  liveBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginTop: 2,
-  },
-  slotClassPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: colors.bgElevated,
+    backgroundColor: colors.success,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: radius.xs,
   },
-  slotClassText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: colors.textSecondary,
+  liveDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: '#fff',
   },
-  slotRoomPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-  },
-  slotRoomText: {
-    fontSize: 10,
-    color: colors.textMuted,
+  liveBadgeText: {
+    fontSize: 8.5,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: 0.3,
   },
   slotActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: radius.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+  },
+  slotActionBtnLive: {
+    backgroundColor: colors.success,
+  },
+  slotActionBtnNormal: {
+    backgroundColor: colors.teacher + '15',
+    borderWidth: 1,
+    borderColor: colors.teacher + '35',
   },
   slotActionText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  slotActionTextLive: {
+    color: '#fff',
+  },
+  slotActionTextNormal: {
+    color: colors.teacher,
+  },
+  slotPillRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  slotChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.bgElevated,
+    paddingHorizontal: 8,
+    paddingVertical: 3.5,
+    borderRadius: radius.xs,
+    borderWidth: 1,
+    borderColor: colors.border + '60',
+  },
+  slotChipLive: {
+    backgroundColor: colors.success + '15',
+    borderColor: colors.success + '40',
+  },
+  slotChipText: {
     fontSize: 11,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  slotChipTextLive: {
+    color: colors.success,
     fontWeight: '700',
   },
 
@@ -1368,14 +1417,14 @@ const styles = StyleSheet.create({
     gap: 8,
     backgroundColor: colors.bgCard,
     borderRadius: radius.md,
-    padding: spacing.sm,
+    padding: 10,
     borderWidth: 1,
     borderColor: colors.border,
   },
   quickIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.md,
+    width: 34,
+    height: 34,
+    borderRadius: radius.sm,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1385,18 +1434,20 @@ const styles = StyleSheet.create({
   quickLabelRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 4,
   },
   quickLabel: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '700',
     color: colors.textPrimary,
+    lineHeight: 15,
     flexShrink: 1,
   },
   quickSub: {
     fontSize: 10,
     color: colors.textMuted,
-    marginTop: 1,
+    marginTop: 2,
   },
   actionBadgePill: {
     backgroundColor: '#ef4444',

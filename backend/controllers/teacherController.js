@@ -279,16 +279,20 @@ export const getAttendanceReport = async (req, res) => {
             SELECT DISTINCT c.id as class_id, c.name as class_name,
                             s.id as subject_id, s.name as subject_name
             FROM subject_allocations sa
-            JOIN classes c ON sa.class_id = c.id
-            JOIN subjects s ON sa.subject_id = s.id
-            WHERE sa.teacher_id = $1
+            LEFT JOIN classes c ON sa.class_id = c.id
+            LEFT JOIN subjects s ON sa.subject_id = s.id
+            WHERE sa.teacher_id = $1 AND c.id IS NOT NULL AND s.id IS NOT NULL
         `, [teacherId]);
 
         const classesMap = new Map();
         const subjectsMap = new Map();
         filtersRes.rows.forEach(r => {
-            if (!classesMap.has(r.class_id)) classesMap.set(r.class_id, { id: String(r.class_id), _id: String(r.class_id), name: r.class_name, label: r.class_name });
-            if (!subjectsMap.has(r.subject_id)) subjectsMap.set(r.subject_id, { id: String(r.subject_id), _id: String(r.subject_id), name: r.subject_name, label: r.subject_name });
+            if (r.class_id && !classesMap.has(r.class_id)) {
+                classesMap.set(r.class_id, { id: String(r.class_id), _id: String(r.class_id), name: r.class_name, label: r.class_name });
+            }
+            if (r.subject_id && !subjectsMap.has(r.subject_id)) {
+                subjectsMap.set(r.subject_id, { id: String(r.subject_id), _id: String(r.subject_id), name: r.subject_name, label: r.subject_name });
+            }
         });
 
         // Query attendance records
@@ -302,18 +306,20 @@ export const getAttendanceReport = async (req, res) => {
                    COUNT(CASE WHEN LOWER(a.status) = 'leave' THEN 1 END) as leave
             FROM attendance a
             JOIN users u ON a.student_id = u.id
-            JOIN classes c ON a.class_id = c.id
-            JOIN subjects s ON a.subject_id = s.id
-            WHERE (a.marked_by = $1 OR s.id IN (SELECT subject_id FROM subject_allocations WHERE teacher_id = $1))
+            LEFT JOIN classes c ON a.class_id = c.id
+            LEFT JOIN subjects s ON a.subject_id = s.id
+            WHERE (a.marked_by = $1 OR a.subject_id IN (SELECT subject_id FROM subject_allocations WHERE teacher_id = $1))
         `;
         const params = [teacherId];
 
-        if (classId) {
-            params.push(classId);
+        const parsedClassId = parseInt(classId, 10);
+        if (classId && !isNaN(parsedClassId) && parsedClassId > 0) {
+            params.push(parsedClassId);
             query += ` AND a.class_id = $${params.length}`;
         }
-        if (subjectId) {
-            params.push(subjectId);
+        const parsedSubjectId = parseInt(subjectId, 10);
+        if (subjectId && !isNaN(parsedSubjectId) && parsedSubjectId > 0) {
+            params.push(parsedSubjectId);
             query += ` AND a.subject_id = $${params.length}`;
         }
 
@@ -879,6 +885,26 @@ export const replyParentMessage = async (req, res) => {
         res.status(201).json(newMsg.rows[0]);
     } catch (error) {
         console.error('Error sending teacher reply:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+export const markTeacherMessagesRead = async (req, res) => {
+    try {
+        const teacherId = req.user.id || req.user._id;
+        const { parentId } = req.params;
+
+        if (!parentId) return res.status(400).json({ message: 'parentId required' });
+
+        await pool.query(
+            `UPDATE parent_messages SET is_read = true
+             WHERE sender_id = $1 AND receiver_id = $2 AND is_read = false`,
+            [parentId, teacherId]
+        );
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error marking teacher messages as read:', error);
         res.status(500).json({ message: error.message });
     }
 };

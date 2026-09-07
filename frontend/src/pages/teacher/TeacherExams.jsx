@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Award, Calendar, Clock, MapPin, Edit2, Plus, FileText, CheckCircle2, UserCheck, Search, ArrowUpDown, X, Send, Check, Filter, Trash2, Tag, Users, BarChart3, Trophy } from 'lucide-react';
+import { Award, Calendar, Clock, MapPin, Edit2, Plus, FileText, CheckCircle2, UserCheck, Search, ArrowUpDown, X, Send, Check, Filter, Trash2, Tag, Users, BarChart3, Trophy, CheckCheck, BookOpen, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // --- Excel-Style Bulk Class Marks Entry Modal ---
@@ -302,6 +302,7 @@ const TeacherExams = () => {
     // Exam Filter state
     const [selectedExamFilter, setSelectedExamFilter] = useState('all');
     const [selectedScheduleTermFilter, setSelectedScheduleTermFilter] = useState('all');
+    const [examStatusFilter, setExamStatusFilter] = useState('all');
 
     // Schedule Form states
     const scheduleTerms = (data?.schedules || []).map(sc => sc.term).filter(Boolean);
@@ -489,9 +490,20 @@ const TeacherExams = () => {
         return false;
     };
 
-    const activeSchedules = [...schedules]
-        .filter(sc => !isExamExpired(sc.examDate, sc.timeSlot))
-        .sort((a, b) => new Date(a.examDate) - new Date(b.examDate));
+    const pendingCount = schedules.filter(sc => !isExamExpired(sc.examDate, sc.timeSlot)).length;
+    const finishedCount = schedules.filter(sc => isExamExpired(sc.examDate, sc.timeSlot)).length;
+
+    const statusFilteredSchedules = [...schedules].filter(sc => {
+        const isFinished = isExamExpired(sc.examDate, sc.timeSlot);
+        if (examStatusFilter === 'pending') return !isFinished;
+        if (examStatusFilter === 'finished') return isFinished;
+        return true;
+    }).sort((a, b) => {
+        if (examStatusFilter === 'pending') {
+            return new Date(a.examDate) - new Date(b.examDate);
+        }
+        return new Date(b.examDate) - new Date(a.examDate);
+    });
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -526,62 +538,200 @@ const TeacherExams = () => {
                 </div>
             </div>
 
-            {/* Scheduled Examinations Section with Term Filter */}
+            {/* Scheduled Examinations Section with Status & Term Filters */}
             <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
-                    <h3 style={{ fontSize: '1.2rem', fontWeight: '800', color: 'var(--text-primary)' }}>Scheduled Examinations</h3>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', flexWrap: 'wrap' }}>
+                        <h3 style={{ fontSize: '1.2rem', fontWeight: '800', color: 'var(--text-primary)' }}>Scheduled Examinations</h3>
 
-                    {/* Term Filter Pills */}
-                    {allUniqueTerms.length > 0 && (
-                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                        {/* Status Toggle: All / Pending / Finished */}
+                        <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            background: 'var(--bg-secondary)',
+                            padding: '0.25rem',
+                            borderRadius: '0.85rem',
+                            border: '1px solid var(--border-color)',
+                            gap: '0.25rem'
+                        }}>
                             <button
-                                onClick={() => setSelectedScheduleTermFilter('all')}
+                                type="button"
+                                onClick={() => setExamStatusFilter('all')}
                                 style={{
-                                    padding: '0.4rem 0.9rem', borderRadius: '0.75rem', fontSize: '0.8rem', fontWeight: '800',
-                                    border: '1px solid', cursor: 'pointer', transition: 'all 0.2s',
-                                    borderColor: selectedScheduleTermFilter === 'all' ? 'var(--brand-primary)' : 'var(--border-color)',
-                                    background: selectedScheduleTermFilter === 'all' ? 'rgba(91, 80, 230, 0.15)' : 'var(--bg-secondary)',
-                                    color: selectedScheduleTermFilter === 'all' ? 'var(--brand-primary)' : 'var(--text-secondary)'
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.4rem',
+                                    padding: '0.4rem 0.85rem',
+                                    borderRadius: '0.65rem',
+                                    fontSize: '0.82rem',
+                                    fontWeight: '700',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s',
+                                    border: 'none',
+                                    background: examStatusFilter === 'all' ? 'var(--brand-primary)' : 'transparent',
+                                    color: examStatusFilter === 'all' ? '#ffffff' : 'var(--text-secondary)'
                                 }}
                             >
-                                All Exams ({activeSchedules.length})
+                                <span>All</span>
+                                <span style={{
+                                    fontSize: '0.72rem',
+                                    padding: '0.1rem 0.45rem',
+                                    borderRadius: '0.5rem',
+                                    background: examStatusFilter === 'all' ? 'rgba(255, 255, 255, 0.25)' : 'rgba(255, 255, 255, 0.08)',
+                                    color: examStatusFilter === 'all' ? '#ffffff' : 'var(--text-secondary)',
+                                    fontWeight: '800'
+                                }}>
+                                    {schedules.length}
+                                </span>
                             </button>
-                            {allUniqueTerms.map(termName => {
-                                const count = activeSchedules.filter(sc => (sc.term || sc.examName) === termName).length;
-                                if (count === 0) return null;
-                                const isSelected = selectedScheduleTermFilter === termName;
-                                return (
-                                    <button
-                                        key={termName}
-                                        onClick={() => setSelectedScheduleTermFilter(termName)}
-                                        style={{
-                                            padding: '0.4rem 0.9rem', borderRadius: '0.75rem', fontSize: '0.8rem', fontWeight: '800',
-                                            border: '1px solid', cursor: 'pointer', transition: 'all 0.2s',
-                                            borderColor: isSelected ? 'var(--brand-primary)' : 'var(--border-color)',
-                                            background: isSelected ? 'rgba(91, 80, 230, 0.15)' : 'var(--bg-secondary)',
-                                            color: isSelected ? 'var(--brand-primary)' : 'var(--text-secondary)',
-                                            display: 'flex', alignItems: 'center', gap: '0.35rem'
-                                        }}
-                                    >
-                                        <Tag size={12} /> {termName} ({count})
-                                    </button>
-                                );
-                            })}
+
+                            <button
+                                type="button"
+                                onClick={() => setExamStatusFilter('pending')}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.4rem',
+                                    padding: '0.4rem 0.85rem',
+                                    borderRadius: '0.65rem',
+                                    fontSize: '0.82rem',
+                                    fontWeight: '700',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s',
+                                    border: 'none',
+                                    background: examStatusFilter === 'pending' ? 'rgba(245, 158, 11, 0.18)' : 'transparent',
+                                    color: examStatusFilter === 'pending' ? '#f59e0b' : 'var(--text-secondary)'
+                                }}
+                            >
+                                <Clock size={13} style={{ color: examStatusFilter === 'pending' ? '#f59e0b' : 'var(--text-secondary)' }} />
+                                <span>Pending</span>
+                                <span style={{
+                                    fontSize: '0.72rem',
+                                    padding: '0.1rem 0.45rem',
+                                    borderRadius: '0.5rem',
+                                    background: examStatusFilter === 'pending' ? '#f59e0b' : 'rgba(245, 158, 11, 0.15)',
+                                    color: examStatusFilter === 'pending' ? '#ffffff' : '#f59e0b',
+                                    fontWeight: '800'
+                                }}>
+                                    {pendingCount}
+                                </span>
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => setExamStatusFilter('finished')}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.4rem',
+                                    padding: '0.4rem 0.85rem',
+                                    borderRadius: '0.65rem',
+                                    fontSize: '0.82rem',
+                                    fontWeight: '700',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s',
+                                    border: 'none',
+                                    background: examStatusFilter === 'finished' ? 'rgba(16, 185, 129, 0.18)' : 'transparent',
+                                    color: examStatusFilter === 'finished' ? '#10b981' : 'var(--text-secondary)'
+                                }}
+                            >
+                                <CheckCheck size={14} style={{ color: examStatusFilter === 'finished' ? '#10b981' : 'var(--text-secondary)' }} />
+                                <span>Finished</span>
+                                <span style={{
+                                    fontSize: '0.72rem',
+                                    padding: '0.1rem 0.45rem',
+                                    borderRadius: '0.5rem',
+                                    background: examStatusFilter === 'finished' ? '#10b981' : 'rgba(16, 185, 129, 0.15)',
+                                    color: examStatusFilter === 'finished' ? '#ffffff' : '#10b981',
+                                    fontWeight: '800'
+                                }}>
+                                    {finishedCount}
+                                </span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Term Filter Dropdown */}
+                    {allUniqueTerms.length > 0 && (
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            background: 'var(--bg-secondary)',
+                            padding: '0.45rem 0.85rem',
+                            borderRadius: '0.85rem',
+                            border: '1px solid var(--border-color)',
+                            position: 'relative'
+                        }}>
+                            <Tag size={15} style={{ color: 'var(--brand-primary)', flexShrink: 0 }} />
+                            <span style={{ fontSize: '0.8rem', fontWeight: '800', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Term:</span>
+                            <select
+                                value={selectedScheduleTermFilter}
+                                onChange={e => setSelectedScheduleTermFilter(e.target.value)}
+                                style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: 'var(--text-primary)',
+                                    fontWeight: '800',
+                                    fontSize: '0.85rem',
+                                    outline: 'none',
+                                    cursor: 'pointer',
+                                    paddingRight: '1.4rem',
+                                    appearance: 'none',
+                                    WebkitAppearance: 'none',
+                                    MozAppearance: 'none'
+                                }}
+                            >
+                                <option value="all" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
+                                    All Terms ({statusFilteredSchedules.length})
+                                </option>
+                                {allUniqueTerms.map(termName => {
+                                    const count = statusFilteredSchedules.filter(sc => (sc.term || sc.examName) === termName).length;
+                                    return (
+                                        <option key={termName} value={termName} style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
+                                            {termName} ({count})
+                                        </option>
+                                    );
+                                })}
+                            </select>
+                            <ChevronDown size={14} style={{ color: 'var(--text-secondary)', position: 'absolute', right: '0.75rem', pointerEvents: 'none' }} />
                         </div>
                     )}
                 </div>
 
-                {activeSchedules.length === 0 ? (
+                {statusFilteredSchedules.length === 0 ? (
                     <div className="glass-panel" style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                        No active upcoming exams scheduled. Click "Schedule Exam" to add one.
+                        {examStatusFilter === 'pending' ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+                                <Clock size={36} color="#f59e0b" />
+                                <div style={{ fontWeight: '600', fontSize: '0.95rem' }}>No pending exams. All scheduled examinations have been completed.</div>
+                                <button
+                                    onClick={handleOpenNewModal}
+                                    className="btn btn-secondary"
+                                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', borderRadius: '0.75rem', fontSize: '0.85rem', marginTop: '0.5rem' }}
+                                >
+                                    <Plus size={16} /> Schedule New Exam
+                                </button>
+                            </div>
+                        ) : examStatusFilter === 'finished' ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+                                <CheckCheck size={36} color="#10b981" />
+                                <div style={{ fontWeight: '600', fontSize: '0.95rem' }}>No finished exams yet. Completed exams will appear here once their scheduled date passes.</div>
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+                                <Calendar size={36} style={{ color: 'var(--text-secondary)' }} />
+                                <div style={{ fontWeight: '600', fontSize: '0.95rem' }}>No examinations scheduled yet. Click "Schedule Exam" to add one.</div>
+                            </div>
+                        )}
                     </div>
                 ) : (
                     (() => {
-                        const filteredSchedules = activeSchedules.filter(sc =>
+                        const displaySchedules = statusFilteredSchedules.filter(sc =>
                             selectedScheduleTermFilter === 'all' || (sc.term || sc.examName) === selectedScheduleTermFilter
                         );
 
-                        if (filteredSchedules.length === 0) {
+                        if (displaySchedules.length === 0) {
                             return (
                                 <div className="glass-panel" style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
                                     No examinations found for the selected term filter.
@@ -590,59 +740,211 @@ const TeacherExams = () => {
                         }
 
                         return (
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
-                                {filteredSchedules.map(sc => (
-                                    <div key={sc.id} className="glass-panel" style={{ padding: '1.4rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', borderRadius: '1rem' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
-                                            <div style={{ fontSize: '0.75rem', fontWeight: '800', color: 'var(--brand-secondary)', textTransform: 'uppercase', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                {sc.subjectName || 'Subject'} • {sc.className || 'Class'}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1.25rem' }}>
+                                {displaySchedules.map(sc => {
+                                    const isFinished = isExamExpired(sc.examDate, sc.timeSlot);
+                                    return (
+                                        <div
+                                            key={sc.id}
+                                            className="glass-panel"
+                                            style={{
+                                                padding: '1.35rem',
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                gap: '0.9rem',
+                                                borderRadius: '1.1rem',
+                                                borderLeft: isFinished ? '4px solid #10b981' : '4px solid #f59e0b',
+                                                background: 'var(--bg-secondary)',
+                                                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)'
+                                            }}
+                                        >
+                                            {/* Row 1: Subject Badge on Left, Status + Action Buttons on Right */}
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+                                                {/* Subject & Class Tag */}
+                                                <div style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.45rem',
+                                                    background: 'rgba(99, 102, 241, 0.12)',
+                                                    border: '1px solid rgba(99, 102, 241, 0.25)',
+                                                    color: '#818cf8',
+                                                    padding: '0.25rem 0.65rem',
+                                                    borderRadius: '0.6rem',
+                                                    fontSize: '0.78rem',
+                                                    fontWeight: '800',
+                                                    maxWidth: '65%',
+                                                    minWidth: 0
+                                                }}>
+                                                    <BookOpen size={13} style={{ flexShrink: 0 }} />
+                                                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                        {sc.subjectName || 'General Subject'}
+                                                    </span>
+                                                    <span style={{ opacity: 0.4, flexShrink: 0 }}>•</span>
+                                                    <span style={{ color: 'var(--text-secondary)', flexShrink: 0, fontWeight: '700' }}>
+                                                        {sc.className || 'CS101-A'}
+                                                    </span>
+                                                </div>
+
+                                                {/* Right side: Status Badge + Action Icon Buttons */}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
+                                                    {/* Status Badge: Finished vs Pending */}
+                                                    <span style={{
+                                                        fontSize: '0.72rem',
+                                                        fontWeight: '800',
+                                                        color: isFinished ? '#10b981' : '#f59e0b',
+                                                        background: isFinished ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)',
+                                                        border: `1px solid ${isFinished ? 'rgba(16, 185, 129, 0.25)' : 'rgba(245, 158, 11, 0.25)'}`,
+                                                        padding: '0.22rem 0.55rem',
+                                                        borderRadius: '0.55rem',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.3rem'
+                                                    }}>
+                                                        {isFinished ? <CheckCheck size={12} color="#10b981" /> : <Clock size={12} color="#f59e0b" />}
+                                                        <span>{isFinished ? 'Finished' : 'Pending'}</span>
+                                                    </span>
+
+                                                    {/* Compact Edit Icon Button */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleOpenEditModal(sc)}
+                                                        title="Edit Examination Schedule"
+                                                        style={{
+                                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                            width: '28px', height: '28px', borderRadius: '0.55rem',
+                                                            background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)',
+                                                            border: '1px solid var(--border-color)', cursor: 'pointer', transition: 'all 0.2s'
+                                                        }}
+                                                    >
+                                                        <Edit2 size={13} />
+                                                    </button>
+
+                                                    {/* Compact Delete Icon Button */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDeleteExam(sc.id, sc.examName)}
+                                                        title="Delete Examination Schedule"
+                                                        style={{
+                                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                            width: '28px', height: '28px', borderRadius: '0.55rem',
+                                                            background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444',
+                                                            border: '1px solid rgba(239, 68, 68, 0.25)', cursor: 'pointer', transition: 'all 0.2s'
+                                                        }}
+                                                    >
+                                                        <Trash2 size={13} />
+                                                    </button>
+                                                </div>
                                             </div>
 
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
-                                                <span style={{ fontSize: '0.72rem', fontWeight: '800', color: 'var(--brand-primary)', background: 'rgba(91, 80, 230, 0.12)', padding: '0.2rem 0.55rem', borderRadius: '0.5rem', border: '1px solid rgba(91, 80, 230, 0.25)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                                                    <Tag size={11} /> {sc.term || sc.examName}
-                                                </span>
+                                            {/* Row 2: Exam Name and optional Term Subtitle */}
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                                                <h4 style={{
+                                                    fontSize: '1.2rem',
+                                                    fontWeight: '800',
+                                                    color: 'var(--text-primary)',
+                                                    margin: 0,
+                                                    lineHeight: 1.35,
+                                                    letterSpacing: '-0.01em'
+                                                }}>
+                                                    {sc.examName}
+                                                </h4>
+                                                {sc.term && sc.term.trim().toLowerCase() !== sc.examName.trim().toLowerCase() && (
+                                                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontWeight: '600' }}>
+                                                        <Tag size={11} style={{ color: 'var(--brand-primary)' }} />
+                                                        <span>Term: {sc.term}</span>
+                                                    </div>
+                                                )}
+                                            </div>
 
-                                                {/* Compact Edit Icon Button */}
-                                                <button
-                                                    onClick={() => handleOpenEditModal(sc)}
-                                                    title="Edit Examination Schedule"
-                                                    style={{
-                                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                        width: '28px', height: '28px', borderRadius: '0.5rem',
-                                                        background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)',
-                                                        border: '1px solid var(--border-color)', cursor: 'pointer', transition: 'all 0.2s'
-                                                    }}
-                                                >
-                                                    <Edit2 size={13} />
-                                                </button>
+                                            {/* Row 3: Structured 2x2 Detail Matrix */}
+                                            <div style={{
+                                                display: 'grid',
+                                                gridTemplateColumns: '1fr 1fr',
+                                                gap: '0.55rem',
+                                                background: 'rgba(255, 255, 255, 0.025)',
+                                                padding: '0.75rem',
+                                                borderRadius: '0.8rem',
+                                                border: '1px solid rgba(255, 255, 255, 0.05)'
+                                            }}>
+                                                {/* Date Box */}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                                                    <div style={{
+                                                        width: '32px', height: '32px', borderRadius: '0.55rem',
+                                                        background: 'rgba(99, 102, 241, 0.12)', display: 'flex',
+                                                        alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                                                    }}>
+                                                        <Calendar size={15} style={{ color: '#818cf8' }} />
+                                                    </div>
+                                                    <div style={{ minWidth: 0 }}>
+                                                        <div style={{ fontSize: '0.65rem', fontWeight: '800', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                                            Date
+                                                        </div>
+                                                        <div style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                            {sc.examDate ? new Date(sc.examDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                                                        </div>
+                                                    </div>
+                                                </div>
 
-                                                {/* Compact Delete Icon Button */}
-                                                <button
-                                                    onClick={() => handleDeleteExam(sc.id, sc.examName)}
-                                                    title="Delete Examination Schedule"
-                                                    style={{
-                                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                        width: '28px', height: '28px', borderRadius: '0.5rem',
-                                                        background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444',
-                                                        border: '1px solid rgba(239, 68, 68, 0.25)', cursor: 'pointer', transition: 'all 0.2s'
-                                                    }}
-                                                >
-                                                    <Trash2 size={13} />
-                                                </button>
+                                                {/* Time Slot Box */}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                                                    <div style={{
+                                                        width: '32px', height: '32px', borderRadius: '0.55rem',
+                                                        background: 'rgba(245, 158, 11, 0.12)', display: 'flex',
+                                                        alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                                                    }}>
+                                                        <Clock size={15} style={{ color: '#f59e0b' }} />
+                                                    </div>
+                                                    <div style={{ minWidth: 0 }}>
+                                                        <div style={{ fontSize: '0.65rem', fontWeight: '800', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                                            Time Slot
+                                                        </div>
+                                                        <div style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                            {sc.timeSlot || '—'}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Room / Venue Box */}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                                                    <div style={{
+                                                        width: '32px', height: '32px', borderRadius: '0.55rem',
+                                                        background: 'rgba(16, 185, 129, 0.12)', display: 'flex',
+                                                        alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                                                    }}>
+                                                        <MapPin size={15} style={{ color: '#10b981' }} />
+                                                    </div>
+                                                    <div style={{ minWidth: 0 }}>
+                                                        <div style={{ fontSize: '0.65rem', fontWeight: '800', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                                            Venue
+                                                        </div>
+                                                        <div style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                            {sc.roomNumber || 'TBD'}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Max Marks Box */}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                                                    <div style={{
+                                                        width: '32px', height: '32px', borderRadius: '0.55rem',
+                                                        background: 'rgba(236, 72, 153, 0.12)', display: 'flex',
+                                                        alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                                                    }}>
+                                                        <Award size={15} style={{ color: '#ec4899' }} />
+                                                    </div>
+                                                    <div style={{ minWidth: 0 }}>
+                                                        <div style={{ fontSize: '0.65rem', fontWeight: '800', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                                            Max Marks
+                                                        </div>
+                                                        <div style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                            {sc.maxMarks || 100} Marks
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
-
-                                        <h4 style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{sc.examName}</h4>
-
-                                        <div style={{ display: 'flex', gap: '1rem', fontSize: '0.85rem', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
-                                            <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}><Calendar size={14} className="text-brand-primary" /> {new Date(sc.examDate).toLocaleDateString()}</span>
-                                            <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}><Clock size={14} className="text-brand-primary" /> {sc.timeSlot}</span>
-                                            <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}><MapPin size={14} className="text-brand-primary" /> {sc.roomNumber}</span>
-                                            <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}><Award size={14} className="text-brand-primary" /> Max: {sc.maxMarks || 100}</span>
-                                        </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         );
                     })()
@@ -665,11 +967,12 @@ const TeacherExams = () => {
                     {/* Exam-Wise Selector Dropdown */}
                     <div style={{
                         display: 'flex', alignItems: 'center', gap: '0.5rem',
-                        background: 'var(--bg-secondary)', padding: '0.5rem 0.9rem',
-                        borderRadius: '0.85rem', border: '1px solid var(--border-color)'
+                        background: 'var(--bg-secondary)', padding: '0.45rem 0.85rem',
+                        borderRadius: '0.85rem', border: '1px solid var(--border-color)',
+                        position: 'relative'
                     }}>
-                        <Filter size={16} style={{ color: 'var(--brand-primary)' }} />
-                        <span style={{ fontSize: '0.8rem', fontWeight: '800', color: 'var(--text-secondary)' }}>Exam:</span>
+                        <Filter size={15} style={{ color: 'var(--brand-primary)', flexShrink: 0 }} />
+                        <span style={{ fontSize: '0.8rem', fontWeight: '800', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Exam:</span>
                         <select
                             value={selectedExamFilter}
                             onChange={e => setSelectedExamFilter(e.target.value)}
@@ -680,19 +983,24 @@ const TeacherExams = () => {
                                 fontWeight: '800',
                                 fontSize: '0.85rem',
                                 outline: 'none',
-                                cursor: 'pointer'
+                                cursor: 'pointer',
+                                paddingRight: '1.4rem',
+                                appearance: 'none',
+                                WebkitAppearance: 'none',
+                                MozAppearance: 'none'
                             }}
                         >
-                            <option value="all" style={{ background: 'var(--bg-primary)' }}>All Examinations ({results.length})</option>
+                            <option value="all" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>All Examinations ({results.length})</option>
                             {schedules.map(sc => {
                                 const count = results.filter(r => String(r.exam_schedule_id) === String(sc.id)).length;
                                 return (
-                                    <option key={sc.id} value={sc.id} style={{ background: 'var(--bg-primary)' }}>
+                                    <option key={sc.id} value={sc.id} style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
                                         {sc.examName} — {sc.subjectName || 'Subject'} ({count} graded)
                                     </option>
                                 );
                             })}
                         </select>
+                        <ChevronDown size={14} style={{ color: 'var(--text-secondary)', position: 'absolute', right: '0.75rem', pointerEvents: 'none' }} />
                     </div>
                 </div>
 

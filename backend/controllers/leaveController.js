@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { pool } from '../config/db.js';
 import cloudinary from '../config/cloudinary.js';
 
@@ -13,25 +15,43 @@ export const applyLeave = async (req, res) => {
         const userRole = req.user.role;
 
         let documentUrl = '';
-        if (req.file) {
-            const fileBase64 = req.file.buffer.toString('base64');
-            const fileUri = `data:${req.file.mimetype};base64,${fileBase64}`;
-            
-            if (process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_CLOUD_NAME) {
-                try {
-                    const uploadRes = await cloudinary.uploader.upload(fileUri, {
-                        folder: 'iattend/leaves',
-                        resource_type: 'auto'
-                    });
-                    documentUrl = uploadRes.secure_url;
-                } catch (cloudErr) {
-                    console.warn('Cloudinary upload failed, falling back to inline data URL:', cloudErr.message);
-                    documentUrl = fileUri;
+
+        // Save uploaded document to disk in uploads/leaves to avoid huge SQL payloads over TLS
+        if (req.file && req.file.buffer) {
+            try {
+                const uploadsDir = path.join(process.cwd(), 'uploads', 'leaves');
+                if (!fs.existsSync(uploadsDir)) {
+                    fs.mkdirSync(uploadsDir, { recursive: true });
                 }
-            } else {
-                // Cloudinary credentials not configured in .env, use data URI fallback
-                documentUrl = fileUri;
+                const originalName = req.file.originalname || '';
+                const detectedExt = path.extname(originalName) || (req.file.mimetype === 'application/pdf' ? '.pdf' : '.png');
+                const filename = `leave_${userId}_${Date.now()}${detectedExt}`;
+                const filePath = path.join(uploadsDir, filename);
+                fs.writeFileSync(filePath, req.file.buffer);
+                documentUrl = `/uploads/leaves/${filename}`;
+            } catch (diskErr) {
+                console.error('[Leave] Error saving file to uploads/leaves:', diskErr);
             }
+        } else if (req.body.documentData && typeof req.body.documentData === 'string' && req.body.documentData.startsWith('data:')) {
+            try {
+                const matches = req.body.documentData.match(/^data:(.+?);base64,(.+)$/s);
+                if (matches) {
+                    const uploadsDir = path.join(process.cwd(), 'uploads', 'leaves');
+                    if (!fs.existsSync(uploadsDir)) {
+                        fs.mkdirSync(uploadsDir, { recursive: true });
+                    }
+                    const mime = matches[1];
+                    const ext = mime.includes('pdf') ? '.pdf' : mime.includes('jpeg') || mime.includes('jpg') ? '.jpg' : '.png';
+                    const filename = `leave_${userId}_${Date.now()}${ext}`;
+                    const filePath = path.join(uploadsDir, filename);
+                    fs.writeFileSync(filePath, Buffer.from(matches[2], 'base64'));
+                    documentUrl = `/uploads/leaves/${filename}`;
+                }
+            } catch (diskErr) {
+                console.error('[Leave] Error saving documentData to uploads/leaves:', diskErr);
+            }
+        } else if (req.body.document && typeof req.body.document === 'string' && !req.body.document.startsWith('data:') && req.body.document !== '[object Object]') {
+            documentUrl = req.body.document;
         }
 
         const start = new Date(startDate);
@@ -148,6 +168,12 @@ export const getLeaveDocument = async (req, res) => {
             return res.status(404).json({ message: 'Document not found' });
         }
         const docUrl = result.rows[0].document_url;
+        if (docUrl.startsWith('/uploads/')) {
+            const filePath = path.join(process.cwd(), docUrl.replace(/^\//, ''));
+            if (fs.existsSync(filePath)) {
+                return res.sendFile(filePath);
+            }
+        }
         if (docUrl.startsWith('data:')) {
             const matches = docUrl.match(/^data:(.+?);base64,(.+)$/s);
             if (matches) {
@@ -186,6 +212,8 @@ export const getMyLeaves = async (req, res) => {
             rejectionReason: r.rejection_reason,
             status: r.status,
             documentUrl: formatDocumentUrl(r.id, r.document_url),
+            document_url: r.document_url || null,
+            documentDownloadUrl: r.document_url ? `/api/leave/document/${r.id}` : null,
             createdAt: r.created_at
         }));
         res.json(leaves);
@@ -258,6 +286,8 @@ export const getCoordinatorLeaves = async (req, res) => {
             rejectionReason: r.rejection_reason,
             status: r.status,
             documentUrl: formatDocumentUrl(r.id, r.document_url),
+            document_url: r.document_url || null,
+            documentDownloadUrl: r.document_url ? `/api/leave/document/${r.id}` : null,
             createdAt: r.created_at,
             userId: {
                 _id: String(r.user_id),
@@ -300,6 +330,8 @@ export const getAdminTeacherLeaves = async (req, res) => {
             rejectionReason: r.rejection_reason,
             status: r.status,
             documentUrl: formatDocumentUrl(r.id, r.document_url),
+            document_url: r.document_url || null,
+            documentDownloadUrl: r.document_url ? `/api/leave/document/${r.id}` : null,
             createdAt: r.created_at,
             userId: {
                 _id: String(r.user_id),
@@ -324,10 +356,12 @@ export const getAdminTeacherLeaves = async (req, res) => {
 export const approveLeave = async (req, res) => {
     try {
         const { id } = req.params;
+        const { remarks, reason } = req.body || {};
+        const approvalNote = (remarks || reason || '').trim();
         const reviewerId = req.user.id || req.user._id;
 
         const result = await pool.query(
-            `UPDATE leave_requests SET status = 'approved', reviewed_by = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
+            `UPDATE leave_requests SET status = 'approved', reviewed_by = $1, rejection_reason = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
             [reviewerId, id]
         );
 
@@ -349,7 +383,7 @@ export const approveLeave = async (req, res) => {
             [
                 leave.user_id,
                 'Leave Approved',
-                `✅ Your leave request (${new Date(leave.start_date).toLocaleDateString()} – ${new Date(leave.end_date).toLocaleDateString()}) has been APPROVED.`,
+                `✅ Your leave request (${new Date(leave.start_date).toLocaleDateString()} – ${new Date(leave.end_date).toLocaleDateString()}) has been APPROVED.${approvalNote ? ` Remarks: "${approvalNote}"` : ''}`,
                 'leave_approved',
                 leaveLink
             ]
@@ -357,6 +391,7 @@ export const approveLeave = async (req, res) => {
 
         res.json({ message: 'Leave approved successfully', leave });
     } catch (error) {
+        console.error('Approve leave error:', error);
         res.status(400).json({ message: error.message });
     }
 };

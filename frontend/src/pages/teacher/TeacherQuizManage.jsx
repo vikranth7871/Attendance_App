@@ -68,7 +68,7 @@ const TeacherQuizManage = () => {
 
     const handleOpenCreateModal = () => {
         setEditingQuiz(null);
-        setFormData({ title: '', description: '', subjectId: '', type: 'practice', timeLimit: 30, passingScore: 80, difficulty: 'mixed', maxAttempts: 3, questions: [] });
+        setFormData({ title: '', description: '', subjectId: '', type: quizTypeTab, timeLimit: 30, passingScore: 80, difficulty: 'mixed', maxAttempts: 3, questions: [] });
         setIsCreateModalOpen(true);
     };
 
@@ -93,6 +93,7 @@ const TeacherQuizManage = () => {
         setFormData(prev => ({
             ...prev,
             title: prev.title || result.title,
+            type: quizTypeTab,
             questions: result.questions,
             difficulty: result.difficulty
         }));
@@ -109,7 +110,7 @@ const TeacherQuizManage = () => {
             }
             setIsCreateModalOpen(false);
             setEditingQuiz(null);
-            setFormData({ title: '', description: '', subjectId: '', type: 'practice', timeLimit: 30, passingScore: 80, difficulty: 'mixed', maxAttempts: 3, questions: [] });
+            setFormData({ title: '', description: '', subjectId: '', type: quizTypeTab, timeLimit: 30, passingScore: 80, difficulty: 'mixed', maxAttempts: 3, questions: [] });
             fetchQuizzes();
         } catch (error) {
             alert(error.response?.data?.message || 'Failed to save quiz');
@@ -247,7 +248,7 @@ const TeacherQuizManage = () => {
             ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
                     {filteredQuizzes.map(quiz => (
-                        <div key={quiz._id} className="glass-panel" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem', position: 'relative', overflow: 'hidden' }}>
+                        <div key={quiz._id || quiz.id} className="glass-panel" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem', position: 'relative', overflow: 'hidden' }}>
                             {/* Top Right Corner Quiz Type Badge */}
                             {quiz.type === 'university' || quiz.type === 'official' ? (
                                 <div style={{
@@ -277,7 +278,7 @@ const TeacherQuizManage = () => {
                                 <div>
                                     <h3 style={{ margin: '0 0 0.25rem 0', fontSize: '1.1rem', color: 'var(--text-primary)' }}>{quiz.title}</h3>
                                     <span style={{ fontSize: '0.75rem', color: 'var(--brand-secondary)', background: 'rgba(139,92,246,0.1)', padding: '0.2rem 0.55rem', borderRadius: '4px', fontWeight: '600' }}>
-                                        {quiz.subjectId?.subjectName || 'No Subject'}
+                                        {quiz.subjectId?.subjectName || quiz.subjectName || 'General'}
                                     </span>
                                 </div>
                                 <span style={{
@@ -290,11 +291,11 @@ const TeacherQuizManage = () => {
                             </div>
 
                             <div style={{ display: 'flex', gap: '1rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                                <span>{quiz.questionCount} Questions</span>
+                                <span>{quiz.questionCount || quiz.questions?.length || 0} Questions</span>
                                 <span>•</span>
-                                <span>{quiz.totalAttempts} Attempts</span>
+                                <span>{quiz.totalAttempts || 0} Attempts</span>
                                 <span>•</span>
-                                <span>{quiz.difficulty}</span>
+                                <span>{quiz.difficulty || 'Mixed'}</span>
                             </div>
 
                             <div style={{ display: 'flex', gap: '0.4rem', marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--border-color)' }}>
@@ -305,7 +306,7 @@ const TeacherQuizManage = () => {
                                     <Award size={14} /> Results
                                 </button>
                                 <button
-                                    onClick={() => togglePublish(quiz._id)}
+                                    onClick={() => togglePublish(quiz._id || quiz.id)}
                                     style={{ padding: '0.5rem 0.85rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '0.82rem' }}
                                 >
                                     {quiz.isPublished ? 'Unpublish' : 'Publish'}
@@ -318,7 +319,7 @@ const TeacherQuizManage = () => {
                                     <Edit size={15} />
                                 </button>
                                 <button
-                                    onClick={() => deleteQuiz(quiz._id)}
+                                    onClick={() => deleteQuiz(quiz._id || quiz.id)}
                                     style={{ padding: '0.5rem 0.65rem', background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: 'none', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                                     title="Delete Quiz"
                                 >

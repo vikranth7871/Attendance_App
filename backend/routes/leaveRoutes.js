@@ -11,7 +11,20 @@ router.get('/document/:id', getLeaveDocument);
 
 router.use(protect);
 
-router.post('/apply', upload.single('document'), applyLeave);
+const handleUpload = (req, res, next) => {
+    upload.single('document')(req, res, (err) => {
+        if (err) {
+            console.warn('[Leave Upload] Multer processing warning:', err.message);
+            if (req.body && (req.body.documentData || req.body.document)) {
+                return next();
+            }
+            return res.status(400).json({ message: err.message || 'File upload error' });
+        }
+        next();
+    });
+};
+
+router.post('/apply', handleUpload, applyLeave);
 router.get('/my-leaves', getMyLeaves);
 
 // Coordinator Routes

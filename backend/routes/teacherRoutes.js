@@ -3,7 +3,7 @@ import {
     getMySubjects, getMyRoster, getStudentProfile, updateStudentByCoordinator, getAttendanceReport,
     getTeacherAssignments, createTeacherAssignment, updateTeacherAssignment, deleteTeacherAssignment, getAssignmentSubmissions, gradeAssignmentSubmission,
     getTeacherExams, createTeacherExam, updateTeacherExam, deleteTeacherExam, submitTeacherExamMarks, submitBulkTeacherExamMarks,
-    getTeacherParentMessages, replyParentMessage
+    getTeacherParentMessages, replyParentMessage, markTeacherMessagesRead
 } from '../controllers/teacherController.js';
 import { protect, authorizeRoles, authorizePermissions } from '../middleware/authMiddleware.js';
 
@@ -29,5 +29,6 @@ router.post('/exams/marks', protect, authorizeRoles('teacher'), submitTeacherExa
 router.post('/exams/marks-bulk', protect, authorizeRoles('teacher'), submitBulkTeacherExamMarks);
 router.get('/messages', protect, authorizeRoles('teacher'), getTeacherParentMessages);
 router.post('/messages/reply', protect, authorizeRoles('teacher'), replyParentMessage);
+router.put('/messages/read/:parentId', protect, authorizeRoles('teacher'), markTeacherMessagesRead);
 
 export default router;

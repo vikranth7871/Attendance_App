@@ -41,6 +41,17 @@ api.interceptors.request.use(
     } catch (e) {
       console.warn('Could not read token from storage:', e);
     }
+
+    // Handle FormData properly across Web and Native platforms
+    if (config.data && (typeof FormData !== 'undefined' && config.data instanceof FormData || config.data?._parts)) {
+      if (Platform.OS === 'web') {
+        // On web, delete Content-Type so browser sets multipart/form-data; boundary=...
+        delete config.headers['Content-Type'];
+      } else {
+        config.headers['Content-Type'] = 'multipart/form-data';
+      }
+    }
+
     return config;
   },
   (error) => Promise.reject(error)

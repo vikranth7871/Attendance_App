@@ -34,8 +34,10 @@ import {
   Building,
   User,
   CheckCircle,
+  Paperclip,
 } from 'lucide-react-native';
 import Header from '../../components/Header';
+import DocumentViewerModal from '../../components/DocumentViewerModal';
 import { SkeletonBox } from '../../components/LoadingSkeleton';
 import api from '../../api/client';
 import { colors, spacing, radius, typography, shadows } from '../../styles/theme';
@@ -108,8 +110,15 @@ const TeacherLeavesScreen = ({ navigation }) => {
   // Actions loading
   const [actionLoadingId, setActionLoadingId] = useState(null);
 
-  // Reject / Revoke Reason Modal
-  const [actionModal, setActionModal] = useState(null); // { id, type: 'reject' | 'revoke', teacherName }
+  // Top feedback toast banner
+  const [banner, setBanner] = useState({ type: '', message: '' });
+  const showFeedback = (type, message) => {
+    setBanner({ type, message });
+    setTimeout(() => setBanner({ type: '', message: '' }), 4000);
+  };
+
+  // Action Modal (Approve / Reject / Revoke)
+  const [actionModal, setActionModal] = useState(null); // { id, type: 'approve' | 'reject' | 'revoke', teacherName, dates }
   const [actionReason, setActionReason] = useState('');
 
   // Detailed Dossier / Inspect Modal
@@ -117,6 +126,7 @@ const TeacherLeavesScreen = ({ navigation }) => {
 
   // Document Viewer Modal
   const [previewDocUrl, setPreviewDocUrl] = useState(null);
+  const [previewDocTitle, setPreviewDocTitle] = useState('Supporting Document');
 
   const fetchLeaves = async () => {
     try {
@@ -172,79 +182,78 @@ const TeacherLeavesScreen = ({ navigation }) => {
 
   // Action handlers
   const handleApprove = (leave) => {
-    const id = leave.id || leave._id;
-    const teacherName = leave.userId?.name || leave.teacher_name || 'Staff Member';
-
-    Alert.alert(
-      'Approve Leave Request',
-      `Approve leave application for ${teacherName}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Approve',
-          onPress: async () => {
-            setActionLoadingId(id);
-            try {
-              await api.put(`/leave/approve/${id}`).catch(() => api.put(`/admin/teacher-leaves/${id}/approve`));
-              fetchLeaves();
-              if (dossierLeave && (dossierLeave.id === id || dossierLeave._id === id)) {
-                setDossierLeave((prev) => (prev ? { ...prev, status: 'approved' } : null));
-              }
-            } catch (err) {
-              Alert.alert('Error', err.response?.data?.message || 'Failed to approve leave request.');
-            } finally {
-              setActionLoadingId(null);
-            }
-          },
-        },
-      ]
-    );
+    openActionModal(leave, 'approve');
   };
 
   const openActionModal = (leave, type) => {
     const id = leave.id || leave._id;
     const teacherName = leave.userId?.name || leave.teacher_name || 'Staff Member';
-    setActionModal({ id, type, teacherName });
+    const dates = `${formatDateSafe(leave.startDate || leave.start_date)} – ${formatDateSafe(leave.endDate || leave.end_date)}`;
+    setActionModal({ id, type, teacherName, dates });
     setActionReason(type === 'revoke' ? 'Revoked by Admin' : '');
   };
 
   const submitActionModal = async () => {
     if (!actionModal) return;
-    const { id, type } = actionModal;
+    const { id, type, teacherName } = actionModal;
     const reason = actionReason.trim();
 
     if (type === 'reject' && !reason) {
-      Alert.alert('Reason Required', 'Please provide a brief reason for rejecting this leave.');
+      showFeedback('error', 'Please provide a reason for rejecting this leave.');
       return;
     }
 
     setActionLoadingId(id);
     try {
-      if (type === 'reject') {
+      if (type === 'approve') {
+        await api
+          .put(`/leave/approve/${id}`, { remarks: reason })
+          .catch(() => api.put(`/admin/teacher-leaves/${id}/approve`, { remarks: reason }));
+        showFeedback('success', `Leave application for ${teacherName} approved successfully.`);
+      } else if (type === 'reject') {
         await api
           .put(`/leave/reject/${id}`, { reason: reason || 'Rejected by Admin' })
           .catch(() => api.put(`/admin/teacher-leaves/${id}/reject`, { reason }));
+        showFeedback('success', `Leave application for ${teacherName} rejected.`);
       } else {
         await api
           .put(`/leave/revoke/${id}`, { reason: reason || 'Revoked by Admin' })
           .catch(() => api.put(`/admin/teacher-leaves/${id}/revoke`, { reason }));
+        showFeedback('success', `Approved leave for ${teacherName} has been revoked.`);
       }
+
       setActionModal(null);
       setActionReason('');
       fetchLeaves();
       if (dossierLeave && (dossierLeave.id === id || dossierLeave._id === id)) {
-        setDossierLeave((prev) => (prev ? { ...prev, status: type === 'reject' ? 'rejected' : 'revoked', rejectionReason: reason } : null));
+        setDossierLeave((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: type === 'approve' ? 'approved' : type === 'reject' ? 'rejected' : 'revoked',
+                rejectionReason: type === 'approve' ? null : reason,
+              }
+            : null
+        );
       }
     } catch (err) {
-      Alert.alert('Error', err.response?.data?.message || `Failed to ${type} leave request.`);
+      showFeedback('error', err.response?.data?.message || `Failed to ${type} leave request.`);
     } finally {
       setActionLoadingId(null);
     }
   };
 
-  const handleOpenDoc = (docUrl) => {
-    if (!docUrl) return;
-    setPreviewDocUrl(docUrl);
+  const handleOpenDoc = (itemOrUrl) => {
+    if (!itemOrUrl) return;
+    if (typeof itemOrUrl === 'object') {
+      const doc = itemOrUrl.documentUrl || itemOrUrl.document_url || itemOrUrl.documentDownloadUrl;
+      const teacher = itemOrUrl.userId?.name || itemOrUrl.teacher_name || 'Teacher';
+      setPreviewDocUrl(doc);
+      setPreviewDocTitle(`${teacher}'s Supporting Document`);
+    } else {
+      setPreviewDocUrl(itemOrUrl);
+      setPreviewDocTitle('Supporting Document');
+    }
   };
 
   return (
@@ -255,6 +264,23 @@ const TeacherLeavesScreen = ({ navigation }) => {
         subtitle={`${metrics.pending} pending review`}
         navigation={navigation}
       />
+
+      {/* Top Feedback Banner */}
+      {Boolean(banner.message) && (
+        <View
+          style={[
+            styles.feedbackBanner,
+            banner.type === 'error' ? styles.feedbackBannerError : styles.feedbackBannerSuccess,
+          ]}
+        >
+          {banner.type === 'error' ? (
+            <AlertCircle size={16} color={colors.danger} />
+          ) : (
+            <CheckCircle size={16} color={colors.success} />
+          )}
+          <Text style={styles.feedbackBannerText}>{banner.message}</Text>
+        </View>
+      )}
 
       {/* Top Analytics Cards (Total, Pending, Approved, Rejected/Revoked) */}
       <View style={styles.analyticsContainer}>
@@ -434,8 +460,7 @@ const TeacherLeavesScreen = ({ navigation }) => {
               const statusCfg = STATUS_CONFIG[statusKey] || STATUS_CONFIG.pending;
               const StatusIcon = statusCfg.icon;
 
-              const isActionBusy = actionLoadingId === rowId;
-              const hasDoc = Boolean(item.documentUrl || item.document_url);
+              const hasDoc = Boolean(item.documentUrl || item.document_url || item.documentDownloadUrl);
 
               return (
                 <View style={[styles.tableRow, index % 2 === 1 && styles.tableRowAlt]}>
@@ -454,10 +479,18 @@ const TeacherLeavesScreen = ({ navigation }) => {
                     <Text style={styles.dateTextPrimary} numberOfLines={1}>
                       {formatDateSafe(startDateStr)} – {formatDateSafe(endDateStr)}
                     </Text>
-                    <View style={styles.daysBadge}>
-                      <Text style={styles.daysBadgeText}>
-                        {daysCount} {daysCount === 1 ? 'day' : 'days'}
-                      </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                      <View style={styles.daysBadge}>
+                        <Text style={styles.daysBadgeText}>
+                          {daysCount} {daysCount === 1 ? 'day' : 'days'}
+                        </Text>
+                      </View>
+                      {hasDoc && (
+                        <View style={styles.hasDocBadge}>
+                          <Paperclip size={9} color={colors.primary} />
+                          <Text style={styles.hasDocBadgeText}>Doc</Text>
+                        </View>
+                      )}
                     </View>
                   </View>
 
@@ -571,10 +604,10 @@ const TeacherLeavesScreen = ({ navigation }) => {
                 {/* Supporting Document */}
                 <View style={styles.dossierSection}>
                   <Text style={styles.dossierSectionHeading}>Attached Document</Text>
-                  {dossierLeave.documentUrl || dossierLeave.document_url ? (
+                  {dossierLeave.documentUrl || dossierLeave.document_url || dossierLeave.documentDownloadUrl ? (
                     <TouchableOpacity
                       style={styles.docAttachmentBtn}
-                      onPress={() => handleOpenDoc(dossierLeave.documentUrl || dossierLeave.document_url)}
+                      onPress={() => handleOpenDoc(dossierLeave)}
                       activeOpacity={0.75}
                     >
                       <FileText size={18} color={colors.primary} />
@@ -629,7 +662,7 @@ const TeacherLeavesScreen = ({ navigation }) => {
       </Modal>
 
       {/* ========================================================================= */}
-      {/* 2. REJECT / REVOKE INPUT MODAL                                            */}
+      {/* 2. ACTION MODAL (APPROVE / REJECT / REVOKE)                               */}
       {/* ========================================================================= */}
       <Modal
         visible={Boolean(actionModal)}
@@ -639,21 +672,61 @@ const TeacherLeavesScreen = ({ navigation }) => {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.reasonModalCard}>
-            <Text style={styles.reasonModalTitle}>
-              {actionModal?.type === 'reject' ? 'Reject Leave Request' : 'Revoke Approved Leave'}
-            </Text>
-            <Text style={styles.reasonModalSubtitle}>
-              Educator: {actionModal?.teacherName}
-            </Text>
+            <View style={styles.modalHeaderRow}>
+              <View
+                style={[
+                  styles.actionIconBox,
+                  {
+                    backgroundColor:
+                      actionModal?.type === 'approve'
+                        ? 'rgba(16, 185, 129, 0.15)'
+                        : actionModal?.type === 'reject'
+                        ? 'rgba(239, 68, 68, 0.15)'
+                        : 'rgba(245, 158, 11, 0.15)',
+                  },
+                ]}
+              >
+                {actionModal?.type === 'approve' ? (
+                  <Check size={20} color={colors.success} />
+                ) : actionModal?.type === 'reject' ? (
+                  <X size={20} color={colors.danger} />
+                ) : (
+                  <RotateCcw size={18} color="#F59E0B" />
+                )}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.reasonModalTitle}>
+                  {actionModal?.type === 'approve'
+                    ? 'Approve Leave Request'
+                    : actionModal?.type === 'reject'
+                    ? 'Reject Leave Request'
+                    : 'Revoke Approved Leave'}
+                </Text>
+                <Text style={styles.reasonModalSubtitle}>
+                  Educator: <Text style={{ fontWeight: '700', color: colors.textPrimary }}>{actionModal?.teacherName}</Text>
+                  {actionModal?.dates ? ` (${actionModal.dates})` : ''}
+                </Text>
+              </View>
+            </View>
 
             <Text style={styles.inputLabel}>
-              {actionModal?.type === 'reject' ? 'Reason for Rejection *' : 'Reason for Revocation (Optional)'}
+              {actionModal?.type === 'approve'
+                ? 'Approval Remarks / Note (Optional)'
+                : actionModal?.type === 'reject'
+                ? 'Reason for Rejection *'
+                : 'Reason for Revocation (Optional)'}
             </Text>
             <TextInput
               style={styles.reasonInput}
               value={actionReason}
               onChangeText={setActionReason}
-              placeholder={actionModal?.type === 'reject' ? 'Enter reason for rejection...' : 'Revoked by Admin'}
+              placeholder={
+                actionModal?.type === 'approve'
+                  ? 'Add optional remarks (e.g. Approved with coverage arranged)...'
+                  : actionModal?.type === 'reject'
+                  ? 'Enter reason for rejection (required)...'
+                  : 'Revoked by Admin'
+              }
               placeholderTextColor={colors.textMuted}
               multiline
               numberOfLines={3}
@@ -667,6 +740,7 @@ const TeacherLeavesScreen = ({ navigation }) => {
                   setActionModal(null);
                   setActionReason('');
                 }}
+                disabled={Boolean(actionLoadingId)}
               >
                 <Text style={styles.modalCancelBtnText}>Cancel</Text>
               </TouchableOpacity>
@@ -674,7 +748,11 @@ const TeacherLeavesScreen = ({ navigation }) => {
               <TouchableOpacity
                 style={[
                   styles.modalSubmitBtn,
-                  actionModal?.type === 'reject' ? { backgroundColor: colors.danger } : { backgroundColor: '#D97706' },
+                  actionModal?.type === 'approve'
+                    ? { backgroundColor: colors.success }
+                    : actionModal?.type === 'reject'
+                    ? { backgroundColor: colors.danger }
+                    : { backgroundColor: '#D97706' },
                 ]}
                 onPress={submitActionModal}
                 disabled={Boolean(actionLoadingId)}
@@ -683,7 +761,11 @@ const TeacherLeavesScreen = ({ navigation }) => {
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
                   <Text style={styles.modalSubmitBtnText}>
-                    {actionModal?.type === 'reject' ? 'Confirm Reject' : 'Confirm Revoke'}
+                    {actionModal?.type === 'approve'
+                      ? 'Confirm Approve'
+                      : actionModal?.type === 'reject'
+                      ? 'Confirm Reject'
+                      : 'Confirm Revoke'}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -695,51 +777,12 @@ const TeacherLeavesScreen = ({ navigation }) => {
       {/* ========================================================================= */}
       {/* 3. DOCUMENT PREVIEW MODAL                                                 */}
       {/* ========================================================================= */}
-      <Modal
+      <DocumentViewerModal
         visible={Boolean(previewDocUrl)}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setPreviewDocUrl(null)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.docPreviewCard}>
-            <View style={styles.docPreviewHeader}>
-              <Text style={styles.docPreviewTitle}>Supporting Document</Text>
-              <TouchableOpacity onPress={() => setPreviewDocUrl(null)}>
-                <X size={20} color={colors.textMuted} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.docPreviewBody}>
-              {previewDocUrl && (previewDocUrl.startsWith('data:image/') || /\.(jpg|jpeg|png|webp|gif)($|\?)/i.test(previewDocUrl)) ? (
-                <Image
-                  source={{ uri: previewDocUrl }}
-                  style={styles.docImagePreview}
-                  resizeMode="contain"
-                />
-              ) : (
-                <View style={styles.docFileNotice}>
-                  <FileText size={48} color={colors.primary} />
-                  <Text style={styles.docNoticeText}>PDF / Document Attachment</Text>
-                  <TouchableOpacity
-                    style={styles.docExternalBtn}
-                    onPress={() => {
-                      if (previewDocUrl) {
-                        Linking.openURL(previewDocUrl).catch(() => {
-                          Alert.alert('Cannot open file', 'Please ensure you have a compatible document viewer installed.');
-                        });
-                      }
-                    }}
-                  >
-                    <ExternalLink size={16} color="#fff" />
-                    <Text style={styles.docExternalBtnText}>Open Document in Browser</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-          </View>
-        </View>
-      </Modal>
+        onClose={() => setPreviewDocUrl(null)}
+        documentUrl={previewDocUrl}
+        title={previewDocTitle}
+      />
     </SafeAreaView>
   );
 };
@@ -937,6 +980,23 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: colors.textSecondary,
     fontWeight: '600',
+  },
+  hasDocBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 4,
+    backgroundColor: 'rgba(99, 102, 241, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.3)',
+    marginTop: 2,
+  },
+  hasDocBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.primary,
   },
 
   // Status Badge Pill
@@ -1254,64 +1314,45 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#fff',
   },
-
-  // Document Preview Modal
-  docPreviewCard: {
-    backgroundColor: colors.bgCard,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    marginHorizontal: spacing.md,
-    marginBottom: 'auto',
-    marginTop: 'auto',
-    borderWidth: 1,
-    borderColor: colors.border,
-    maxHeight: '80%',
-  },
-  docPreviewHeader: {
+  modalHeaderRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.md,
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
   },
-  docPreviewTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  docPreviewBody: {
+  actionIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 220,
   },
-  docImagePreview: {
-    width: '100%',
-    height: 280,
-    borderRadius: radius.sm,
-  },
-  docFileNotice: {
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 20,
-  },
-  docNoticeText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  docExternalBtn: {
+  feedbackBanner: {
+    marginHorizontal: spacing.md,
+    marginTop: spacing.xs,
+    marginBottom: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.primary,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: radius.md,
-    gap: 6,
-    marginTop: 6,
+    gap: spacing.xs,
+    borderWidth: 1,
+    zIndex: 100,
   },
-  docExternalBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#fff',
+  feedbackBannerSuccess: {
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    borderColor: 'rgba(16, 185, 129, 0.35)',
+  },
+  feedbackBannerError: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderColor: 'rgba(239, 68, 68, 0.35)',
+  },
+  feedbackBannerText: {
+    ...typography.sm,
+    ...typography.medium,
+    color: colors.textPrimary,
+    flex: 1,
   },
 });
 

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -11,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import TeacherReportModal from '../../components/teacher/TeacherReportModal';
+import TimetableGrid from '../../components/shared/TimetableGrid';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -183,45 +185,27 @@ const TeacherOverview = () => {
             .sort((a, b) => parseTimeMinutes(a.startTime || a.timeSlot) - parseTimeMinutes(b.startTime || b.timeSlot));
     }, [subjects, selectedDay]);
 
-    // Download timetable schedule as text
-    const handleDownloadTimetable = () => {
+    const timetableRef = useRef(null);
+
+    // Download timetable schedule as high-resolution PNG picture (media_1788699868026.png)
+    const handleDownloadTimetable = async () => {
+        if (!timetableRef.current || downloadingTimetable) return;
         setDownloadingTimetable(true);
         try {
-            let text = `==========================================================\n`;
-            text += `          FACULTY WEEKLY TEACHING SCHEDULE (iAttend)       \n`;
-            text += `==========================================================\n`;
-            text += `Faculty Name : ${user?.name || 'Educator'}\n`;
-            text += `Generated On : ${new Date().toLocaleDateString()}\n\n`;
-
-            DAYS.forEach((day) => {
-                const slots = subjects.filter((s) => (s.dayOfWeek || s.day_of_week)?.toLowerCase() === day.toLowerCase());
-                text += `[${day.toUpperCase()}] (${slots.length} Lectures)\n`;
-                if (slots.length === 0) {
-                    text += `  No lectures scheduled\n\n`;
-                } else {
-                    slots.forEach((s, idx) => {
-                        const subName = s.subjectId?.name || s.subjectId?.subjectName || s.subject_name || s.name || 'Subject';
-                        const clsName = s.classId?.name || s.classId?.className || s.class_name || 'Class';
-                        const time = s.timeSlot || `${s.startTime || ''} - ${s.endTime || ''}`;
-                        const room = s.roomNumber || s.room_number ? ` (Room ${s.roomNumber || s.room_number})` : '';
-                        text += `  ${idx + 1}. [${time}] ${subName} - ${clsName}${room}\n`;
-                    });
-                    text += `\n`;
-                }
+            const html2canvas = (await import('html2canvas')).default;
+            const canvas = await html2canvas(timetableRef.current, {
+                backgroundColor: '#121212',
+                scale: 2,
+                useCORS: true,
+                logging: false
             });
-
-            const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-            const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             const safeName = (user?.name || 'faculty').replace(/\s+/g, '_');
-            link.href = url;
-            link.download = `teacher_timetable_${safeName}.txt`;
-            document.body.appendChild(link);
+            link.download = `teacher_timetable_${safeName}.png`;
+            link.href = canvas.toDataURL('image/png');
             link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
         } catch (err) {
-            console.error('Failed to export timetable:', err);
+            console.error('Failed to export timetable image:', err);
         } finally {
             setDownloadingTimetable(false);
         }
@@ -574,19 +558,38 @@ const TeacherOverview = () => {
             {/* 4. ACADEMIC OVERVIEW STAT CARDS (4-COL GRID)                  */}
             {/* ============================================================ */}
             <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
-                    <h3 style={{ fontSize: '1.15rem', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
-                        Academic Overview
-                    </h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                    <div>
+                        <h3 style={{ fontSize: '1.15rem', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+                            Academic Overview
+                        </h3>
+                        <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '0.15rem 0 0 0' }}>
+                            Overall teaching metrics across your assigned classes
+                        </p>
+                    </div>
                     <button
+                        id="academic-overview-report-btn"
                         onClick={() => setShowReportModal(true)}
                         style={{
-                            display: 'flex', alignItems: 'center', gap: '0.35rem',
-                            background: 'none', border: 'none', color: 'var(--brand-primary)',
-                            fontSize: '0.82rem', fontWeight: '600', cursor: 'pointer'
+                            display: 'flex', alignItems: 'center', gap: '0.45rem',
+                            padding: '0.5rem 1rem', borderRadius: '10px',
+                            background: 'rgba(99, 102, 241, 0.12)',
+                            color: 'var(--brand-primary)',
+                            border: '1px solid rgba(99, 102, 241, 0.3)',
+                            fontSize: '0.82rem', fontWeight: '700',
+                            cursor: 'pointer', transition: 'all 0.2s',
+                            boxShadow: '0 2px 8px rgba(99, 102, 241, 0.1)'
+                        }}
+                        onMouseOver={e => {
+                            e.currentTarget.style.background = 'rgba(99, 102, 241, 0.22)';
+                            e.currentTarget.style.transform = 'translateY(-1px)';
+                        }}
+                        onMouseOut={e => {
+                            e.currentTarget.style.background = 'rgba(99, 102, 241, 0.12)';
+                            e.currentTarget.style.transform = 'translateY(0)';
                         }}
                     >
-                        <Download size={14} /> Generate Full Report
+                        <FileBarChart2 size={15} /> View Attendance Report <ArrowRight size={13} />
                     </button>
                 </div>
 
@@ -628,19 +631,30 @@ const TeacherOverview = () => {
                             color: '#f59e0b',
                             bg: 'rgba(245, 158, 11, 0.1)'
                         }
-                    ].map((stat, i) => (
+                    ].map((stat) => (
                         <div
                             key={stat.label}
                             className="glass-panel"
+                            onClick={() => setShowReportModal(true)}
+                            title="Click to view Attendance Report popup"
                             style={{
                                 padding: '1.25rem',
                                 display: 'flex',
                                 alignItems: 'flex-start',
                                 justifyContent: 'space-between',
-                                transition: 'transform 0.2s, box-shadow 0.2s'
+                                cursor: 'pointer',
+                                transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
                             }}
-                            onMouseOver={e => e.currentTarget.style.transform = 'translateY(-2px)'}
-                            onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}
+                            onMouseOver={e => {
+                                e.currentTarget.style.transform = 'translateY(-3px)';
+                                e.currentTarget.style.borderColor = stat.color;
+                                e.currentTarget.style.boxShadow = `0 10px 25px rgba(0,0,0,0.35), 0 0 15px ${stat.color}25`;
+                            }}
+                            onMouseOut={e => {
+                                e.currentTarget.style.transform = 'translateY(0)';
+                                e.currentTarget.style.borderColor = 'var(--border-color)';
+                                e.currentTarget.style.boxShadow = 'none';
+                            }}
                         >
                             <div>
                                 <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
@@ -652,6 +666,9 @@ const TeacherOverview = () => {
                                 <p style={{ fontSize: '0.75rem', color: 'var(--text-light)', margin: 0 }}>
                                     {stat.desc}
                                 </p>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '3px', marginTop: '0.5rem', color: stat.color, fontSize: '0.72rem', fontWeight: '700' }}>
+                                    View Report <ArrowRight size={12} />
+                                </div>
                             </div>
                             <div style={{
                                 width: '42px', height: '42px', borderRadius: '12px',
@@ -1047,40 +1064,58 @@ const TeacherOverview = () => {
             {/* ============================================================ */}
             {/* 8. SYSTEM PERMISSIONS STATUS MODAL                            */}
             {/* ============================================================ */}
-            <AnimatePresence>
-                {showPermissionsModal && (
+            {showPermissionsModal && createPortal(
+                <AnimatePresence>
                     <motion.div
+                        key="permissions-overlay"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={() => setShowPermissionsModal(false)}
                         style={{
-                            position: 'fixed', inset: 0, zIndex: 2000,
-                            background: 'rgba(0,0,0,0.65)',
-                            backdropFilter: 'blur(4px)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            padding: '1rem'
+                            position: 'fixed',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            width: '100vw',
+                            height: '100vh',
+                            zIndex: 99999,
+                            background: 'rgba(0,0,0,0.75)',
+                            backdropFilter: 'blur(6px)',
+                            WebkitBackdropFilter: 'blur(6px)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '1.25rem',
+                            boxSizing: 'border-box'
                         }}
                     >
                         <motion.div
+                            key="permissions-dialog"
                             initial={{ scale: 0.94, y: 20 }}
                             animate={{ scale: 1, y: 0 }}
                             exit={{ scale: 0.94, y: 20 }}
                             onClick={e => e.stopPropagation()}
                             style={{
-                                width: '100%', maxWidth: '520px',
-                                background: 'var(--bg-secondary)',
-                                border: '1px solid var(--border-color)',
-                                borderRadius: '1rem',
-                                boxShadow: '0 24px 80px rgba(0,0,0,0.45)',
-                                overflow: 'hidden'
+                                width: '100%',
+                                maxWidth: '540px',
+                                maxHeight: '85vh',
+                                background: 'var(--bg-secondary, #1a1a2e)',
+                                border: '1px solid var(--border-color, rgba(255,255,255,0.1))',
+                                borderRadius: '16px',
+                                boxShadow: '0 25px 70px rgba(0,0,0,0.6)',
+                                overflow: 'hidden',
+                                display: 'flex',
+                                flexDirection: 'column'
                             }}
                         >
                             <div style={{
                                 padding: '1.25rem 1.5rem',
                                 borderBottom: '1px solid var(--border-color)',
                                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                background: 'linear-gradient(135deg, rgba(79, 70, 229, 0.1), rgba(99, 102, 241, 0.05))'
+                                background: 'linear-gradient(135deg, rgba(79, 70, 229, 0.12), rgba(99, 102, 241, 0.06))',
+                                flexShrink: 0
                             }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                                     <div style={{
@@ -1102,15 +1137,16 @@ const TeacherOverview = () => {
                                 <button
                                     onClick={() => setShowPermissionsModal(false)}
                                     style={{
-                                        background: 'none', border: 'none', color: 'var(--text-secondary)',
-                                        cursor: 'pointer', padding: '0.35rem', borderRadius: '6px'
+                                        background: 'rgba(255,255,255,0.06)', border: 'none', color: 'var(--text-secondary)',
+                                        cursor: 'pointer', padding: '0.4rem', borderRadius: '8px',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center'
                                     }}
                                 >
-                                    <X size={20} />
+                                    <X size={18} />
                                 </button>
                             </div>
 
-                            <div style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '60vh', overflowY: 'auto' }}>
+                            <div style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', flex: 1, overflowY: 'auto' }}>
                                 {SYSTEM_PERMISSIONS.map((p) => {
                                     const has = user?.permissions?.includes(p.id) ?? true;
                                     return (
@@ -1130,7 +1166,8 @@ const TeacherOverview = () => {
                                                 <div style={{
                                                     width: '24px', height: '24px', borderRadius: '50%',
                                                     background: has ? '#10b981' : '#ef4444',
-                                                    color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                                    color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    flexShrink: 0
                                                 }}>
                                                     {has ? <Check size={14} /> : <X size={14} />}
                                                 </div>
@@ -1146,7 +1183,8 @@ const TeacherOverview = () => {
                                             {p.special && has && (
                                                 <span style={{
                                                     fontSize: '0.62rem', fontWeight: '800', background: 'rgba(16, 185, 129, 0.15)',
-                                                    color: '#10b981', padding: '2px 7px', borderRadius: '4px'
+                                                    color: '#10b981', padding: '2px 7px', borderRadius: '4px',
+                                                    flexShrink: 0
                                                 }}>
                                                     UNLIMITED
                                                 </span>
@@ -1158,7 +1196,8 @@ const TeacherOverview = () => {
 
                             <div style={{
                                 padding: '1rem 1.5rem', borderTop: '1px solid var(--border-color)',
-                                display: 'flex', justifyContent: 'flex-end', background: 'var(--bg-primary)'
+                                display: 'flex', justifyContent: 'flex-end', background: 'var(--bg-primary)',
+                                flexShrink: 0
                             }}>
                                 <button
                                     onClick={() => setShowPermissionsModal(false)}
@@ -1173,8 +1212,9 @@ const TeacherOverview = () => {
                             </div>
                         </motion.div>
                     </motion.div>
-                )}
-            </AnimatePresence>
+                </AnimatePresence>,
+                document.body
+            )}
 
             {/* ============================================================ */}
             {/* 9. ATTENDANCE REPORT MODAL                                    */}
@@ -1182,6 +1222,13 @@ const TeacherOverview = () => {
             {showReportModal && (
                 <TeacherReportModal onClose={() => setShowReportModal(false)} />
             )}
+
+            {/* Hidden offscreen container for capturing the full grid picture */}
+            <div style={{ position: 'fixed', left: '-9999px', top: 0, width: '1024px', pointerEvents: 'none', opacity: 0, zIndex: -1000 }} aria-hidden="true">
+                <div ref={timetableRef} style={{ width: '1024px', background: '#121212', padding: '0.75rem' }}>
+                    <TimetableGrid subjects={subjects} hideTeacher={true} />
+                </div>
+            </div>
         </div>
     );
 };

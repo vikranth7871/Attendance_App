@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  RefreshControl, Modal, TextInput, Alert, ActivityIndicator, ScrollView
+  RefreshControl, Modal, TextInput, Alert, ActivityIndicator, ScrollView, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -91,16 +91,28 @@ const StudentLeaveScreen = () => {
       formData.append('reason', form.reason.trim());
 
       if (attachment) {
-        formData.append('document', {
-          uri: attachment.uri,
-          name: attachment.name || 'proof.pdf',
-          type: attachment.mimeType || 'application/octet-stream',
-        });
+        if (Platform.OS === 'web') {
+          const rawFile = attachment.file;
+          if (rawFile && (rawFile instanceof Blob || rawFile instanceof File)) {
+            formData.append('document', rawFile, attachment.name || 'proof.pdf');
+          } else if (attachment.uri) {
+            try {
+              const resBlob = await fetch(attachment.uri).then((r) => r.blob());
+              formData.append('document', resBlob, attachment.name || 'proof.pdf');
+            } catch (blobErr) {
+              console.warn('Failed to fetch blob from URI:', blobErr);
+            }
+          }
+        } else {
+          formData.append('document', {
+            uri: attachment.uri,
+            name: attachment.name || 'proof.pdf',
+            type: attachment.mimeType || 'application/octet-stream',
+          });
+        }
       }
 
-      await api.post('/leave/apply', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      await api.post('/leave/apply', formData);
 
       setShowForm(false);
       setForm({ leaveType: 'Medical', startDate: '', endDate: '', reason: '' });

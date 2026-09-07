@@ -41,21 +41,31 @@ pool.on('error', (err) => {
 // Resilient query execution with automatic retry on serverless connection drops
 const rawQuery = pool.query.bind(pool);
 pool.query = async (...args) => {
-    try {
-        return await rawQuery(...args);
-    } catch (err) {
-        const isConnDrop = err.code === '57P01' ||
-            err.code === 'ECONNRESET' ||
-            err.message?.includes('ETIMEDOUT') ||
-            err.message?.includes('ECONNRESET') ||
-            err.message?.includes('Connection terminated') ||
-            err.message?.includes('connection closed') ||
-            err.message?.includes('client has already been released');
-        if (isConnDrop) {
-            console.warn('⚠️ [Neon DB] Connection drop detected, retrying query once...', err.message);
+    let attempts = 0;
+    while (attempts < 3) {
+        try {
             return await rawQuery(...args);
+        } catch (err) {
+            attempts++;
+            const isConnDrop = err.code === '57P01' ||
+                err.code === 'ECONNRESET' ||
+                err.code === 'ENOTFOUND' ||
+                err.code === 'ECONNREFUSED' ||
+                err.message?.includes('ETIMEDOUT') ||
+                err.message?.includes('ECONNRESET') ||
+                err.message?.includes('ENOTFOUND') ||
+                err.message?.includes('ECONNREFUSED') ||
+                err.message?.includes('Connection terminated') ||
+                err.message?.includes('connection closed') ||
+                err.message?.includes('client has already been released');
+
+            if (isConnDrop && attempts < 3) {
+                console.warn(`⚠️ [Neon DB] Connection drop or timeout detected (${err.message || err.code}), retrying attempt ${attempts + 1}/3 after delay...`);
+                await new Promise(resolve => setTimeout(resolve, attempts * 750));
+                continue;
+            }
+            throw err;
         }
-        throw err;
     }
 };
 
