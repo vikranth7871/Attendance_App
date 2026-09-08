@@ -16,6 +16,7 @@ const getLinkedStudents = async (parentId, parentEmail) => {
     `, [parentId, parentEmail]);
 
     return res.rows.map(row => ({
+        id: row.id,
         studentId: row.id,
         _id: row.id,
         name: row.name,
@@ -315,6 +316,77 @@ export const updateLeaveStatus = async (req, res) => {
     }
 };
 
+// 6b. POST /api/parent/apply-leave (Parent submits leave for child)
+export const applyParentLeave = async (req, res) => {
+    try {
+        const parentId = req.user.id || req.user._id;
+        const parentEmail = req.user.email;
+        const { studentId, leaveType, startDate, endDate, reason, documentUrl } = req.body;
+
+        if (!studentId || !startDate || !endDate || !reason) {
+            return res.status(400).json({ message: 'Missing required fields: studentId, startDate, endDate, reason.' });
+        }
+
+        const students = await getLinkedStudents(parentId, parentEmail);
+        const targetStudent = students.find(s => s.studentId === parseInt(studentId, 10));
+
+        if (!targetStudent) {
+            return res.status(403).json({ message: 'Unauthorized: Student is not linked to your parent account.' });
+        }
+
+        // Check for active overlapping leave
+        const overlapCheck = await pool.query(`
+            SELECT id, status, start_date, end_date FROM leave_requests
+            WHERE user_id = $1 
+              AND status IN ('pending', 'approved')
+              AND start_date <= $3 AND end_date >= $2
+            LIMIT 1
+        `, [targetStudent.studentId, startDate, endDate]);
+
+        if (overlapCheck.rows.length > 0) {
+            return res.status(400).json({ 
+                message: `An active leave request already exists for ${targetStudent.name} covering this period.` 
+            });
+        }
+
+        const insertRes = await pool.query(
+            `INSERT INTO leave_requests
+             (user_id, role, leave_type, start_date, end_date, reason, document_url, status)
+             VALUES ($1, 'student', $2, $3, $4, $5, $6, 'pending') RETURNING *`,
+            [targetStudent.studentId, leaveType || 'Casual', startDate, endDate, `[Parent Applied] ${reason}`, documentUrl || null]
+        );
+
+        const leave = insertRes.rows[0];
+
+        // Notify class coordinator
+        const studentClassId = targetStudent.classInfo?.id || 1;
+        const coordRes = await pool.query(
+            `SELECT u.id FROM users u 
+             LEFT JOIN class_coordinators cc ON cc.teacher_id = u.id 
+             WHERE cc.class_id = $1 OR u.class_coordinator_for = $1 LIMIT 1`,
+            [studentClassId]
+        );
+        if (coordRes.rows.length > 0) {
+            await pool.query(
+                `INSERT INTO notifications (recipient_id, title, message, type, link)
+                 VALUES ($1, $2, $3, $4, $5)`,
+                [
+                    coordRes.rows[0].id,
+                    'Parent Leave Request',
+                    `📋 Parent applied leave for ${targetStudent.name} (${new Date(startDate).toLocaleDateString()} – ${new Date(endDate).toLocaleDateString()})`,
+                    'leave_request',
+                    '/teacher/leaves'
+                ]
+            );
+        }
+
+        res.status(201).json({ message: 'Leave application submitted successfully for your child.', leave });
+    } catch (error) {
+        console.error('Error in applyParentLeave:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
 // 7. GET /api/parent/timetable
 export const getStudentAcademic = async (req, res) => {
     try {
@@ -411,13 +483,16 @@ export const getStudentResults = async (req, res) => {
             ORDER BY es.exam_date DESC
         `, [targetStudent.studentId]);
 
+        const studentClassId = targetStudent.classInfo?.id || null;
         const upcomingExams = await pool.query(`
             SELECT es.id, es.exam_name, es.exam_date, es.time_slot, es.room_number, es.max_marks,
                    COALESCE(sub.name, 'General Subject') as subject_name, sub.code as subject_code
             FROM exam_schedules es
             LEFT JOIN subjects sub ON es.subject_id = sub.id
+            WHERE ($1::int IS NULL OR es.class_id = $1) AND es.exam_date >= CURRENT_DATE
             ORDER BY es.exam_date ASC
-        `);
+            LIMIT 10
+        `, [studentClassId]);
 
         res.json({
             student: targetStudent,

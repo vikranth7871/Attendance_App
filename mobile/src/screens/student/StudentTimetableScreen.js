@@ -478,8 +478,8 @@ const StudentTimetableScreen = () => {
       {/* 4-Tab Subject Modal */}
       <StudentSubjectDetailModal
         visible={detailModalVisible}
-        subjectId={selectedSubject?._id}
-        subjectName={selectedSubject?.subjectName}
+        subjectId={selectedSubject?._id || selectedSubject?.id || selectedSubject?.subjectId}
+        subjectName={selectedSubject?.subjectName || selectedSubject?.name}
         onClose={() => setDetailModalVisible(false)}
       />
     </SafeAreaView>

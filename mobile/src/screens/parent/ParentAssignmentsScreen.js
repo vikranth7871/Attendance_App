@@ -43,7 +43,8 @@ const ParentAssignmentsScreen = ({ navigation }) => {
     setLoading(true);
     try {
       const { data } = await api.get(`/parent/student-assignments?studentId=${childId}`);
-      setAssignments(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : (data?.assignments || []);
+      setAssignments(list);
     } catch (err) {
       console.error('Fetch parent assignments error:', err);
     } finally {
@@ -55,14 +56,16 @@ const ParentAssignmentsScreen = ({ navigation }) => {
   useEffect(() => { fetchChildren(); }, []);
 
   useEffect(() => {
-    if (selectedChild) {
-      fetchAssignments(selectedChild.id);
+    const cid = selectedChild?.id || selectedChild?.studentId || selectedChild?._id;
+    if (cid) {
+      fetchAssignments(cid);
     }
   }, [selectedChild]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    if (selectedChild) fetchAssignments(selectedChild.id);
+    const cid = selectedChild?.id || selectedChild?.studentId || selectedChild?._id;
+    if (cid) fetchAssignments(cid);
     else fetchChildren();
   }, [selectedChild]);
 

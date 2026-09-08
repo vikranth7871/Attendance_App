@@ -18,14 +18,30 @@ const FEE_STATUS_CONFIG = {
   overdue: { color: colors.danger, label: 'Overdue', icon: AlertTriangle },
 };
 
-const ParentFeesScreen = () => {
+const ParentFeesScreen = ({ route, navigation }) => {
+  const [children, setChildren] = useState([]);
+  const [selectedChildId, setSelectedChildId] = useState(route?.params?.studentId || null);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchFees = async () => {
+  const fetchChildren = async () => {
     try {
-      const { data: res } = await api.get('/parent/student-fees');
+      const { data: kids } = await api.get('/parent/children');
+      const list = Array.isArray(kids) ? kids : [];
+      setChildren(list);
+      if (!selectedChildId && list.length > 0) {
+        setSelectedChildId(route?.params?.studentId || list[0].id || list[0].studentId);
+      }
+    } catch (err) {
+      console.error('Fees fetch children error:', err);
+    }
+  };
+
+  const fetchFees = async (childId = selectedChildId) => {
+    try {
+      const url = childId ? `/parent/student-fees?studentId=${childId}` : '/parent/student-fees';
+      const { data: res } = await api.get(url);
       setData(res);
     } catch (err) {
       console.error('Fees fetch error:', err);
@@ -36,13 +52,18 @@ const ParentFeesScreen = () => {
   };
 
   useEffect(() => {
-    fetchFees();
+    fetchChildren();
   }, []);
+
+  useEffect(() => {
+    fetchFees(selectedChildId);
+  }, [selectedChildId]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchFees();
-  }, []);
+    fetchChildren();
+    fetchFees(selectedChildId);
+  }, [selectedChildId]);
 
   if (loading) return <FullPageLoader message="Loading fee details..." />;
 
@@ -81,6 +102,26 @@ const ParentFeesScreen = () => {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <Header title="Fee Invoices" subtitle={student?.name || 'Student'} />
+
+      {/* Child Switcher Tabs */}
+      {children.length > 1 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.childFilterRow}>
+          {children.map((k) => {
+            const kidId = k.id || k.studentId || k._id;
+            const isSel = selectedChildId && String(selectedChildId) === String(kidId);
+            return (
+              <TouchableOpacity
+                key={kidId}
+                style={[styles.childChip, isSel && styles.childChipActive]}
+                onPress={() => setSelectedChildId(kidId)}
+              >
+                <Text style={[styles.childChipText, isSel && styles.childChipTextActive]}>{k.name}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
+
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.parent} />}
@@ -110,50 +151,50 @@ const ParentFeesScreen = () => {
             </View>
             <View style={{ alignItems: 'flex-end' }}>
               <Text style={styles.amountLabel}>Pending</Text>
-              <Text style={[styles.amountValue, { color: '#fca5a5' }]}>₹{pendingAmount.toLocaleString('en-IN')}</Text>
+              <Text style={[styles.amountValue, { color: pendingAmount > 0 ? '#fca5a5' : '#86efac' }]}>
+                ₹{pendingAmount.toLocaleString('en-IN')}
+              </Text>
             </View>
           </View>
 
           {feeSummary.due_date && (
             <View style={styles.dueRow}>
-              <Clock size={13} color="rgba(255,255,255,0.7)" />
-              <Text style={styles.dueText}>Due: {new Date(feeSummary.due_date).toLocaleDateString()}</Text>
+              <Clock size={12} color="rgba(255,255,255,0.8)" />
+              <Text style={styles.dueText}>Due Date: {new Date(feeSummary.due_date).toLocaleDateString()}</Text>
             </View>
           )}
         </LinearGradient>
 
         {/* Payment History */}
-        <Text style={styles.sectionTitle}>Payment Receipts & History</Text>
+        <Text style={styles.sectionTitle}>Payment History</Text>
         {paymentHistory.length === 0 ? (
           <View style={styles.empty}>
             <CreditCard size={36} color={colors.textMuted} />
-            <Text style={styles.emptyText}>No payment history found</Text>
+            <Text style={styles.emptyText}>No payment records found</Text>
           </View>
         ) : (
-          paymentHistory.map((pay, i) => (
-            <View key={i} style={[styles.paymentCard, shadows.sm]}>
+          paymentHistory.map((p, i) => (
+            <View key={p.id || i} style={[styles.paymentCard, shadows.sm]}>
               <View style={styles.paymentCardTop}>
                 <View style={styles.paymentLeft}>
                   <CheckCircle size={18} color={colors.success} />
                   <View style={styles.paymentInfo}>
-                    <Text style={styles.paymentAmount}>₹{parseFloat(pay.amount_paid).toLocaleString('en-IN')}</Text>
-                    <Text style={styles.paymentDate}>
-                      {pay.payment_date ? new Date(pay.payment_date).toLocaleDateString() : '—'}
-                    </Text>
+                    <Text style={styles.paymentAmount}>₹{parseFloat(p.amount_paid).toLocaleString('en-IN')}</Text>
+                    <Text style={styles.paymentDate}>{new Date(p.payment_date).toLocaleDateString()}</Text>
                   </View>
                 </View>
                 <View style={styles.paymentRight}>
-                  <Text style={styles.paymentMethod}>{pay.payment_method || 'Online'}</Text>
-                  {pay.receipt_no ? (
-                    <Text style={styles.receiptNo}>#{pay.receipt_no}</Text>
-                  ) : null}
+                  <Text style={styles.paymentMethod}>{p.payment_method || 'Online'}</Text>
+                  {p.receipt_no && (
+                    <Text style={styles.receiptNo}>#{p.receipt_no}</Text>
+                  )}
                 </View>
               </View>
 
-              {/* 1-Click Download Receipt Action */}
               <TouchableOpacity
                 style={styles.downloadBtn}
-                onPress={() => handleDownloadReceipt(pay)}
+                onPress={() => handleDownloadReceipt(p)}
+                activeOpacity={0.8}
               >
                 <Download size={13} color={colors.parent} />
                 <Text style={styles.downloadBtnText}>Download Receipt</Text>
@@ -161,6 +202,8 @@ const ParentFeesScreen = () => {
             </View>
           ))
         )}
+
+        <View style={{ height: spacing.xl }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -168,6 +211,15 @@ const ParentFeesScreen = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
+  childFilterRow: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs, gap: spacing.xs },
+  childChip: {
+    paddingHorizontal: spacing.md, paddingVertical: 6,
+    backgroundColor: colors.bgCard, borderRadius: radius.full,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  childChipActive: { backgroundColor: colors.parent + '22', borderColor: colors.parent },
+  childChipText: { ...typography.xs, color: colors.textSecondary, fontWeight: '600' },
+  childChipTextActive: { color: colors.parent, fontWeight: '700' },
   content: { padding: spacing.md },
   summaryCard: {
     borderRadius: radius.xl, padding: spacing.lg,

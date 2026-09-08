@@ -6,6 +6,7 @@ import {
     downloadAttendanceReport,
     getStudentLeaves,
     updateLeaveStatus,
+    applyParentLeave,
     getStudentAcademic,
     getStudentAssignments,
     getStudentResults,
@@ -28,6 +29,7 @@ router.get('/student-summary', getStudentSummary);
 router.get('/student-attendance', getStudentAttendance);
 router.get('/student-attendance/export', downloadAttendanceReport);
 router.get('/student-leaves', getStudentLeaves);
+router.post('/apply-leave', applyParentLeave);
 router.put('/student-leaves/:id/action', updateLeaveStatus);
 router.get('/student-academic', getStudentAcademic);
 router.get('/student-assignments', getStudentAssignments);

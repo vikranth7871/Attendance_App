@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Alert
+  View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Alert, ScrollView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Award, CalendarDays, TrendingUp, Clock, Download } from 'lucide-react-native';
@@ -19,15 +19,31 @@ const getLetterGrade = (pct) => {
   return { grade: 'F', color: colors.danger };
 };
 
-const ParentResultsScreen = () => {
+const ParentResultsScreen = ({ route, navigation }) => {
+  const [children, setChildren] = useState([]);
+  const [selectedChildId, setSelectedChildId] = useState(route?.params?.studentId || null);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState('results'); // 'results' | 'upcoming'
 
-  const fetchResults = async () => {
+  const fetchChildren = async () => {
     try {
-      const { data: res } = await api.get('/parent/student-results');
+      const { data: kids } = await api.get('/parent/children');
+      const list = Array.isArray(kids) ? kids : [];
+      setChildren(list);
+      if (!selectedChildId && list.length > 0) {
+        setSelectedChildId(route?.params?.studentId || list[0].id || list[0].studentId);
+      }
+    } catch (err) {
+      console.error('Results fetch children error:', err);
+    }
+  };
+
+  const fetchResults = async (childId = selectedChildId) => {
+    try {
+      const url = childId ? `/parent/student-results?studentId=${childId}` : '/parent/student-results';
+      const { data: res } = await api.get(url);
       setData(res);
     } catch (err) {
       console.error('Results fetch error:', err);
@@ -38,13 +54,18 @@ const ParentResultsScreen = () => {
   };
 
   useEffect(() => {
-    fetchResults();
+    fetchChildren();
   }, []);
+
+  useEffect(() => {
+    fetchResults(selectedChildId);
+  }, [selectedChildId]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchResults();
-  }, []);
+    fetchChildren();
+    fetchResults(selectedChildId);
+  }, [selectedChildId]);
 
   const results = data?.examResults || [];
   const upcoming = data?.upcomingExams || [];
@@ -68,11 +89,11 @@ const ParentResultsScreen = () => {
       className: student?.class_name,
       rollNumber: student?.roll_number,
       results: results.map((r) => ({
-        subject_name: r.subject_name,
-        subject_code: r.subject_code,
+        subject_name: r.subject_name || r.subject,
+        exam_name: r.exam_name || r.exam_title,
         marks_obtained: r.marks_obtained,
         max_marks: r.max_marks,
-        grade: r.grade || getLetterGrade((r.marks_obtained / (r.max_marks || 100)) * 100).grade,
+        grade: r.grade || getLetterGrade(r.marks_obtained && r.max_marks ? (r.marks_obtained / r.max_marks) * 100 : 0).grade,
       })),
       averageGpa: `${avgPct}% (${getLetterGrade(avgPct).grade})`,
     });
@@ -100,6 +121,25 @@ const ParentResultsScreen = () => {
           </TouchableOpacity>
         }
       />
+
+      {/* Child Switcher Tabs */}
+      {children.length > 1 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.childFilterRow}>
+          {children.map((k) => {
+            const kidId = k.id || k.studentId || k._id;
+            const isSel = selectedChildId && String(selectedChildId) === String(kidId);
+            return (
+              <TouchableOpacity
+                key={kidId}
+                style={[styles.childChip, isSel && styles.childChipActive]}
+                onPress={() => setSelectedChildId(kidId)}
+              >
+                <Text style={[styles.childChipText, isSel && styles.childChipTextActive]}>{k.name}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
 
       {/* Average Banner */}
       {results.length > 0 && (() => {
@@ -140,24 +180,29 @@ const ParentResultsScreen = () => {
                 <View style={styles.resultTop}>
                   <View style={styles.resultInfo}>
                     <Text style={styles.examName}>{item.exam_name || 'Exam'}</Text>
-                    <Text style={styles.subjectName}>{item.subject_name || '—'}</Text>
+                    <Text style={styles.subjectName}>{item.subject_name || 'Subject'}</Text>
                     {item.exam_date && (
                       <Text style={styles.examDate}>{new Date(item.exam_date).toLocaleDateString()}</Text>
                     )}
                   </View>
                   <View style={styles.scoreSection}>
-                    <View style={[styles.gradeBadge, { backgroundColor: color + '22', borderColor: color + '44', borderWidth: 1 }]}>
-                      <Text style={[styles.gradeLetter, { color }]}>{grade}</Text>
+                    <View style={[styles.gradeBadge, { backgroundColor: color + '22' }]}>
+                      <Text style={[styles.gradeLetter, { color }]}>{item.grade || grade}</Text>
                     </View>
                     <Text style={[styles.scorePct, { color }]}>{pct}%</Text>
                   </View>
                 </View>
-                <Text style={styles.marksText}>{item.marks_obtained ?? '—'} / {item.max_marks ?? '—'} marks</Text>
+
+                <Text style={styles.marksText}>
+                  Marks: {item.marks_obtained ?? '—'} / {item.max_marks || 100}
+                </Text>
+
                 <View style={styles.barBg}>
                   <View style={[styles.barFill, { width: `${Math.min(pct, 100)}%`, backgroundColor: color }]} />
                 </View>
+
                 {item.remarks ? (
-                  <Text style={styles.remarks}>{item.remarks}</Text>
+                  <Text style={styles.remarks}>Teacher remarks: "{item.remarks}"</Text>
                 ) : null}
               </View>
             );
@@ -167,7 +212,7 @@ const ParentResultsScreen = () => {
           ListEmptyComponent={
             <View style={styles.empty}>
               <Award size={40} color={colors.textMuted} />
-              <Text style={styles.emptyText}>No results available yet</Text>
+              <Text style={styles.emptyText}>No exam results available</Text>
             </View>
           }
         />
@@ -177,23 +222,17 @@ const ParentResultsScreen = () => {
           keyExtractor={(item, i) => item.id?.toString() || i.toString()}
           renderItem={({ item }) => (
             <View style={[styles.upcomingCard, shadows.sm]}>
-              <View style={[styles.upcomingIcon, { backgroundColor: colors.parent + '22' }]}>
+              <View style={[styles.upcomingIcon, { backgroundColor: colors.parent + '18' }]}>
                 <CalendarDays size={20} color={colors.parent} />
               </View>
               <View style={styles.upcomingInfo}>
                 <Text style={styles.upcomingName}>{item.exam_name}</Text>
                 <Text style={styles.upcomingSubject}>{item.subject_name}</Text>
                 <View style={styles.upcomingMeta}>
-                  <CalendarDays size={12} color={colors.textMuted} />
+                  <Clock size={11} color={colors.textMuted} />
                   <Text style={styles.upcomingMetaText}>
-                    {item.exam_date ? new Date(item.exam_date).toLocaleDateString() : 'TBA'}
+                    {new Date(item.exam_date).toLocaleDateString()} {item.time_slot ? `• ${item.time_slot}` : ''}
                   </Text>
-                  {item.time_slot ? (
-                    <>
-                      <Clock size={12} color={colors.textMuted} style={{ marginLeft: 8 }} />
-                      <Text style={styles.upcomingMetaText}>{item.time_slot}</Text>
-                    </>
-                  ) : null}
                 </View>
               </View>
             </View>
@@ -218,6 +257,15 @@ const styles = StyleSheet.create({
     padding: spacing.sm, backgroundColor: colors.parent + '22',
     borderRadius: radius.md, borderWidth: 1, borderColor: colors.parent + '44',
   },
+  childFilterRow: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs, gap: spacing.xs },
+  childChip: {
+    paddingHorizontal: spacing.md, paddingVertical: 6,
+    backgroundColor: colors.bgCard, borderRadius: radius.full,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  childChipActive: { backgroundColor: colors.parent + '22', borderColor: colors.parent },
+  childChipText: { ...typography.xs, color: colors.textSecondary, fontWeight: '600' },
+  childChipTextActive: { color: colors.parent, fontWeight: '700' },
   avgBanner: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     margin: spacing.md, marginBottom: 0, backgroundColor: colors.bgCard,

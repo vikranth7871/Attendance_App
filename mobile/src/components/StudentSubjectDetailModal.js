@@ -187,31 +187,48 @@ const StudentSubjectDetailModal = ({ visible, subjectId, subjectName, onClose })
                       <Text style={styles.emptyText}>No exam results published yet.</Text>
                     </View>
                   ) : (
-                    results.map((res, idx) => (
-                      <View key={res._id || idx} style={styles.examCard}>
-                        <View style={styles.examHeader}>
-                          <Text style={styles.examTitle}>{res.examTitle || res.examName || 'Assessment'}</Text>
-                          {res.grade ? (
-                            <View style={[styles.gradeBadge, { backgroundColor: getGradeColor(res.grade) + '22' }]}>
-                              <Text style={[styles.gradeText, { color: getGradeColor(res.grade) }]}>{res.grade}</Text>
-                            </View>
-                          ) : null}
-                        </View>
-                        <View style={styles.examDetails}>
-                          <Text style={styles.examScore}>
-                            Marks: <Text style={{ color: colors.student, fontWeight: '700' }}>{res.marksObtained}</Text> / {res.maxMarks || 100}
-                          </Text>
-                          {res.percentage !== undefined ? (
+                    results.map((res, idx) => {
+                      const examTitle = res.exam_name || res.examName || res.examTitle || 'Assessment';
+                      const marksObtained = res.marks_obtained ?? res.marksObtained;
+                      const maxMarks = res.max_marks || res.maxMarks || 100;
+                      const pct = res.percentage !== undefined
+                        ? res.percentage
+                        : marksObtained !== undefined
+                        ? Math.round((Number(marksObtained) / maxMarks) * 100)
+                        : null;
+                      const examDate = res.exam_date || res.examDate;
+
+                      return (
+                        <View key={res._id || res.id || idx} style={styles.examCard}>
+                          <View style={styles.examHeader}>
+                            <Text style={styles.examTitle}>{examTitle}</Text>
+                            {res.grade ? (
+                              <View style={[styles.gradeBadge, { backgroundColor: getGradeColor(res.grade) + '22' }]}>
+                                <Text style={[styles.gradeText, { color: getGradeColor(res.grade) }]}>{res.grade}</Text>
+                              </View>
+                            ) : null}
+                          </View>
+                          <View style={styles.examDetails}>
                             <Text style={styles.examScore}>
-                              Percentage: <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>{res.percentage}%</Text>
+                              Marks: <Text style={{ color: colors.student, fontWeight: '700' }}>{marksObtained ?? '—'}</Text> / {maxMarks}
+                            </Text>
+                            {pct !== null && (
+                              <Text style={styles.examScore}>
+                                Percentage: <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>{pct}%</Text>
+                              </Text>
+                            )}
+                          </View>
+                          {examDate ? (
+                            <Text style={[styles.examRemarks, { color: colors.textMuted }]}>
+                              Date: {new Date(examDate).toLocaleDateString()}
                             </Text>
                           ) : null}
+                          {res.remarks ? (
+                            <Text style={styles.examRemarks}>Remarks: {res.remarks}</Text>
+                          ) : null}
                         </View>
-                        {res.remarks ? (
-                          <Text style={styles.examRemarks}>Remarks: {res.remarks}</Text>
-                        ) : null}
-                      </View>
-                    ))
+                      );
+                    })
                   )}
                 </View>
               )}
@@ -224,23 +241,33 @@ const StudentSubjectDetailModal = ({ visible, subjectId, subjectName, onClose })
                       <Text style={styles.emptyText}>No upcoming exams or schedules.</Text>
                     </View>
                   ) : (
-                    upcoming.map((up, idx) => (
-                      <View key={up._id || idx} style={styles.upcomingCard}>
-                        <View style={styles.upcomingHeader}>
-                          <Calendar size={16} color={colors.primary} />
-                          <Text style={styles.upcomingTitle}>{up.examTitle || up.title || 'Scheduled Assessment'}</Text>
+                    upcoming.map((up, idx) => {
+                      const examTitle = up.exam_name || up.examName || up.examTitle || up.title || 'Scheduled Assessment';
+                      const examDate = up.exam_date || up.examDate;
+                      const timeStr = up.time_slot || up.timeSlot || (up.startTime ? `${up.startTime} - ${up.endTime || ''}` : null);
+                      const roomStr = up.room_number || up.roomNumber || up.room;
+
+                      return (
+                        <View key={up._id || up.id || idx} style={styles.upcomingCard}>
+                          <View style={styles.upcomingHeader}>
+                            <Calendar size={16} color={colors.primary} />
+                            <Text style={styles.upcomingTitle}>{examTitle}</Text>
+                          </View>
+                          <Text style={styles.upcomingDate}>
+                            Date: {examDate ? new Date(examDate).toLocaleDateString() : 'TBA'}
+                          </Text>
+                          {timeStr ? (
+                            <Text style={styles.upcomingTime}>Time: {timeStr}</Text>
+                          ) : null}
+                          {roomStr ? (
+                            <Text style={styles.upcomingTime}>Room / Hall: {roomStr}</Text>
+                          ) : null}
+                          {(up.max_marks || up.maxMarks) ? (
+                            <Text style={styles.upcomingTime}>Max Marks: {up.max_marks || up.maxMarks}</Text>
+                          ) : null}
                         </View>
-                        <Text style={styles.upcomingDate}>
-                          Date: {up.examDate ? new Date(up.examDate).toLocaleDateString() : 'TBA'}
-                        </Text>
-                        {up.startTime ? (
-                          <Text style={styles.upcomingTime}>Time: {up.startTime} - {up.endTime || ''}</Text>
-                        ) : null}
-                        {up.roomNumber ? (
-                          <Text style={styles.upcomingTime}>Room / Hall: {up.roomNumber}</Text>
-                        ) : null}
-                      </View>
-                    ))
+                      );
+                    })
                   )}
                 </View>
               )}
@@ -253,27 +280,37 @@ const StudentSubjectDetailModal = ({ visible, subjectId, subjectName, onClose })
                       <Text style={styles.emptyText}>No assignments assigned yet.</Text>
                     </View>
                   ) : (
-                    assignments.map((ass, idx) => (
-                      <View key={ass._id || idx} style={styles.assignCard}>
-                        <View style={styles.assignHeader}>
-                          <Text style={styles.assignTitle}>{ass.title}</Text>
-                          <View style={[styles.statusPill, { backgroundColor: ass.status === 'Submitted' ? colors.success + '22' : colors.warning + '22' }]}>
-                            <Text style={[styles.statusText, { color: ass.status === 'Submitted' ? colors.success : colors.warning }]}>
-                              {ass.status || 'Pending'}
-                            </Text>
+                    assignments.map((ass, idx) => {
+                      const statusStr = (ass.status || 'pending').toLowerCase();
+                      const isCompleted = statusStr === 'submitted' || statusStr === 'completed' || statusStr === 'graded';
+                      const dueDate = ass.due_date || ass.dueDate;
+                      const teacherName = ass.teacher_name || ass.teacherName;
+
+                      return (
+                        <View key={ass._id || ass.id || idx} style={styles.assignCard}>
+                          <View style={styles.assignHeader}>
+                            <Text style={styles.assignTitle}>{ass.title}</Text>
+                            <View style={[styles.statusPill, { backgroundColor: isCompleted ? colors.success + '22' : colors.warning + '22' }]}>
+                              <Text style={[styles.statusText, { color: isCompleted ? colors.success : colors.warning }]}>
+                                {isCompleted ? 'Submitted' : 'Pending'}
+                              </Text>
+                            </View>
+                          </View>
+                          {ass.description ? (
+                            <Text style={styles.assignDesc} numberOfLines={2}>{ass.description}</Text>
+                          ) : null}
+                          <View style={styles.assignFooter}>
+                            <Text style={styles.assignDue}>Due: {dueDate ? new Date(dueDate).toLocaleDateString() : 'N/A'}</Text>
+                            {teacherName ? (
+                              <Text style={[styles.assignDue, { color: colors.textMuted }]}>• Prof. {teacherName}</Text>
+                            ) : null}
+                            {ass.grade ? (
+                              <Text style={styles.assignGrade}>Score: {ass.grade} / {ass.maxGrade || ass.max_grade || 100}</Text>
+                            ) : null}
                           </View>
                         </View>
-                        {ass.description ? (
-                          <Text style={styles.assignDesc} numberOfLines={2}>{ass.description}</Text>
-                        ) : null}
-                        <View style={styles.assignFooter}>
-                          <Text style={styles.assignDue}>Due: {ass.dueDate ? new Date(ass.dueDate).toLocaleDateString() : 'N/A'}</Text>
-                          {ass.grade ? (
-                            <Text style={styles.assignGrade}>Score: {ass.grade} / {ass.maxGrade || 100}</Text>
-                          ) : null}
-                        </View>
-                      </View>
-                    ))
+                      );
+                    })
                   )}
                 </View>
               )}

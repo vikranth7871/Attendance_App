@@ -244,11 +244,25 @@ export const submitAssignment = async (req, res) => {
         const userId = req.user.id || req.user._id;
         const assignmentId = req.params.id;
 
-        await pool.query(`
-            INSERT INTO assignment_submissions (assignment_id, student_id, status, submission_date)
-            VALUES ($1, $2, 'completed', CURRENT_TIMESTAMP)
-            ON CONFLICT (id) DO UPDATE SET status = 'completed', submission_date = CURRENT_TIMESTAMP
-        `, [assignmentId, userId]);
+        const check = await pool.query(
+            'SELECT id FROM assignment_submissions WHERE assignment_id = $1 AND student_id = $2',
+            [assignmentId, userId]
+        );
+
+        if (check.rows.length > 0) {
+            await pool.query(
+                `UPDATE assignment_submissions 
+                 SET status = 'completed', submission_date = CURRENT_TIMESTAMP 
+                 WHERE id = $1`,
+                [check.rows[0].id]
+            );
+        } else {
+            await pool.query(
+                `INSERT INTO assignment_submissions (assignment_id, student_id, status, submission_date)
+                 VALUES ($1, $2, 'completed', CURRENT_TIMESTAMP)`,
+                [assignmentId, userId]
+            );
+        }
 
         res.json({ message: 'Assignment submitted successfully!', status: 'completed' });
     } catch (error) {
@@ -381,6 +395,38 @@ export const getSubjectDetails = async (req, res) => {
             ORDER BY a.due_date ASC
         `, [studentId, classId, subjectId]);
 
+        const formattedResults = resultsRes.rows.map(r => ({
+            ...r,
+            marksObtained: r.marks_obtained,
+            maxMarks: r.max_marks,
+            examName: r.exam_name,
+            examTitle: r.exam_name,
+            examDate: r.exam_date,
+            timeSlot: r.exam_time,
+            startTime: r.exam_time,
+            percentage: r.max_marks > 0 ? Math.round((r.marks_obtained / r.max_marks) * 100) : 0
+        }));
+
+        const formattedUpcoming = upcomingRes.rows.map(r => ({
+            ...r,
+            examName: r.exam_name,
+            examTitle: r.exam_name,
+            examDate: r.exam_date,
+            timeSlot: r.time_slot,
+            startTime: r.time_slot?.split('-')[0]?.trim() || r.time_slot,
+            endTime: r.time_slot?.split('-')[1]?.trim() || '',
+            roomNumber: r.room_number,
+            maxMarks: r.max_marks
+        }));
+
+        const formattedAssignments = assignRes.rows.map(r => ({
+            ...r,
+            dueDate: r.due_date,
+            teacherName: r.teacher_name,
+            submissionDate: r.submission_date,
+            teacherComments: r.teacher_comments
+        }));
+
         res.json({
             subject: {
                 id: firstRow.id,
@@ -406,9 +452,9 @@ export const getSubjectDetails = async (req, res) => {
                     timeSlot: r.time_slot
                 }))
             },
-            results: resultsRes.rows,
-            upcomingExams: upcomingRes.rows,
-            assignments: assignRes.rows
+            results: formattedResults,
+            upcomingExams: formattedUpcoming,
+            assignments: formattedAssignments
         });
     } catch (error) {
         console.error('Error in getSubjectDetails:', error);
@@ -423,7 +469,7 @@ export const getStudentTimetable = async (req, res) => {
         const classId = userRes.rows[0]?.class_id || 1;
 
         const result = await pool.query(`
-            SELECT sa.id, sa.day_of_week, sa.time_slot, sa.start_time, sa.end_time, sa.room_number,
+            SELECT sa.id, sa.subject_id, sa.day_of_week, sa.time_slot, sa.start_time, sa.end_time, sa.room_number,
                    COALESCE(s.name, 'General Class') as subject_name, s.code as subject_code,
                    u.name as teacher_name
             FROM subject_allocations sa
