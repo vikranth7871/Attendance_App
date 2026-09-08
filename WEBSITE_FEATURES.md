@@ -64,7 +64,7 @@ iAttend is partitioned into four role-gated sub-applications with shared auth an
 | :--- | :--- | :--- | :--- | :--- |
 | **System Admin** | `/admin/*` | `AdminNavigator` | Users, Classes, Subjects, Allocations, Permissions, Audit, Faculty Attendance/Leaves | Indigo (`#6366f1`) |
 | **Educator / Teacher** | `/teacher/*` | `TeacherNavigator` | Timetable, Slot Attendance, Roster, Exams, Marks, Assignments, Parent Messages, Quizzes | Emerald (`#10b981`) |
-| **Student** | `/student/*` | `StudentNavigator` | Attendance Ring, Streaks, Schedule, Subjects, Homework, Exam Cards, Quiz Arena | Royal Blue (`#3b82f6`) |
+| **Student** | `/student/*` | `StudentNavigator` | Attendance Performance Ring, Stats, Schedule, Subjects, Homework, Exam Cards, Quiz Arena | Royal Blue (`#3b82f6`) |
 | **Parent** | `/parent/*` | `ParentNavigator` | Multi-Child Switcher, Child Attendance, Fees, Digital Receipts, Timetable, Teacher Chat | Amber (`#f59e0b`) |
 
 ---
@@ -275,7 +275,6 @@ iAttend is partitioned into four role-gated sub-applications with shared auth an
   - Search bar to find student in roster.
 - **Student Attendance List:**
   - Student photo/initial, Name, Roll Number.
-  - Attendance Streak flame counter (e.g. `🔥 12`).
   - Radio toggles: **Present** (Green), **Absent** (Red), **Leave** (Amber, auto-locked if approved).
 - **Submit / Save Attendance:** Writes records to database and dispatches notifications.
 
@@ -344,7 +343,6 @@ iAttend is partitioned into four role-gated sub-applications with shared auth an
     - **≥ 90% (Excellent):** Green theme (`#16a34a`), Sparkles icon, buffer percentage before dropping below 90%.
     - **75–89% (Good):** Amber theme (`#f59e0b`), CheckCircle icon, number of classes needed to reach 90%.
     - **< 75% (Warning):** Red theme (`#ef4444`), AlertTriangle icon, exact number of classes needed to reach 75% safe threshold.
-- **Gamified Day Streak Badge:** Visual flame badge with consecutive attendance streak counter (`🔥 14 Days`).
 - **Quick Stats Grid:** Total Sessions, Present count, Absent count, Leave count.
 - **Today & Tomorrow Schedule Preview:** Period-by-period preview with subject, teacher, room, and time.
 

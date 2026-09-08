@@ -39,7 +39,17 @@ const StudentAssignments = () => {
 
     if (loading) return <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>Loading assignments...</div>;
 
-    const filtered = assignments.filter(a => filter === 'all' || a.status === filter);
+    const isCompletedOrSubmitted = (item) => {
+        const s = (item?.status || '').toLowerCase();
+        return s === 'completed' || s === 'submitted' || s === 'graded' || Boolean(item?.grade);
+    };
+
+    const filtered = assignments.filter((a) => {
+        if (filter === 'all') return true;
+        if (filter === 'pending') return !isCompletedOrSubmitted(a);
+        if (filter === 'completed' || filter === 'submitted') return isCompletedOrSubmitted(a);
+        return a.status === filter;
+    });
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -81,7 +91,9 @@ const StudentAssignments = () => {
                         <p style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>You have no {filter} assignments at this time.</p>
                     </div>
                 ) : (
-                    filtered.map((item, idx) => (
+                    filtered.map((item, idx) => {
+                        const isDone = isCompletedOrSubmitted(item);
+                        return (
                         <motion.div
                             key={item.id || idx}
                             initial={{ opacity: 0, y: 10 }}
@@ -98,12 +110,12 @@ const StudentAssignments = () => {
                                 </div>
                                 <span style={{
                                     padding: '0.35rem 0.85rem', borderRadius: '999px', fontSize: '0.75rem', fontWeight: '800', textTransform: 'uppercase',
-                                    background: item.status === 'completed' ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
-                                    color: item.status === 'completed' ? 'var(--success)' : 'var(--warning)',
+                                    background: isDone ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
+                                    color: isDone ? 'var(--success)' : 'var(--warning)',
                                     display: 'inline-flex', alignItems: 'center', gap: '0.35rem'
                                 }}>
-                                    {item.status === 'completed' ? <CheckCircle2 size={14} /> : <Clock size={14} />}
-                                    {item.status}
+                                    {isDone ? <CheckCircle2 size={14} /> : <Clock size={14} />}
+                                    {item.grade ? `Graded (${item.grade})` : isDone ? 'Submitted' : 'Pending'}
                                 </span>
                             </div>
 
@@ -135,7 +147,7 @@ const StudentAssignments = () => {
                                         </a>
                                     )}
 
-                                    {item.status !== 'completed' && (
+                                    {!isDone && (
                                         <button
                                             onClick={() => handleSubmit(item.id)}
                                             disabled={submittingId === item.id}
@@ -148,7 +160,8 @@ const StudentAssignments = () => {
                                 </div>
                             </div>
                         </motion.div>
-                    ))
+                        );
+                    })
                 )}
             </div>
         </div>

@@ -4,36 +4,49 @@ import {
   TouchableOpacity, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { CalendarCheck, CalendarX, Clock, TrendingUp, Download } from 'lucide-react-native';
+import {
+  Calendar, CheckCircle, XCircle, Clock, BarChart2,
+  Download, Filter, ChevronRight, AlertCircle, FileText
+} from 'lucide-react-native';
 import Header from '../../components/Header';
+import ChildSwitcher from '../../components/ChildSwitcher';
 import { FullPageLoader } from '../../components/LoadingSkeleton';
 import api from '../../api/client';
 import { colors, spacing, radius, typography, shadows } from '../../styles/theme';
 import { exportCsv } from '../../utils/fileExporter';
 
-const STATUS_COLORS = {
-  present: colors.success,
-  absent: colors.danger,
-  late: colors.warning,
-  leave: colors.primary,
-};
-
 const ParentAttendanceScreen = ({ route, navigation }) => {
-  const [data, setData] = useState(null);
+  const [children, setChildren] = useState([]);
+  const [selectedChildId, setSelectedChildId] = useState(route?.params?.studentId || null);
+  const [attendanceData, setAttendanceData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState('records'); // 'records' | 'monthly' | 'subjects'
-  const studentId = route?.params?.studentId;
+  const [activeTab, setActiveTab] = useState('subjects'); // 'subjects' | 'records' | 'monthly'
+  const [downloading, setDownloading] = useState(false);
 
-  const fetchAttendance = async () => {
+  const fetchChildren = async () => {
     try {
-      const url = studentId
-        ? `/parent/student-attendance?studentId=${studentId}`
-        : '/parent/student-attendance';
-      const { data: res } = await api.get(url);
-      setData(res);
+      const { data } = await api.get('/parent/children');
+      const kids = Array.isArray(data) ? data : [];
+      setChildren(kids);
+      if (!selectedChildId && kids.length > 0) {
+        setSelectedChildId(String(route?.params?.studentId || kids[0].id || kids[0].studentId));
+      }
     } catch (err) {
-      console.error('Parent attendance fetch error:', err);
+      console.error('Fetch children error in attendance:', err);
+    }
+  };
+
+  const fetchAttendance = async (childId = selectedChildId) => {
+    setLoading(true);
+    try {
+      const url = childId
+        ? `/parent/student-attendance?studentId=${childId}`
+        : '/parent/student-attendance';
+      const { data } = await api.get(url);
+      setAttendanceData(data);
+    } catch (err) {
+      console.error('Failed to fetch attendance data:', err);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -41,227 +54,558 @@ const ParentAttendanceScreen = ({ route, navigation }) => {
   };
 
   useEffect(() => {
-    fetchAttendance();
-  }, [studentId]);
+    fetchChildren();
+  }, []);
+
+  useEffect(() => {
+    if (selectedChildId) {
+      fetchAttendance(selectedChildId);
+    } else {
+      fetchAttendance();
+    }
+  }, [selectedChildId]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchAttendance();
-  }, []);
+    fetchChildren();
+    fetchAttendance(selectedChildId);
+  }, [selectedChildId]);
 
-  const handleExportCsv = async () => {
-    const records = data?.records || [];
+  const handleDownloadReport = async () => {
+    const records = attendanceData?.records || [];
     if (records.length === 0) {
-      Alert.alert('No Data', 'No attendance records to export.');
+      Alert.alert('No Data', 'No attendance records available to export.');
       return;
     }
 
-    let csvContent = `Date,Subject,Status,Teacher,Remarks\n`;
-    records.forEach((r) => {
-      const d = r.date ? new Date(r.date).toISOString().split('T')[0] : '';
-      const s = `"${(r.subject_name || 'General').replace(/"/g, '""')}"`;
-      const st = r.status || '';
-      const t = `"${(r.teacher_name || '').replace(/"/g, '""')}"`;
-      const rem = `"${(r.remarks || '').replace(/"/g, '""')}"`;
-      csvContent += `${d},${s},${st},${t},${rem}\n`;
-    });
+    setDownloading(true);
+    try {
+      let csvContent = `Date,Subject,Time Slot,Status,Teacher,Remarks\n`;
+      records.forEach((r) => {
+        const d = r.date ? new Date(r.date).toISOString().split('T')[0] : '';
+        const s = `"${(r.subject_name || 'General Session').replace(/"/g, '""')}"`;
+        const ts = `"${(r.time_slot || 'Regular').replace(/"/g, '""')}"`;
+        const st = (r.status || '').toUpperCase();
+        const t = `"${(r.teacher_name || '').replace(/"/g, '""')}"`;
+        const rem = `"${(r.remarks || '').replace(/"/g, '""')}"`;
+        csvContent += `${d},${s},${ts},${st},${t},${rem}\n`;
+      });
 
-    const success = await exportCsv('Child_Attendance_Report.csv', csvContent);
-    if (success) {
-      Alert.alert('✅ Exported', 'Attendance report CSV generated successfully.');
+      const fileName = `Attendance_Report_${selectedChildId || 'Student'}.csv`;
+      const success = await exportCsv(fileName, csvContent);
+      if (success) {
+        Alert.alert('✅ Exported', 'Attendance report CSV generated successfully.');
+      }
+    } catch (err) {
+      console.error('Failed to export CSV:', err);
+      Alert.alert('Error', 'Failed to generate attendance report.');
+    } finally {
+      setDownloading(false);
     }
   };
 
-  if (loading) return <FullPageLoader message="Loading attendance records..." />;
+  if (loading && !refreshing) return <FullPageLoader message="Loading attendance analytics..." />;
 
-  const records = data?.records || [];
-  const monthly = data?.monthlyBreakdown || [];
-  const subjects = data?.subjectBreakdown || [];
+  const records = attendanceData?.records || [];
+  const monthlyBreakdown = attendanceData?.monthlyBreakdown || [];
+  const subjectBreakdown = attendanceData?.subjectBreakdown || [];
+  const student = attendanceData?.student || {};
 
-  const totalPresent = records.filter((r) => r.status === 'present').length;
-  const totalAbsent = records.filter((r) => r.status === 'absent').length;
+  const totalSessions = records.length;
+  const presentSessions = records.filter((r) => r.status === 'present').length;
+  const absentSessions = records.filter((r) => r.status === 'absent').length;
+  const leaveSessions = records.filter((r) => r.status === 'leave').length;
+  const percentage = totalSessions > 0 ? ((presentSessions / totalSessions) * 100).toFixed(1) : '100.0';
+  const isGood = parseFloat(percentage) >= 75;
 
   const TABS = [
-    { key: 'records', label: 'Records' },
-    { key: 'monthly', label: 'Monthly' },
     { key: 'subjects', label: 'By Subject' },
+    { key: 'records', label: 'Recent Records' },
+    { key: 'monthly', label: 'Monthly' },
   ];
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <Header
-        title="Attendance Report"
-        subtitle="Your child's attendance"
+        title="Attendance Analytics"
+        subtitle={student.name ? `Attendance records for ${student.name}` : "Comprehensive attendance breakdown"}
         navigation={navigation}
         rightAction={
-          <TouchableOpacity style={styles.exportBtn} onPress={handleExportCsv}>
-            <Download size={17} color={colors.parent} />
+          <TouchableOpacity
+            style={[styles.exportBtn, downloading && { opacity: 0.6 }]}
+            onPress={handleDownloadReport}
+            disabled={downloading}
+          >
+            <Download size={16} color={colors.primaryLight} />
+            <Text style={styles.exportBtnText}>
+              {downloading ? 'Exporting...' : 'Export'}
+            </Text>
           </TouchableOpacity>
         }
       />
 
-      {/* Summary Row */}
-      <View style={styles.summaryRow}>
-        <View style={[styles.summaryCard, { borderColor: colors.success + '44' }]}>
-          <CalendarCheck size={18} color={colors.success} />
-          <Text style={[styles.summaryValue, { color: colors.success }]}>{totalPresent}</Text>
-          <Text style={styles.summaryLabel}>Present</Text>
-        </View>
-        <View style={[styles.summaryCard, { borderColor: colors.danger + '44' }]}>
-          <CalendarX size={18} color={colors.danger} />
-          <Text style={[styles.summaryValue, { color: colors.danger }]}>{totalAbsent}</Text>
-          <Text style={styles.summaryLabel}>Absent</Text>
-        </View>
-        <View style={[styles.summaryCard, { borderColor: colors.primary + '44' }]}>
-          <TrendingUp size={18} color={colors.primary} />
-          <Text style={[styles.summaryValue, { color: colors.primary }]}>
-            {records.length > 0 ? `${Math.round((totalPresent / records.length) * 100)}%` : '—'}
-          </Text>
-          <Text style={styles.summaryLabel}>Rate</Text>
-        </View>
-      </View>
-
-      {/* Tabs */}
-      <View style={styles.tabRow}>
-        {TABS.map((t) => (
-          <TouchableOpacity
-            key={t.key}
-            style={[styles.tab, activeTab === t.key && styles.tabActive]}
-            onPress={() => setActiveTab(t.key)}
-          >
-            <Text style={[styles.tabText, activeTab === t.key && styles.tabTextActive]}>{t.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
       <ScrollView
-        contentContainerStyle={styles.listContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.parent} />}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primaryLight}
+          />
+        }
       >
-        {activeTab === 'records' && (
-          records.length === 0 ? (
-            <View style={styles.empty}><Text style={styles.emptyText}>No attendance records found</Text></View>
-          ) : (
-            records.map((item, i) => {
-              const statusColor = STATUS_COLORS[item.status] || colors.textMuted;
-              return (
-                <View key={i} style={[styles.recordCard, shadows.sm]}>
-                  <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-                  <View style={styles.recordInfo}>
-                    <Text style={styles.recordDate}>
-                      {item.date ? new Date(item.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '—'}
-                    </Text>
-                    <Text style={styles.recordSubject}>{item.subject_name || 'General'}</Text>
-                  </View>
-                  <View style={[styles.statusBadge, { backgroundColor: statusColor + '22' }]}>
-                    <Text style={[styles.statusText, { color: statusColor }]}>{item.status}</Text>
-                  </View>
-                </View>
-              );
-            })
-          )
+        {/* Child Switcher Component */}
+        {children.length > 0 && (
+          <ChildSwitcher
+            childrenList={children}
+            selectedChildId={selectedChildId}
+            onSelectChild={(id) => setSelectedChildId(id)}
+          />
         )}
 
-        {activeTab === 'monthly' && (
-          monthly.length === 0 ? (
-            <View style={styles.empty}><Text style={styles.emptyText}>No monthly data yet</Text></View>
-          ) : (
-            monthly.map((m, i) => (
-              <View key={i} style={[styles.monthCard, shadows.sm]}>
-                <View style={styles.monthHeader}>
-                  <Text style={styles.monthName}>{m.month}</Text>
-                  <Text style={[styles.monthPct, { color: parseFloat(m.percentage) >= 75 ? colors.success : colors.danger }]}>
-                    {m.percentage}%
-                  </Text>
-                </View>
-                <View style={styles.monthStats}>
-                  <Text style={[styles.monthStat, { color: colors.success }]}>{m.present} P</Text>
-                  <Text style={[styles.monthStat, { color: colors.danger }]}>{m.absent} A</Text>
-                  <Text style={[styles.monthStat, { color: colors.warning }]}>{m.leave} L</Text>
-                </View>
-              </View>
-            ))
-          )
-        )}
+        {/* 4 Web-Parity KPI Cards */}
+        <View style={styles.kpiGrid}>
+          {/* Card 1: Attendance Rate */}
+          <View style={[styles.kpiCard, shadows.sm, { borderColor: isGood ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)' }]}>
+            <Text style={styles.kpiLabel}>ATTENDANCE RATE</Text>
+            <Text style={[styles.kpiValue, { color: isGood ? colors.success : colors.danger }]}>
+              {percentage}%
+            </Text>
+            <Text style={styles.kpiSub}>Threshold: 75%</Text>
+          </View>
 
+          {/* Card 2: Sessions Attended */}
+          <View style={[styles.kpiCard, shadows.sm, { borderColor: 'rgba(59,130,246,0.3)' }]}>
+            <Text style={styles.kpiLabel}>SESSIONS ATTENDED</Text>
+            <Text style={[styles.kpiValue, { color: colors.primaryLight }]}>
+              {presentSessions} / {totalSessions}
+            </Text>
+            <Text style={styles.kpiSub}>Present</Text>
+          </View>
+
+          {/* Card 3: Absent Days */}
+          <View style={[styles.kpiCard, shadows.sm, { borderColor: 'rgba(239,68,68,0.3)' }]}>
+            <Text style={styles.kpiLabel}>ABSENT DAYS</Text>
+            <Text style={[styles.kpiValue, { color: colors.danger }]}>
+              {absentSessions}
+            </Text>
+            <Text style={styles.kpiSub}>Unexcused Absences</Text>
+          </View>
+
+          {/* Card 4: Approved Leaves */}
+          <View style={[styles.kpiCard, shadows.sm, { borderColor: 'rgba(245,158,11,0.3)' }]}>
+            <Text style={styles.kpiLabel}>APPROVED LEAVES</Text>
+            <Text style={[styles.kpiValue, { color: colors.warning }]}>
+              {leaveSessions}
+            </Text>
+            <Text style={styles.kpiSub}>Excused Sessions</Text>
+          </View>
+        </View>
+
+        {/* Segmented Section Tabs */}
+        <View style={styles.tabsContainer}>
+          {TABS.map((tab) => {
+            const isActive = activeTab === tab.key;
+            return (
+              <TouchableOpacity
+                key={tab.key}
+                style={[styles.tabButton, isActive && styles.tabButtonActive]}
+                onPress={() => setActiveTab(tab.key)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.tabButtonText, isActive && styles.tabButtonTextActive]}>
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Tab 1: Subject-Wise Attendance Breakdown */}
         {activeTab === 'subjects' && (
-          subjects.length === 0 ? (
-            <View style={styles.empty}><Text style={styles.emptyText}>No subject data available</Text></View>
-          ) : (
-            subjects.map((s, i) => (
-              <View key={i} style={[styles.subjectCard, shadows.sm]}>
-                <View style={styles.subjectHeader}>
-                  <Text style={styles.subjectName}>{s.subject_name}</Text>
-                  <Text style={[styles.subjectPct, { color: parseFloat(s.percentage) >= 75 ? colors.success : colors.danger }]}>
-                    {s.percentage}%
-                  </Text>
-                </View>
-                <Text style={styles.subjectClasses}>{s.present} of {s.total} classes attended</Text>
+          <View style={[styles.panelCard, shadows.sm]}>
+            <View style={styles.panelHeader}>
+              <BarChart2 size={18} color={colors.primaryLight} />
+              <Text style={styles.panelTitle}>Subject-wise Performance</Text>
+            </View>
+
+            {subjectBreakdown.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>No subject breakdown records found.</Text>
               </View>
-            ))
-          )
+            ) : (
+              subjectBreakdown.map((subj, idx) => {
+                const sPct = parseFloat(subj.percentage) || 0;
+                const sGood = sPct >= 75;
+                return (
+                  <View key={idx} style={styles.subjectCard}>
+                    <View style={styles.subjectCardTop}>
+                      <Text style={styles.subjectName}>{subj.subjectName}</Text>
+                      <Text style={[styles.subjectPercentage, { color: sGood ? colors.success : colors.danger }]}>
+                        {subj.percentage}%
+                      </Text>
+                    </View>
+
+                    {/* Progress Bar */}
+                    <View style={styles.progressBarTrack}>
+                      <View
+                        style={[
+                          styles.progressBarFill,
+                          {
+                            width: `${Math.min(sPct, 100)}%`,
+                            backgroundColor: sGood ? colors.success : colors.danger,
+                          }
+                        ]}
+                      />
+                    </View>
+
+                    <Text style={styles.subjectAttendanceMeta}>
+                      {subj.present} of {subj.total} lectures attended
+                    </Text>
+                  </View>
+                );
+              })
+            )}
+          </View>
         )}
+
+        {/* Tab 2: Recent Session Records */}
+        {activeTab === 'records' && (
+          <View style={[styles.panelCard, shadows.sm]}>
+            <View style={styles.panelHeader}>
+              <Calendar size={18} color={colors.primaryLight} />
+              <Text style={styles.panelTitle}>Recent Session Records</Text>
+            </View>
+
+            {records.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>No recent session records available.</Text>
+              </View>
+            ) : (
+              records.slice(0, 25).map((rec, idx) => {
+                const isPres = rec.status === 'present';
+                const isLve = rec.status === 'leave';
+                const isAbs = rec.status === 'absent';
+                const statusColor = isPres ? colors.success : isLve ? colors.warning : colors.danger;
+                const formattedDate = rec.date
+                  ? new Date(rec.date).toLocaleDateString('en-US', {
+                      weekday: 'short',
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric'
+                    })
+                  : 'N/A';
+
+                return (
+                  <View key={rec.id || idx} style={styles.recordCard}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.recordDate}>{formattedDate}</Text>
+                      <Text style={styles.recordSubject}>{rec.subject_name || 'General Session'}</Text>
+                      <Text style={styles.recordTime}>
+                        {rec.time_slot || 'Regular Session'} · Room: {rec.room_number || '—'}
+                      </Text>
+                    </View>
+
+                    <View
+                      style={[
+                        styles.statusCapsule,
+                        {
+                          backgroundColor: isPres
+                            ? 'rgba(16, 185, 129, 0.15)'
+                            : isLve
+                            ? 'rgba(245, 158, 11, 0.15)'
+                            : 'rgba(239, 68, 68, 0.15)'
+                        }
+                      ]}
+                    >
+                      {isPres && <CheckCircle size={13} color={colors.success} />}
+                      {isLve && <Clock size={13} color={colors.warning} />}
+                      {isAbs && <XCircle size={13} color={colors.danger} />}
+                      <Text style={[styles.statusCapsuleText, { color: statusColor }]}>
+                        {(rec.status || 'ABSENT').toUpperCase()}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        )}
+
+        {/* Tab 3: Monthly Breakdown */}
+        {activeTab === 'monthly' && (
+          <View style={[styles.panelCard, shadows.sm]}>
+            <View style={styles.panelHeader}>
+              <Clock size={18} color={colors.primaryLight} />
+              <Text style={styles.panelTitle}>Monthly Attendance Trends</Text>
+            </View>
+
+            {monthlyBreakdown.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>No monthly breakdown records available.</Text>
+              </View>
+            ) : (
+              monthlyBreakdown.map((m, idx) => {
+                const mPct = parseFloat(m.percentage) || 0;
+                const mGood = mPct >= 75;
+                return (
+                  <View key={idx} style={styles.monthCard}>
+                    <View style={styles.monthTopRow}>
+                      <Text style={styles.monthName}>{m.month || `Month ${idx + 1}`}</Text>
+                      <Text style={[styles.monthRate, { color: mGood ? colors.success : colors.danger }]}>
+                        {m.percentage}%
+                      </Text>
+                    </View>
+                    <View style={styles.progressBarTrack}>
+                      <View
+                        style={[
+                          styles.progressBarFill,
+                          {
+                            width: `${Math.min(mPct, 100)}%`,
+                            backgroundColor: mGood ? colors.success : colors.danger,
+                          }
+                        ]}
+                      />
+                    </View>
+                    <View style={styles.monthStatsRow}>
+                      <Text style={styles.monthStatItem}>Present: {m.present || 0}</Text>
+                      <Text style={styles.monthStatItem}>Absent: {m.absent || 0}</Text>
+                      <Text style={styles.monthStatItem}>Total: {m.total || 0}</Text>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        )}
+
+        <View style={{ height: spacing.xxl }} />
       </ScrollView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bgPrimary },
+  container: {
+    flex: 1,
+    backgroundColor: colors.bgPrimary,
+  },
+  content: {
+    padding: spacing.md,
+  },
   exportBtn: {
-    padding: spacing.sm, backgroundColor: colors.parent + '22',
-    borderRadius: radius.md, borderWidth: 1, borderColor: colors.parent + '44',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(99, 102, 241, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.3)',
   },
-  summaryRow: { flexDirection: 'row', gap: spacing.sm, padding: spacing.md, paddingBottom: spacing.xs },
-  summaryCard: {
-    flex: 1, backgroundColor: colors.bgCard, borderRadius: radius.md,
-    padding: spacing.sm, alignItems: 'center', borderWidth: 1,
+  exportBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primaryLight,
   },
-  summaryValue: { ...typography.lg, ...typography.bold, marginVertical: 2 },
-  summaryLabel: { ...typography.xs, color: colors.textMuted },
-  tabRow: { flexDirection: 'row', paddingHorizontal: spacing.md, gap: spacing.xs, marginVertical: spacing.xs },
-  tab: {
-    flex: 1, paddingVertical: 8, alignItems: 'center',
-    borderRadius: radius.full, backgroundColor: colors.bgCard,
-    borderWidth: 1, borderColor: colors.border,
+  kpiGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
   },
-  tabActive: { backgroundColor: colors.parent + '22', borderColor: colors.parent },
-  tabText: { ...typography.xs, color: colors.textMuted, fontWeight: '600' },
-  tabTextActive: { color: colors.parent, fontWeight: '700' },
-  listContent: { padding: spacing.md },
-  recordCard: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    backgroundColor: colors.bgCard, borderRadius: radius.md,
-    padding: spacing.md, marginBottom: spacing.xs,
-    borderWidth: 1, borderColor: colors.border,
+  kpiCard: {
+    width: '48%',
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    alignItems: 'center',
+    borderWidth: 1,
   },
-  statusDot: { width: 8, height: 8, borderRadius: 4 },
-  recordInfo: { flex: 1 },
-  recordDate: { ...typography.sm, ...typography.semibold, color: colors.textPrimary },
-  recordSubject: { ...typography.xs, color: colors.textMuted, marginTop: 2 },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.full },
-  statusText: { fontSize: 11, fontWeight: '700', textTransform: 'capitalize' },
-  monthCard: {
-    backgroundColor: colors.bgCard, borderRadius: radius.md,
-    padding: spacing.md, marginBottom: spacing.xs,
-    borderWidth: 1, borderColor: colors.border,
+  kpiLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: colors.textMuted,
+    letterSpacing: 0.5,
+    marginBottom: 4,
   },
-  monthHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  monthName: { ...typography.sm, ...typography.bold, color: colors.textPrimary },
-  monthPct: { ...typography.sm, ...typography.bold },
-  monthStats: { flexDirection: 'row', gap: spacing.md },
-  monthStat: { ...typography.xs, fontWeight: '600' },
+  kpiValue: {
+    fontSize: 22,
+    fontWeight: '900',
+    marginVertical: 2,
+  },
+  kpiSub: {
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  tabsContainer: {
+    flexDirection: 'row',
+    backgroundColor: colors.bgCard,
+    padding: 4,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.md,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 9,
+    alignItems: 'center',
+    borderRadius: radius.sm,
+  },
+  tabButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  tabButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  tabButtonTextActive: {
+    color: '#ffffff',
+    fontWeight: '800',
+  },
+  panelCard: {
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  panelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: spacing.md,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  panelTitle: {
+    ...typography.base,
+    ...typography.bold,
+    color: colors.textPrimary,
+  },
   subjectCard: {
-    backgroundColor: colors.bgCard, borderRadius: radius.md,
-    padding: spacing.md, marginBottom: spacing.xs,
-    borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.sm,
   },
-  subjectHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  subjectName: { ...typography.sm, ...typography.bold, color: colors.textPrimary },
-  subjectPct: { ...typography.sm, ...typography.bold },
-  subjectClasses: { ...typography.xs, color: colors.textMuted },
-  empty: { alignItems: 'center', paddingVertical: spacing.xl },
-  emptyText: { ...typography.sm, color: colors.textMuted },
+  subjectCardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  subjectName: {
+    ...typography.base,
+    ...typography.bold,
+    color: colors.textPrimary,
+    flex: 1,
+  },
+  subjectPercentage: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  progressBarTrack: {
+    height: 7,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginVertical: 4,
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  subjectAttendanceMeta: {
+    ...typography.xs,
+    color: colors.textSecondary,
+    marginTop: 4,
+  },
+  recordCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 8,
+    gap: 10,
+  },
+  recordDate: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  recordSubject: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  recordTime: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  statusCapsule: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: radius.full,
+  },
+  statusCapsuleText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  monthCard: {
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.sm,
+  },
+  monthTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  monthName: {
+    ...typography.base,
+    ...typography.bold,
+    color: colors.textPrimary,
+  },
+  monthRate: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  monthStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 6,
+  },
+  monthStatItem: {
+    ...typography.xs,
+    color: colors.textMuted,
+  },
+  emptyContainer: {
+    padding: spacing.xl,
+    alignItems: 'center',
+  },
+  emptyText: {
+    ...typography.sm,
+    color: colors.textMuted,
+  },
 });
 
 export default ParentAttendanceScreen;

@@ -52,20 +52,7 @@ export const markManualAttendance = async (req, res) => {
             [studentId, subjectId || null, classId || null, teacherId, status || 'present', today, slot]
         );
 
-        // 3. Update student streak count
-        if (status === 'present') {
-            await pool.query(
-                `UPDATE users SET streak_count = streak_count + 1, 
-                                 best_streak = GREATEST(best_streak, streak_count + 1),
-                                 last_attendance_date = CURRENT_TIMESTAMP
-                 WHERE id = $1`,
-                [studentId]
-            );
-        } else if (status === 'absent') {
-            await pool.query('UPDATE users SET streak_count = 0 WHERE id = $1', [studentId]);
-        }
-
-        // 4. Notify parent AND student if absent or on leave
+        // 3. Notify parent AND student if absent or on leave
         const studentRes = await pool.query('SELECT parent_id, name FROM users WHERE id = $1', [studentId]);
         if (studentRes.rows.length > 0 && (status === 'absent' || status === 'leave')) {
             const student = studentRes.rows[0];
@@ -200,19 +187,6 @@ export const bulkMarkManualAttendance = async (req, res) => {
                     [studentId, subjectId || null, classId || null, teacherId, status || 'present', targetDate, slot]
                 );
                 results.push(insertRes.rows[0]);
-            }
-
-            // Update streak
-            if (status === 'present') {
-                await pool.query(
-                    `UPDATE users SET streak_count = streak_count + 1, 
-                                     best_streak = GREATEST(best_streak, streak_count + 1),
-                                     last_attendance_date = CURRENT_TIMESTAMP
-                     WHERE id = $1`,
-                    [studentId]
-                );
-            } else if (status === 'absent') {
-                await pool.query('UPDATE users SET streak_count = 0 WHERE id = $1', [studentId]);
             }
         }
 

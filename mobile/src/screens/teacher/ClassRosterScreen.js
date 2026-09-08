@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  Search, X, GraduationCap, Mail, Hash, Edit3, Flame,
+  Search, X, GraduationCap, Mail, Hash, Edit3,
   BarChart2, Save, ArrowUpDown, Users, BookOpen,
   CheckCircle, XCircle, Clock,
 } from 'lucide-react-native';
@@ -160,12 +160,12 @@ const ProfileModal = ({ student, isCoordinator, onClose, onSaved }) => {
                   </View>
                   <View style={styles.kpiCard}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                      <Flame size={14} color={colors.warning} />
-                      <Text style={[styles.kpiVal, { color: colors.warning }]}>
-                        {profile?.student?.streakCount ?? 0}
+                      <Clock size={14} color={colors.primary} />
+                      <Text style={[styles.kpiVal, { color: colors.primary }]}>
+                        {profile?.stats?.leaveCount ?? student.leaveSessions ?? 0}
                       </Text>
                     </View>
-                    <Text style={styles.kpiLbl}>Streak</Text>
+                    <Text style={styles.kpiLbl}>Leaves</Text>
                   </View>
                 </View>
 

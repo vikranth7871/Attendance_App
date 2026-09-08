@@ -1,33 +1,76 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, RefreshControl,
-  TouchableOpacity, ScrollView, Alert
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  RefreshControl,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Award, TrendingUp, Download, Calendar, Clock, MapPin, CheckCircle2, AlertCircle } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import {
+  Award,
+  TrendingUp,
+  Calendar,
+  Clock,
+  MapPin,
+  Printer,
+  ChevronRight,
+  Download,
+} from 'lucide-react-native';
 import Header from '../../components/Header';
-import { FullPageLoader } from '../../components/LoadingSkeleton';
+import { CardSkeleton } from '../../components/LoadingSkeleton';
 import api from '../../api/client';
 import { colors, spacing, radius, typography, shadows } from '../../styles/theme';
 import { exportText, generateReportCardText } from '../../utils/fileExporter';
 
-const getLetterGrade = (pct) => {
-  if (pct >= 90) return { grade: 'A+', color: colors.success };
-  if (pct >= 80) return { grade: 'A', color: colors.teacher };
-  if (pct >= 70) return { grade: 'B', color: colors.primary };
-  if (pct >= 60) return { grade: 'C', color: colors.warning };
-  if (pct >= 50) return { grade: 'D', color: '#f97316' };
-  return { grade: 'F', color: colors.danger };
+/* ── Helpers ── */
+const gradeColor = (g = '') => {
+  const upper = (g || '').toUpperCase();
+  if (['A+', 'A'].includes(upper)) return { bg: 'rgba(16,185,129,0.15)', fg: '#10b981' };
+  if (['B+', 'B'].includes(upper)) return { bg: 'rgba(59,130,246,0.15)', fg: '#3b82f6' };
+  if (['C+', 'C'].includes(upper)) return { bg: 'rgba(245,158,11,0.15)', fg: '#f59e0b' };
+  return { bg: 'rgba(239,68,68,0.15)', fg: '#ef4444' };
 };
 
-const termLabel = (r) => (r.term && r.term.trim()) ? r.term.trim() : (r.exam_name || r.exam_title || 'General');
+const pct = (obtained, max) =>
+  max > 0 ? Math.round((obtained / max) * 100) : 0;
+
+const termLabel = (r) =>
+  r.term && r.term.trim() ? r.term.trim() : r.exam_name || 'Other';
+
+const isExpired = (dateStr, timeSlot) => {
+  if (!dateStr) return false;
+  const examDay = new Date(dateStr);
+  examDay.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (examDay < today) return true;
+  if (examDay.getTime() === today.getTime() && timeSlot) {
+    const parts = timeSlot.split('-');
+    if (parts.length > 1) {
+      const m = parts[1].trim().match(/(\d+):(\d+)\s*(AM|PM)/i);
+      if (m) {
+        let h = parseInt(m[1], 10);
+        const min = parseInt(m[2], 10);
+        if (m[3].toUpperCase() === 'PM' && h < 12) h += 12;
+        if (m[3].toUpperCase() === 'AM' && h === 12) h = 0;
+        return new Date() > new Date(new Date().setHours(h, min, 0));
+      }
+    }
+  }
+  return false;
+};
 
 const StudentResultsScreen = () => {
   const [academicData, setAcademicData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [mainTab, setMainTab] = useState('results'); // 'results' | 'schedules'
-  const [activeTerm, setActiveTerm] = useState('All');
+  const [activeTab, setActiveTab] = useState(null); // Active term for results
+  const [scheduleTab, setScheduleTab] = useState('upcoming'); // Active tab for schedules
 
   const fetchResults = async () => {
     try {
@@ -50,28 +93,90 @@ const StudentResultsScreen = () => {
     fetchResults();
   }, []);
 
-  const results = academicData?.results || (Array.isArray(academicData) ? academicData : []);
+  // Group published results by term
+  const { grouped, allTerms } = useMemo(() => {
+    const results = academicData?.results || [];
+    const map = {};
+    results.forEach((r) => {
+      const key = termLabel(r);
+      if (!map[key]) map[key] = [];
+      map[key].push(r);
+    });
+    const order = [
+      'CIA-1',
+      'CIA 1',
+      'CIA1',
+      'CIA-2',
+      'CIA 2',
+      'CIA2',
+      'Mid-Term',
+      'Midterm',
+      'Mid Term',
+      'End-Term',
+      'Final',
+      'Semester',
+    ];
+    const keys = Object.keys(map).sort((a, b) => {
+      const ai = order.findIndex((o) => a.toLowerCase().includes(o.toLowerCase()));
+      const bi = order.findIndex((o) => b.toLowerCase().includes(o.toLowerCase()));
+      if (ai >= 0 && bi >= 0) return ai - bi;
+      if (ai >= 0) return -1;
+      if (bi >= 0) return 1;
+      return a.localeCompare(b);
+    });
+    return { grouped: map, allTerms: keys };
+  }, [academicData]);
+
+  // Group schedules by term & extract upcoming
+  const { scheduleGrouped, scheduleTerms, upcoming } = useMemo(() => {
+    const schedules = academicData?.schedules || [];
+    const active = schedules.filter((s) => !isExpired(s.exam_date, s.time_slot));
+    const map = {};
+    schedules.forEach((s) => {
+      const key = termLabel(s);
+      if (!map[key]) map[key] = [];
+      map[key].push(s);
+    });
+    return {
+      scheduleGrouped: map,
+      scheduleTerms: Object.keys(map),
+      upcoming: active,
+    };
+  }, [academicData]);
+
+  // Set default active term when data loads
+  useEffect(() => {
+    if (allTerms.length > 0 && !activeTab) {
+      setActiveTab(allTerms[0]);
+    }
+  }, [allTerms, activeTab]);
+
+  const results = academicData?.results || [];
   const schedules = academicData?.schedules || [];
   const student = academicData?.student;
 
-  const termsList = useMemo(() => {
-    const set = new Set();
-    results.forEach((r) => set.add(termLabel(r)));
-    return ['All', ...Array.from(set)];
-  }, [results]);
+  const activeResults = grouped[activeTab] || [];
+  const termAvg = activeResults.length
+    ? Math.round(
+        activeResults.reduce(
+          (s, r) => s + pct(r.marks_obtained, r.max_marks || 100),
+          0
+        ) / activeResults.length
+      )
+    : 0;
 
-  const filteredResults = useMemo(() => {
-    if (activeTerm === 'All') return results;
-    return results.filter((r) => termLabel(r) === activeTerm);
-  }, [results, activeTerm]);
-
-  const overallAvg = results.length > 0
-    ? Math.round(results.reduce((sum, r) => sum + (r.percentage || (r.marks_obtained && r.max_marks ? (r.marks_obtained / r.max_marks * 100) : 0)), 0) / results.length)
+  const overallAvg = results.length
+    ? Math.round(
+        results.reduce(
+          (s, r) => s + pct(r.marks_obtained, r.max_marks || 100),
+          0
+        ) / results.length
+      )
     : 0;
 
   const handleDownloadReportCard = async () => {
     if (results.length === 0) {
-      Alert.alert('No Data', 'No academic results to export.');
+      Alert.alert('No Results', 'No academic results available to download.');
       return;
     }
 
@@ -80,7 +185,7 @@ const StudentResultsScreen = () => {
       className: student?.class_name,
       rollNumber: student?.roll_number,
       results: results,
-      averageGpa: `${overallAvg}% (${getLetterGrade(overallAvg).grade})`,
+      averageGpa: `${overallAvg}%`,
     });
 
     const success = await exportText(
@@ -89,285 +194,986 @@ const StudentResultsScreen = () => {
       'text/plain'
     );
     if (success) {
-      Alert.alert('✅ Exported', 'Official academic report card generated successfully.');
+      Alert.alert('✅ Downloaded', 'Academic report card generated and ready to share!');
     }
   };
-
-  if (loading) return <FullPageLoader message="Loading academic results & schedules..." />;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <Header
-        title="Academic Performance"
-        subtitle={`${results.length} results • ${schedules.length} schedules`}
-        rightAction={
-          <TouchableOpacity style={styles.exportBtn} onPress={handleDownloadReportCard}>
-            <Download size={17} color={colors.student} />
-          </TouchableOpacity>
-        }
+        title="Exam Results"
+        subtitle="Academic Performance & Schedules"
+        showLogout={false}
       />
 
-      {/* Main Tab Switcher */}
-      <View style={styles.mainTabWrapper}>
-        <View style={styles.mainTabBar}>
-          <TouchableOpacity
-            style={[styles.mainTabBtn, mainTab === 'results' && styles.mainTabBtnActive]}
-            onPress={() => setMainTab('results')}
-          >
-            <Award size={14} color={mainTab === 'results' ? '#fff' : colors.textMuted} />
-            <Text style={[styles.mainTabText, mainTab === 'results' && styles.mainTabTextActive]}>
-              Results ({results.length})
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.student}
+          />
+        }
+      >
+        {/* ── Page Section Header (Matches Web Screenshot) ── */}
+        <View style={styles.pageHeaderRow}>
+          <View style={styles.pageTitleWrapper}>
+            <View style={styles.titleWithIcon}>
+              <Award size={24} color="#6366f1" />
+              <Text style={styles.pageTitle}>Exam Results & Performance</Text>
+            </View>
+            <Text style={styles.pageSubtitle}>
+              CIA-wise & term-wise breakdown of your academic performance.
             </Text>
-          </TouchableOpacity>
+          </View>
 
+          {/* Download Report Card Button */}
           <TouchableOpacity
-            style={[styles.mainTabBtn, mainTab === 'schedules' && styles.mainTabBtnActive]}
-            onPress={() => setMainTab('schedules')}
+            style={styles.downloadReportBtnTouchable}
+            onPress={handleDownloadReportCard}
+            activeOpacity={0.85}
           >
-            <Calendar size={14} color={mainTab === 'schedules' ? '#fff' : colors.textMuted} />
-            <Text style={[styles.mainTabText, mainTab === 'schedules' && styles.mainTabTextActive]}>
-              Schedules ({schedules.length})
-            </Text>
+            <LinearGradient
+              colors={['#6366f1', '#8b5cf6']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.downloadReportBtnGradient}
+            >
+              <Printer size={15} color="#ffffff" />
+              <Text style={styles.downloadReportBtnText}>Download Report Card</Text>
+            </LinearGradient>
           </TouchableOpacity>
         </View>
-      </View>
 
-      {mainTab === 'results' ? (
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.content}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.student} />}
-        >
-          {/* Overall Stats Banner */}
-          {results.length > 0 && (
-            <View style={[styles.avgCard, shadows.sm]}>
-              <View style={styles.avgLeft}>
-                <TrendingUp size={22} color={colors.student} />
-                <View>
-                  <Text style={styles.avgLabel}>Overall Average Score</Text>
-                  <Text style={[styles.avgScore, { color: getLetterGrade(overallAvg).color }]}>
-                    {overallAvg}%
+        {/* ── 4 Overview Metric Summary Cards ── */}
+        <View style={styles.metricsGrid}>
+          {[
+            {
+              label: 'OVERALL AVERAGE',
+              value: `${overallAvg}%`,
+              color: '#818cf8',
+            },
+            {
+              label: 'EXAMS TAKEN',
+              value: results.length,
+              color: '#10b981',
+            },
+            {
+              label: 'TERMS COVERED',
+              value: allTerms.length,
+              color: '#f59e0b',
+            },
+            {
+              label: 'STATUS',
+              value: overallAvg >= 75 ? 'PASS' : 'REVIEW',
+              color: overallAvg >= 75 ? '#10b981' : '#ef4444',
+            },
+          ].map((item) => (
+            <View key={item.label} style={[styles.metricCard, shadows.sm]}>
+              <Text style={[styles.metricValue, { color: item.color }]}>
+                {item.value}
+              </Text>
+              <Text style={styles.metricLabel}>{item.label}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* ── Results vs. Schedule Segmented Toggle ── */}
+        <View style={styles.mainToggleContainer}>
+          <View style={styles.mainToggleTrack}>
+            <TouchableOpacity
+              style={styles.toggleBtnTouchable}
+              onPress={() => setMainTab('results')}
+              activeOpacity={0.85}
+            >
+              {mainTab === 'results' ? (
+                <LinearGradient
+                  colors={['#6366f1', '#8b5cf6']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.toggleBtnActiveGradient}
+                >
+                  <Award size={14} color="#ffffff" />
+                  <Text style={styles.toggleTextActive} numberOfLines={1} ellipsizeMode="tail">
+                    Results
                   </Text>
+                  <View style={styles.countBadgeActive}>
+                    <Text style={styles.countTextActive}>{results.length}</Text>
+                  </View>
+                </LinearGradient>
+              ) : (
+                <View style={styles.toggleBtnInactive}>
+                  <Award size={14} color={colors.textSecondary} />
+                  <Text style={styles.toggleTextInactive} numberOfLines={1} ellipsizeMode="tail">
+                    Results
+                  </Text>
+                  <View style={styles.countBadgeInactive}>
+                    <Text style={styles.countTextInactive}>{results.length}</Text>
+                  </View>
                 </View>
-              </View>
-              <View style={[styles.gradeBadge, { backgroundColor: getLetterGrade(overallAvg).color + '22' }]}>
-                <Text style={[styles.gradeText, { color: getLetterGrade(overallAvg).color }]}>
-                  {getLetterGrade(overallAvg).grade}
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.toggleBtnTouchable}
+              onPress={() => setMainTab('schedules')}
+              activeOpacity={0.85}
+            >
+              {mainTab === 'schedules' ? (
+                <LinearGradient
+                  colors={['#6366f1', '#8b5cf6']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.toggleBtnActiveGradient}
+                >
+                  <Calendar size={14} color="#ffffff" />
+                  <Text style={styles.toggleTextActive} numberOfLines={1} ellipsizeMode="tail">
+                    Schedule
+                  </Text>
+                  <View style={styles.countBadgeActive}>
+                    <Text style={styles.countTextActive}>{schedules.length}</Text>
+                  </View>
+                </LinearGradient>
+              ) : (
+                <View style={styles.toggleBtnInactive}>
+                  <Calendar size={14} color={colors.textSecondary} />
+                  <Text style={styles.toggleTextInactive} numberOfLines={1} ellipsizeMode="tail">
+                    Schedule
+                  </Text>
+                  <View style={styles.countBadgeInactive}>
+                    <Text style={styles.countTextInactive}>{schedules.length}</Text>
+                  </View>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* ── Content Area ── */}
+        {loading ? (
+          <View style={{ gap: spacing.md, marginTop: spacing.md }}>
+            <CardSkeleton style={{ height: 180 }} />
+            <CardSkeleton style={{ height: 180 }} />
+          </View>
+        ) : mainTab === 'results' ? (
+          /* ─────────────────────────────────────────────────────────────
+             PUBLISHED EXAM RESULTS SECTION
+          ───────────────────────────────────────────────────────────── */
+          <View style={[styles.sectionCard, shadows.md]}>
+            <Text style={styles.sectionHeading}>📊 Published Exam Results</Text>
+
+            {results.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Award size={44} color={colors.textMuted} style={{ opacity: 0.3 }} />
+                <Text style={styles.emptyTitle}>No Published Results</Text>
+                <Text style={styles.emptySub}>
+                  No published examination results yet.
                 </Text>
               </View>
-            </View>
-          )}
+            ) : (
+              <>
+                {/* Term Selector Pills */}
+                <View style={styles.termsScrollWrapper}>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.termsScrollContent}
+                  >
+                    {allTerms.map((term) => {
+                      const isActive = term === activeTab;
+                      const count = (grouped[term] || []).length;
+                      return (
+                        <TouchableOpacity
+                          key={term}
+                          activeOpacity={0.8}
+                          onPress={() => setActiveTab(term)}
+                          style={styles.termPillTouchable}
+                        >
+                          {isActive ? (
+                            <LinearGradient
+                              colors={['#6366f1', '#8b5cf6']}
+                              start={{ x: 0, y: 0 }}
+                              end={{ x: 1, y: 0 }}
+                              style={styles.termPillActiveGradient}
+                            >
+                              <Text style={styles.termPillTextActive}>{term}</Text>
+                              <View style={styles.termCountActive}>
+                                <Text style={styles.termCountTextActive}>{count}</Text>
+                              </View>
+                            </LinearGradient>
+                          ) : (
+                            <View style={styles.termPillInactive}>
+                              <Text style={styles.termPillTextInactive}>{term}</Text>
+                              <View style={styles.termCountInactive}>
+                                <Text style={styles.termCountTextInactive}>{count}</Text>
+                              </View>
+                            </View>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
 
-          {/* Term Chips Filter */}
-          {termsList.length > 2 && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.termScroll}>
-              {termsList.map((term) => (
-                <TouchableOpacity
-                  key={term}
-                  style={[styles.termChip, activeTerm === term && styles.termChipActive]}
-                  onPress={() => setActiveTerm(term)}
-                >
-                  <Text style={[styles.termChipText, activeTerm === term && styles.termChipTextActive]}>
-                    {term}
+                {/* Term Average Row */}
+                <View style={styles.termAvgRow}>
+                  <TrendingUp size={15} color="#6366f1" />
+                  <Text style={styles.termAvgLabel}>Term Average:</Text>
+                  <Text
+                    style={[
+                      styles.termAvgValue,
+                      { color: termAvg >= 75 ? '#10b981' : '#f59e0b' },
+                    ]}
+                  >
+                    {termAvg}%
                   </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
+                  <Text style={styles.termAvgSub}>
+                    across {activeResults.length} subject
+                    {activeResults.length !== 1 ? 's' : ''}
+                  </Text>
+                </View>
 
-          {/* Results List */}
-          {filteredResults.length === 0 ? (
-            <View style={styles.empty}>
-              <Award size={40} color={colors.textMuted} />
-              <Text style={styles.emptyText}>No results available for {activeTerm}</Text>
+                {/* Exam Result Items */}
+                <View style={styles.resultsList}>
+                  {activeResults.map((item, idx) => {
+                    const p = pct(item.marks_obtained, item.max_marks || 100);
+                    const gc = gradeColor(item.grade);
+                    return (
+                      <View key={item.id || idx} style={styles.resultItemCard}>
+                        {/* Top: Subject Name, Code & Grade */}
+                        <View style={styles.resultItemHeader}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.resultSubjectName} numberOfLines={1}>
+                              {item.subject_name || 'General Subject'}
+                            </Text>
+                            {item.subject_code ? (
+                              <Text style={styles.resultSubjectCode}>
+                                {item.subject_code}
+                              </Text>
+                            ) : null}
+                          </View>
+                          <View
+                            style={[
+                              styles.gradeBadgePill,
+                              { backgroundColor: gc.bg },
+                            ]}
+                          >
+                            <Text style={[styles.gradeBadgeText, { color: gc.fg }]}>
+                              {item.grade || '—'}
+                            </Text>
+                          </View>
+                        </View>
+
+                        {/* Middle: Marks & Progress Bar */}
+                        <View style={styles.marksRow}>
+                          <Text style={styles.marksLabel}>
+                            Marks:{' '}
+                            <Text style={styles.marksBold}>
+                              {Number(item.marks_obtained).toFixed(2)}
+                            </Text>{' '}
+                            / {item.max_marks || 100}
+                          </Text>
+                          <Text style={[styles.pctText, { color: gc.fg }]}>{p}%</Text>
+                        </View>
+
+                        <View style={styles.progressTrack}>
+                          <View
+                            style={[
+                              styles.progressFill,
+                              { width: `${p}%`, backgroundColor: gc.fg },
+                            ]}
+                          />
+                        </View>
+
+                        {/* Bottom: Date & Remarks */}
+                        <View style={styles.metaBottomRow}>
+                          <Text style={styles.examDateText}>
+                            {item.exam_date
+                              ? new Date(item.exam_date).toLocaleDateString('en-IN', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  year: 'numeric',
+                                })
+                              : '—'}
+                          </Text>
+                          {item.remarks ? (
+                            <Text style={styles.remarksText} numberOfLines={1}>
+                              "{item.remarks}"
+                            </Text>
+                          ) : null}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+
+                {/* Term Average Summary Strip */}
+                <View style={styles.termFooterStrip}>
+                  <Text style={styles.termFooterLabel}>Term Average</Text>
+                  <Text
+                    style={[
+                      styles.termFooterValue,
+                      { color: termAvg >= 75 ? '#10b981' : '#f59e0b' },
+                    ]}
+                  >
+                    {termAvg}%
+                  </Text>
+                </View>
+              </>
+            )}
+          </View>
+        ) : (
+          /* ─────────────────────────────────────────────────────────────
+             EXAMINATION SCHEDULE SECTION
+          ───────────────────────────────────────────────────────────── */
+          <View style={[styles.sectionCard, shadows.md]}>
+            <Text style={styles.sectionHeading}>📅 Examination Schedule</Text>
+
+            {/* Schedule Term Filter Tabs */}
+            <View style={styles.termsScrollWrapper}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.termsScrollContent}
+              >
+                {/* Upcoming Tab */}
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => setScheduleTab('upcoming')}
+                  style={styles.termPillTouchable}
+                >
+                  {scheduleTab === 'upcoming' ? (
+                    <LinearGradient
+                      colors={['#10b981', '#059669']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={styles.termPillActiveGradient}
+                    >
+                      <Text style={styles.termPillTextActive}>Upcoming</Text>
+                      <View style={styles.termCountActive}>
+                        <Text style={styles.termCountTextActive}>{upcoming.length}</Text>
+                      </View>
+                    </LinearGradient>
+                  ) : (
+                    <View style={styles.termPillInactive}>
+                      <Text style={styles.termPillTextInactive}>Upcoming</Text>
+                      <View style={styles.termCountInactive}>
+                        <Text style={styles.termCountTextInactive}>{upcoming.length}</Text>
+                      </View>
+                    </View>
+                  )}
+                </TouchableOpacity>
+
+                {/* Specific Terms */}
+                {scheduleTerms.map((term) => {
+                  const isActive = scheduleTab === term;
+                  return (
+                    <TouchableOpacity
+                      key={term}
+                      activeOpacity={0.8}
+                      onPress={() => setScheduleTab(term)}
+                      style={styles.termPillTouchable}
+                    >
+                      {isActive ? (
+                        <LinearGradient
+                          colors={['#6366f1', '#8b5cf6']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 0 }}
+                          style={styles.termPillActiveGradient}
+                        >
+                          <Text style={styles.termPillTextActive}>{term}</Text>
+                        </LinearGradient>
+                      ) : (
+                        <View style={styles.termPillInactive}>
+                          <Text style={styles.termPillTextInactive}>{term}</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
             </View>
-          ) : (
-            filteredResults.map((item, i) => {
-              const pct = item.percentage || (item.marks_obtained && item.max_marks ? Math.round(item.marks_obtained / item.max_marks * 100) : 0);
-              const { grade, color } = getLetterGrade(pct);
-              const scoreBar = Math.min(pct, 100);
+
+            {/* Schedule Cards */}
+            {(() => {
+              const list =
+                scheduleTab === 'upcoming'
+                  ? upcoming
+                  : scheduleGrouped[scheduleTab] || [];
+
+              if (list.length === 0) {
+                return (
+                  <View style={styles.emptyState}>
+                    <Calendar size={44} color={colors.textMuted} style={{ opacity: 0.3 }} />
+                    <Text style={styles.emptyTitle}>No Exam Schedule</Text>
+                    <Text style={styles.emptySub}>
+                      No scheduled exams found for this selection.
+                    </Text>
+                  </View>
+                );
+              }
 
               return (
-                <View key={item.id?.toString() || item._id?.toString() || i.toString()} style={[styles.resultCard, shadows.sm]}>
-                  <View style={styles.cardTop}>
-                    <View style={styles.cardInfo}>
-                      <Text style={styles.examTitle}>{item.exam_title || item.title || item.exam_name || 'Assessment'}</Text>
-                      <Text style={styles.subject}>{item.subject_name || item.subject || '—'}</Text>
-                      {item.term ? (
-                        <View style={styles.termPill}>
-                          <Text style={styles.termPillText}>{item.term}</Text>
+                <View style={styles.schedulesList}>
+                  {list.map((sc, idx) => {
+                    const expired = isExpired(sc.exam_date, sc.time_slot);
+                    const examDate = new Date(sc.exam_date);
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const diffDays = Math.ceil(
+                      (examDate - today) / (1000 * 60 * 60 * 24)
+                    );
+                    const isUrgent = !expired && diffDays <= 3;
+                    const borderLeftColor = isUrgent
+                      ? '#f59e0b'
+                      : expired
+                      ? '#94a3b8'
+                      : '#6366f1';
+
+                    return (
+                      <View
+                        key={sc.id || idx}
+                        style={[
+                          styles.scheduleItemCard,
+                          {
+                            borderLeftColor,
+                            opacity: expired ? 0.7 : 1,
+                          },
+                        ]}
+                      >
+                        {/* Top: Exam Name & Status Badge */}
+                        <View style={styles.scheduleItemHeader}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.scheduleExamTitle}>
+                              {sc.exam_name} — {sc.subject_name}
+                            </Text>
+                          </View>
+                          <View
+                            style={[
+                              styles.scheduleStatusBadge,
+                              {
+                                backgroundColor: isUrgent
+                                  ? 'rgba(245, 158, 11, 0.12)'
+                                  : expired
+                                  ? 'rgba(148, 163, 184, 0.12)'
+                                  : 'rgba(99, 102, 241, 0.12)',
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.scheduleStatusText,
+                                {
+                                  color: isUrgent
+                                    ? '#f59e0b'
+                                    : expired
+                                    ? '#94a3b8'
+                                    : '#818cf8',
+                                },
+                              ]}
+                            >
+                              {expired
+                                ? 'Completed'
+                                : diffDays === 0
+                                ? 'Today'
+                                : diffDays === 1
+                                ? 'Tomorrow'
+                                : `${diffDays} days left`}
+                            </Text>
+                          </View>
                         </View>
-                      ) : null}
-                    </View>
-                    <View style={styles.scoreSection}>
-                      <View style={[styles.gradeBadgeLg, { backgroundColor: color + '22', borderColor: color + '44' }]}>
-                        <Text style={[styles.gradeLg, { color }]}>{item.grade || grade}</Text>
+
+                        {/* Meta Row */}
+                        <View style={styles.scheduleMetaRow}>
+                          <View style={styles.scheduleMetaItem}>
+                            <Calendar size={12} color={colors.textMuted} />
+                            <Text style={styles.scheduleMetaText}>
+                              {examDate.toLocaleDateString('en-IN', {
+                                weekday: 'short',
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric',
+                              })}
+                            </Text>
+                          </View>
+                          {sc.time_slot ? (
+                            <View style={styles.scheduleMetaItem}>
+                              <Clock size={12} color={colors.textMuted} />
+                              <Text style={styles.scheduleMetaText}>
+                                {sc.time_slot}
+                              </Text>
+                            </View>
+                          ) : null}
+                          {sc.room_number ? (
+                            <View style={styles.scheduleMetaItem}>
+                              <MapPin size={12} color={colors.textMuted} />
+                              <Text style={styles.scheduleMetaText}>
+                                Room {sc.room_number}
+                              </Text>
+                            </View>
+                          ) : null}
+                        </View>
+
+                        {/* Max marks */}
+                        <View style={styles.maxMarksRow}>
+                          <Text style={styles.maxMarksText}>
+                            Max: {sc.max_marks || 100} marks
+                          </Text>
+                        </View>
                       </View>
-                      <Text style={[styles.scorePct, { color }]}>{pct}%</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.scoreRow}>
-                    <Text style={styles.marksText}>
-                      Marks: <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>{item.marks_obtained ?? '—'}</Text> / {item.max_marks ?? 100}
-                    </Text>
-                    {item.exam_date ? (
-                      <Text style={styles.date}>{new Date(item.exam_date).toLocaleDateString()}</Text>
-                    ) : null}
-                  </View>
-
-                  {/* Progress Bar */}
-                  <View style={styles.barBg}>
-                    <View style={[styles.barFill, { width: `${scoreBar}%`, backgroundColor: color }]} />
-                  </View>
-
-                  {item.remarks ? (
-                    <Text style={styles.remarksText}>Teacher remarks: "{item.remarks}"</Text>
-                  ) : null}
+                    );
+                  })}
                 </View>
               );
-            })
-          )}
-        </ScrollView>
-      ) : (
-        /* Schedules Tab */
-        <FlatList
-          data={schedules}
-          keyExtractor={(item, i) => item.id?.toString() || item._id?.toString() || i.toString()}
-          renderItem={({ item }) => (
-            <View style={[styles.scheduleCard, shadows.sm]}>
-              <View style={styles.schedHeader}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.schedExamTitle}>{item.exam_name || item.exam_title || 'Examination'}</Text>
-                  <Text style={styles.schedSubject}>{item.subject_name || 'Assigned Subject'}</Text>
-                </View>
-                {item.term ? (
-                  <View style={styles.termPill}>
-                    <Text style={styles.termPillText}>{item.term}</Text>
-                  </View>
-                ) : null}
-              </View>
+            })()}
+          </View>
+        )}
 
-              <View style={styles.schedDetailsGrid}>
-                <View style={styles.schedDetailItem}>
-                  <Calendar size={14} color={colors.primary} />
-                  <Text style={styles.schedDetailText}>
-                    {item.exam_date ? new Date(item.exam_date).toLocaleDateString() : 'Date TBA'}
-                  </Text>
-                </View>
-                {item.time_slot ? (
-                  <View style={styles.schedDetailItem}>
-                    <Clock size={14} color={colors.student} />
-                    <Text style={styles.schedDetailText}>{item.time_slot}</Text>
-                  </View>
-                ) : null}
-                {item.room_number ? (
-                  <View style={styles.schedDetailItem}>
-                    <MapPin size={14} color={colors.warning} />
-                    <Text style={styles.schedDetailText}>Room {item.room_number}</Text>
-                  </View>
-                ) : null}
-              </View>
-            </View>
-          )}
-          contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.student} />}
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <Calendar size={40} color={colors.textMuted} />
-              <Text style={styles.emptyText}>No upcoming exam schedules posted</Text>
-            </View>
-          }
-        />
-      )}
+        <View style={{ height: 40 }} />
+      </ScrollView>
     </SafeAreaView>
   );
 };
 
+/* ── Styles ── */
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
-  exportBtn: {
-    padding: spacing.sm, backgroundColor: colors.student + '22',
-    borderRadius: radius.md, borderWidth: 1, borderColor: colors.student + '44',
-  },
-  mainTabWrapper: {
-    paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
-    borderBottomWidth: 1, borderBottomColor: colors.border,
-  },
-  mainTabBar: {
-    flexDirection: 'row', backgroundColor: colors.bgCard,
-    borderRadius: radius.md, padding: 3, borderWidth: 1, borderColor: colors.border,
-  },
-  mainTabBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, paddingVertical: 8, borderRadius: radius.sm,
-  },
-  mainTabBtnActive: { backgroundColor: colors.student },
-  mainTabText: { ...typography.xs, color: colors.textMuted, fontWeight: '600' },
-  mainTabTextActive: { color: '#ffffff', fontWeight: '700' },
   scroll: { flex: 1 },
   content: { padding: spacing.md },
-  list: { padding: spacing.md },
-  avgCard: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: colors.bgCard, borderRadius: radius.lg,
-    padding: spacing.md, borderWidth: 1, borderColor: colors.border,
-    marginBottom: spacing.sm,
+
+  /* Header Section */
+  pageHeaderRow: {
+    marginBottom: spacing.md,
+    gap: spacing.sm,
   },
-  avgLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  avgLabel: { ...typography.xs, color: colors.textSecondary },
-  avgScore: { ...typography.xxl, ...typography.bold, marginTop: 2 },
-  gradeBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.md },
-  gradeText: { ...typography.base, ...typography.bold },
-  termScroll: { flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm, paddingVertical: 4 },
-  termChip: {
-    paddingHorizontal: spacing.md, paddingVertical: 6,
-    borderRadius: radius.full, backgroundColor: colors.bgCard,
-    borderWidth: 1, borderColor: colors.border,
+  pageTitleWrapper: {},
+  titleWithIcon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
   },
-  termChipActive: { backgroundColor: colors.student + '22', borderColor: colors.student },
-  termChipText: { ...typography.xs, color: colors.textMuted, fontWeight: '600' },
-  termChipTextActive: { color: colors.student, fontWeight: '700' },
-  resultCard: {
-    backgroundColor: colors.bgCard, borderRadius: radius.md,
-    padding: spacing.md, marginBottom: spacing.sm,
-    borderWidth: 1, borderColor: colors.border, gap: 6,
+  pageTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.textPrimary,
   },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  cardInfo: { flex: 1, marginRight: spacing.sm },
-  examTitle: { ...typography.base, ...typography.semibold, color: colors.textPrimary },
-  subject: { ...typography.sm, color: colors.textSecondary, marginTop: 2 },
-  termPill: {
-    alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2,
-    backgroundColor: colors.primary + '15', borderRadius: radius.xs, marginTop: 4,
+  pageSubtitle: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    lineHeight: 17,
   },
-  termPillText: { fontSize: 10, color: colors.primary, fontWeight: '700' },
-  scoreSection: { alignItems: 'center', gap: 4 },
-  gradeBadgeLg: {
-    width: 44, height: 44, borderRadius: radius.md,
-    justifyContent: 'center', alignItems: 'center', borderWidth: 1,
+  downloadReportBtnTouchable: {
+    borderRadius: 10,
+    overflow: 'hidden',
+    alignSelf: 'flex-start',
+    marginTop: 4,
   },
-  gradeLg: { ...typography.lg, ...typography.bold },
-  scorePct: { ...typography.xs, ...typography.semibold },
-  scoreRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  marksText: { ...typography.xs, color: colors.textMuted },
-  date: { ...typography.xs, color: colors.textMuted },
-  barBg: { height: 5, backgroundColor: colors.bgElevated, borderRadius: radius.full, overflow: 'hidden' },
-  barFill: { height: '100%', borderRadius: radius.full },
-  remarksText: { ...typography.xs, color: colors.textSecondary, fontStyle: 'italic', marginTop: 2 },
-  scheduleCard: {
-    backgroundColor: colors.bgCard, borderRadius: radius.md,
-    padding: spacing.md, marginBottom: spacing.sm,
-    borderWidth: 1, borderColor: colors.border, gap: spacing.xs,
+  downloadReportBtnGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 10,
   },
-  schedHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  schedExamTitle: { ...typography.base, ...typography.semibold, color: colors.textPrimary },
-  schedSubject: { ...typography.sm, color: colors.textSecondary, marginTop: 2 },
-  schedDetailsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginTop: 4 },
-  schedDetailItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  schedDetailText: { ...typography.xs, color: colors.textPrimary, fontWeight: '500' },
-  empty: { alignItems: 'center', paddingTop: spacing.xxl, gap: spacing.md },
-  emptyText: { ...typography.base, color: colors.textMuted },
+  downloadReportBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  /* 4 Overview Metrics */
+  metricsGrid: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: spacing.md,
+  },
+  metricCard: {
+    flex: 1,
+    backgroundColor: colors.bgCard,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  metricValue: {
+    fontSize: 17,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
+  metricLabel: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textAlign: 'center',
+    letterSpacing: 0.4,
+  },
+
+  /* Main Results vs. Schedules Toggle */
+  mainToggleContainer: {
+    marginBottom: spacing.md,
+  },
+  mainToggleTrack: {
+    flexDirection: 'row',
+    backgroundColor: colors.bgCard,
+    borderRadius: radius.full,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: colors.border,
+    height: 46,
+    alignItems: 'center',
+    gap: 4,
+  },
+  toggleBtnTouchable: {
+    flex: 1,
+    height: 38,
+    borderRadius: radius.full,
+    overflow: 'hidden',
+  },
+  toggleBtnActiveGradient: {
+    flex: 1,
+    height: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    borderRadius: radius.full,
+  },
+  toggleTextActive: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#ffffff',
+    flexShrink: 1,
+  },
+  countBadgeActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    paddingHorizontal: 7,
+    paddingVertical: 1.5,
+    borderRadius: radius.full,
+    minWidth: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countTextActive: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+  toggleBtnInactive: {
+    flex: 1,
+    height: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    borderRadius: radius.full,
+  },
+  toggleTextInactive: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    flexShrink: 1,
+  },
+  countBadgeInactive: {
+    backgroundColor: colors.border,
+    paddingHorizontal: 7,
+    paddingVertical: 1.5,
+    borderRadius: radius.full,
+    minWidth: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countTextInactive: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+
+  /* Section Container */
+  sectionCard: {
+    backgroundColor: colors.bgCard,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    gap: spacing.md,
+  },
+  sectionHeading: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.textPrimary,
+  },
+
+  /* Term Selector Tabs */
+  termsScrollWrapper: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingBottom: spacing.sm,
+  },
+  termsScrollContent: {
+    gap: spacing.xs,
+  },
+  termPillTouchable: {
+    borderRadius: radius.full,
+    overflow: 'hidden',
+  },
+  termPillActiveGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: radius.full,
+  },
+  termPillTextActive: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  termCountActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: radius.full,
+  },
+  termCountTextActive: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+  termPillInactive: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgPrimary,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  termPillTextInactive: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  termCountInactive: {
+    backgroundColor: colors.border,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: radius.full,
+  },
+  termCountTextInactive: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+
+  /* Term Average Header */
+  termAvgRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  termAvgLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  termAvgValue: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  termAvgSub: {
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+
+  /* Results List */
+  resultsList: {
+    gap: spacing.sm,
+  },
+  resultItemCard: {
+    backgroundColor: colors.bgPrimary,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    gap: 8,
+  },
+  resultItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  resultSubjectName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  resultSubjectCode: {
+    fontSize: 11,
+    color: '#818cf8',
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  gradeBadgePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  gradeBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  marksRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  marksLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  marksBold: {
+    fontWeight: '800',
+    color: colors.textPrimary,
+  },
+  pctText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  progressTrack: {
+    height: 5,
+    backgroundColor: colors.border,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: 5,
+    borderRadius: 4,
+  },
+  metaBottomRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 6,
+  },
+  examDateText: {
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+  remarksText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+    flex: 1,
+    textAlign: 'right',
+  },
+
+  /* Term Footer Strip */
+  termFooterStrip: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  termFooterLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  termFooterValue: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+
+  /* Schedules List */
+  schedulesList: {
+    gap: spacing.sm,
+  },
+  scheduleItemCard: {
+    backgroundColor: colors.bgPrimary,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderLeftWidth: 4,
+    padding: spacing.md,
+    gap: 6,
+  },
+  scheduleItemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  scheduleExamTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  scheduleStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radius.full,
+  },
+  scheduleStatusText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  scheduleMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    flexWrap: 'wrap',
+    marginTop: 2,
+  },
+  scheduleMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  scheduleMetaText: {
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+  maxMarksRow: {
+    marginTop: 2,
+  },
+  maxMarksText: {
+    fontSize: 10,
+    color: colors.textMuted,
+    fontWeight: '600',
+  },
+
+  /* Empty State */
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xl,
+    gap: spacing.xs,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  emptySub: {
+    fontSize: 12,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
 });
 
 export default StudentResultsScreen;

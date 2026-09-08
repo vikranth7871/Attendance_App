@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,22 +7,15 @@ import {
   TouchableOpacity,
   TextInput,
   RefreshControl,
-  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   BookOpen,
   User,
+  Calendar,
   Search,
   ChevronRight,
-  Clock,
-  Calendar,
-  Award,
-  CheckCircle2,
-  AlertCircle,
   X,
-  MapPin,
-  GraduationCap,
 } from 'lucide-react-native';
 import Header from '../../components/Header';
 import { CardSkeleton } from '../../components/LoadingSkeleton';
@@ -31,7 +24,7 @@ import api from '../../api/client';
 import { colors, spacing, radius, typography, shadows } from '../../styles/theme';
 
 const StudentSubjectsScreen = ({ navigation }) => {
-  const [subjectsList, setSubjectsList] = useState([]);
+  const [subjects, setSubjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
@@ -43,34 +36,7 @@ const StudentSubjectsScreen = ({ navigation }) => {
   const fetchSubjects = async () => {
     try {
       const { data } = await api.get('/student/subjects');
-      const rawList = Array.isArray(data) ? data : [];
-
-      // Group allocations by subjectId so multiple slots show under 1 subject card
-      const map = {};
-      rawList.forEach((item) => {
-        const sid = item.subjectId?._id || item.subjectId?.id || item._id;
-        if (!map[sid]) {
-          map[sid] = {
-            id: sid,
-            name: item.subjectId?.name || item.subjectId?.subjectName || 'Course',
-            code: item.subjectId?.code || '',
-            credits: item.subjectId?.credits || 3,
-            teacher: item.teacherId || {},
-            className: item.classId?.name || item.classId?.className || '',
-            attendance: item.attendance || { total: 0, present: 0, absent: 0, leave: 0, percentage: 0 },
-            slots: [],
-          };
-        }
-        if (item.dayOfWeek && item.timeSlot) {
-          map[sid].slots.push({
-            day: item.dayOfWeek,
-            time: item.timeSlot,
-            room: item.roomNumber,
-          });
-        }
-      });
-
-      setSubjectsList(Object.values(map));
+      setSubjects(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Failed to fetch student subjects:', err);
     } finally {
@@ -88,71 +54,106 @@ const StudentSubjectsScreen = ({ navigation }) => {
     fetchSubjects();
   }, []);
 
-  const filtered = subjectsList.filter((s) => {
+  // Group allocations by subjectId and build schedule badge (matching web SubjectsPage.jsx)
+  const uniqueSubjectCards = useMemo(() => {
+    const map = new Map();
+    subjects.forEach((sub) => {
+      const subId = sub.subjectId?._id || sub.subjectId?.id || sub.subjectId || sub._id;
+      if (!map.has(subId)) {
+        map.set(subId, {
+          ...sub,
+          allSlots: [],
+        });
+      }
+      if (sub.dayOfWeek || sub.timeSlot || sub.startTime) {
+        map.get(subId).allSlots.push(sub);
+      }
+    });
+
+    return Array.from(map.values()).map((item) => {
+      let scheduleBadge = 'Individual Assignment';
+      if (item.allSlots.length > 0) {
+        const days = [
+          ...new Set(
+            item.allSlots.map((s) => (s.dayOfWeek ? s.dayOfWeek.substring(0, 3) : ''))
+          ),
+        ]
+          .filter(Boolean)
+          .join(', ');
+        scheduleBadge = `${item.allSlots.length} Weekly Slot${
+          item.allSlots.length > 1 ? 's' : ''
+        }${days ? ` (${days})` : ''}`;
+      }
+      return {
+        ...item,
+        scheduleBadge,
+      };
+    });
+  }, [subjects]);
+
+  const filteredSubjects = useMemo(() => {
+    if (!search.trim()) return uniqueSubjectCards;
     const q = search.toLowerCase();
-    return (
-      (s.name || '').toLowerCase().includes(q) ||
-      (s.code || '').toLowerCase().includes(q) ||
-      (s.teacher?.name || '').toLowerCase().includes(q)
-    );
-  });
+    return uniqueSubjectCards.filter((s) => {
+      const name = (
+        s.subjectId?.subjectName ||
+        s.subjectId?.name ||
+        s.name ||
+        ''
+      ).toLowerCase();
+      const teacher = (s.teacherId?.name || s.teacher?.name || '').toLowerCase();
+      return name.includes(q) || teacher.includes(q);
+    });
+  }, [uniqueSubjectCards, search]);
 
-  // Aggregated KPI stats
-  const totalCourses = subjectsList.length;
-  const avgAttendance =
-    totalCourses > 0
-      ? Math.round(
-          subjectsList.reduce((acc, s) => acc + (s.attendance?.percentage || 0), 0) / totalCourses
-        )
-      : 0;
-  const totalCredits = subjectsList.reduce((acc, s) => acc + (Number(s.credits) || 3), 0);
-
-  const openSubjectDetail = (subj) => {
-    setSelectedSubject(subj);
+  const handleCardClick = (subject) => {
+    const subjectId =
+      subject.subjectId?.id ||
+      subject.subjectId?._id ||
+      subject.subjectId ||
+      subject.id;
+    const subjectName =
+      subject.subjectId?.subjectName ||
+      subject.subjectId?.name ||
+      subject.name ||
+      'Subject';
+    setSelectedSubject({ id: subjectId, name: subjectName });
     setDetailModalVisible(true);
   };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <Header title="My Courses" subtitle="Academic Curriculum & Faculty" navigation={navigation} />
+      <Header
+        title="My Subjects"
+        subtitle="Curriculum & Attendance"
+        showLogout={false}
+      />
 
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.student} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.student}
+          />
+        }
       >
-        {/* KPI Stats Bar */}
-        <View style={styles.statsRow}>
-          <View style={[styles.statBox, shadows.sm]}>
-            <BookOpen size={18} color={colors.student} />
-            <Text style={styles.statVal}>{totalCourses}</Text>
-            <Text style={styles.statLbl}>Courses</Text>
-          </View>
-          <View style={[styles.statBox, shadows.sm]}>
-            <Award size={18} color={avgAttendance >= 75 ? colors.success : colors.warning} />
-            <Text
-              style={[
-                styles.statVal,
-                { color: avgAttendance >= 75 ? colors.success : colors.warning },
-              ]}
-            >
-              {avgAttendance}%
-            </Text>
-            <Text style={styles.statLbl}>Avg Turnout</Text>
-          </View>
-          <View style={[styles.statBox, shadows.sm]}>
-            <GraduationCap size={18} color={colors.secondary} />
-            <Text style={styles.statVal}>{totalCredits}</Text>
-            <Text style={styles.statLbl}>Credits</Text>
-          </View>
+        {/* ── Page Section Header (Matches Web Screenshot) ── */}
+        <View style={styles.pageHeaderSection}>
+          <Text style={styles.pageTitle}>My Subjects</Text>
+          <Text style={styles.pageSubtitle}>
+            All subjects assigned to your class. Click a subject for detailed info.
+          </Text>
         </View>
 
-        {/* Search Bar */}
+        {/* ── Search Bar ── */}
         <View style={styles.searchBar}>
-          <Search size={16} color={colors.textMuted} />
+          <Search size={16} color={colors.textMuted} style={{ marginRight: spacing.xs }} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search by course name, code, or faculty..."
+            placeholder="Search subjects or faculty..."
             placeholderTextColor={colors.textMuted}
             value={search}
             onChangeText={setSearch}
@@ -164,112 +165,178 @@ const StudentSubjectsScreen = ({ navigation }) => {
           )}
         </View>
 
-        {/* Courses List */}
+        {/* ── Subject Cards List ── */}
         {loading ? (
-          <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
-            <CardSkeleton />
-            <CardSkeleton />
-            <CardSkeleton />
+          <View style={{ gap: spacing.md, marginTop: spacing.sm }}>
+            <CardSkeleton style={{ height: 220 }} />
+            <CardSkeleton style={{ height: 220 }} />
+            <CardSkeleton style={{ height: 220 }} />
           </View>
-        ) : filtered.length === 0 ? (
+        ) : filteredSubjects.length === 0 ? (
           <View style={styles.emptyCard}>
-            <BookOpen size={44} color={colors.textMuted} />
-            <Text style={styles.emptyTitle}>No Courses Found</Text>
+            <BookOpen size={48} color={colors.textMuted} style={{ opacity: 0.3 }} />
+            <Text style={styles.emptyTitle}>
+              {search ? 'No Matching Subjects' : 'No Subjects Assigned'}
+            </Text>
             <Text style={styles.emptySub}>
-              {search ? 'Try adjusting your search criteria.' : 'No enrolled courses available yet.'}
+              {search
+                ? `No subjects match "${search}". Try a different keyword.`
+                : 'No subjects have been assigned to your class yet.'}
             </Text>
           </View>
         ) : (
-          filtered.map((subject) => {
-            const att = subject.attendance || { percentage: 0, present: 0, total: 0 };
-            const pct = att.percentage || 0;
-            const attColor = pct >= 75 ? colors.success : pct >= 50 ? colors.warning : colors.danger;
+          <View style={styles.cardList}>
+            {filteredSubjects.map((subject) => {
+              const subjectId =
+                subject.subjectId?.id ||
+                subject.subjectId?._id ||
+                subject.subjectId ||
+                subject.id;
+              const subjectName =
+                subject.subjectId?.subjectName ||
+                subject.subjectId?.name ||
+                subject.name ||
+                'Unknown Subject';
+              const isIndividual = subject.isIndividuallyAssigned;
+              const teacherName =
+                subject.teacherId?.name || subject.teacher?.name || 'Unassigned';
+              const att = subject.attendance || {
+                total: 0,
+                present: 0,
+                absent: 0,
+                leave: 0,
+                percentage: 0,
+              };
+              const totalSessions = att.total || 0;
+              const percentage = att.percentage || 0;
+              const isSafeAttendance = percentage >= 75 || totalSessions === 0;
+              const attColor = isSafeAttendance ? '#16a34a' : '#ef4444';
+              const topBorderColor = isIndividual ? '#10b981' : '#6366f1';
 
-            return (
-              <TouchableOpacity
-                key={subject.id}
-                style={[styles.courseCard, shadows.sm]}
-                onPress={() => openSubjectDetail(subject)}
-                activeOpacity={0.8}
-              >
-                {/* Header */}
-                <View style={styles.cardHeader}>
-                  <View style={styles.courseIconBox}>
-                    <BookOpen size={20} color={colors.student} />
+              return (
+                <TouchableOpacity
+                  key={subjectId}
+                  style={[
+                    styles.subjectCard,
+                    shadows.sm,
+                    { borderTopColor: topBorderColor },
+                  ]}
+                  onPress={() => handleCardClick(subject)}
+                  activeOpacity={0.85}
+                >
+                  {/* Top-Right Badge: Class Subject / Individual */}
+                  <View
+                    style={[
+                      styles.typeBadge,
+                      {
+                        backgroundColor: isIndividual
+                          ? 'rgba(16, 185, 129, 0.12)'
+                          : 'rgba(99, 102, 241, 0.12)',
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.typeBadgeText,
+                        { color: isIndividual ? '#10b981' : '#818cf8' },
+                      ]}
+                    >
+                      {isIndividual ? 'Individual' : 'Class Subject'}
+                    </Text>
                   </View>
-                  <View style={styles.titleArea}>
-                    <View style={styles.codeRow}>
-                      {subject.code ? (
-                        <View style={styles.codeBadge}>
-                          <Text style={styles.codeBadgeText}>{subject.code}</Text>
+
+                  {/* Top Left: Icon & Subject Title & Schedule */}
+                  <View style={styles.cardHeaderRow}>
+                    <View
+                      style={[
+                        styles.subjectIconBox,
+                        {
+                          backgroundColor: isIndividual
+                            ? 'rgba(16, 185, 129, 0.12)'
+                            : 'rgba(99, 102, 241, 0.12)',
+                        },
+                      ]}
+                    >
+                      <BookOpen
+                        size={20}
+                        color={isIndividual ? '#10b981' : '#818cf8'}
+                      />
+                    </View>
+                    <View style={styles.cardTitleCol}>
+                      <Text style={styles.subjectTitle} numberOfLines={1}>
+                        {subjectName}
+                      </Text>
+                      {subject.scheduleBadge ? (
+                        <View style={styles.scheduleRow}>
+                          <Calendar size={12} color="#818cf8" style={{ marginRight: 4 }} />
+                          <Text style={styles.scheduleText} numberOfLines={1}>
+                            {subject.scheduleBadge}
+                          </Text>
                         </View>
                       ) : null}
-                      <View style={styles.creditsBadge}>
-                        <Text style={styles.creditsBadgeText}>{subject.credits} Credits</Text>
-                      </View>
                     </View>
-                    <Text style={styles.courseName}>{subject.name}</Text>
                   </View>
-                  <ChevronRight size={18} color={colors.textMuted} />
-                </View>
 
-                {/* Faculty details */}
-                {subject.teacher?.name && (
-                  <View style={styles.facultyRow}>
-                    <User size={14} color={colors.textMuted} />
-                    <Text style={styles.facultyName}>{subject.teacher.name}</Text>
-                    {subject.teacher.email && (
-                      <Text style={styles.facultyEmail}>• {subject.teacher.email}</Text>
-                    )}
+                  {/* Recessed "TAUGHT BY" Box */}
+                  <View style={styles.taughtByBox}>
+                    <User size={16} color={colors.textSecondary} style={styles.taughtByIcon} />
+                    <View style={styles.taughtByCol}>
+                      <Text style={styles.taughtByLabel}>TAUGHT BY</Text>
+                      <Text style={styles.taughtByName}>{teacherName}</Text>
+                    </View>
                   </View>
-                )}
 
-                {/* Attendance Metric & Bar */}
-                <View style={styles.attSection}>
-                  <View style={styles.attHeader}>
-                    <Text style={styles.attTitle}>Attendance Turnout</Text>
-                    <View style={styles.attCountBox}>
-                      <Text style={[styles.attPct, { color: attColor }]}>{pct}%</Text>
-                      <Text style={styles.attCounts}>
-                        ({att.present}/{att.total} sessions)
+                  {/* Recessed "SUBJECT ATTENDANCE" Box */}
+                  <View style={styles.attendanceBox}>
+                    <View style={styles.attendanceHeaderRow}>
+                      <Text style={styles.attendanceLabel}>SUBJECT ATTENDANCE</Text>
+                      <Text style={[styles.attendancePct, { color: attColor }]}>
+                        {totalSessions > 0 ? `${percentage}%` : 'No Classes Yet'}
+                      </Text>
+                    </View>
+
+                    {/* Horizontal Progress Bar Track */}
+                    <View style={styles.progressBarTrack}>
+                      <View
+                        style={[
+                          styles.progressBarFill,
+                          {
+                            width: `${Math.min(
+                              100,
+                              Math.max(0, totalSessions > 0 ? percentage : 0)
+                            )}%`,
+                            backgroundColor: attColor,
+                          },
+                        ]}
+                      />
+                    </View>
+
+                    {/* Stats Counters Row */}
+                    <View style={styles.attendanceStatsRow}>
+                      <Text style={styles.statText}>
+                        Present:{' '}
+                        <Text style={styles.boldGreen}>{att.present || 0}</Text>
+                      </Text>
+                      <Text style={styles.statText}>
+                        Absent:{' '}
+                        <Text style={styles.boldRed}>{att.absent || 0}</Text>
+                      </Text>
+                      <Text style={styles.statText}>
+                        Total:{' '}
+                        <Text style={styles.boldWhite}>{totalSessions}</Text>
                       </Text>
                     </View>
                   </View>
-                  <View style={styles.progressBg}>
-                    <View
-                      style={[
-                        styles.progressFill,
-                        { width: `${Math.min(100, pct)}%`, backgroundColor: attColor },
-                      ]}
-                    />
-                  </View>
-                </View>
 
-                {/* Weekly Slots */}
-                {subject.slots.length > 0 && (
-                  <View style={styles.slotsContainer}>
-                    <Text style={styles.slotsLabel}>Weekly Schedule:</Text>
-                    <View style={styles.slotsList}>
-                      {subject.slots.slice(0, 3).map((slot, idx) => (
-                        <View key={idx} style={styles.slotChip}>
-                          <Clock size={11} color={colors.student} />
-                          <Text style={styles.slotChipText}>
-                            {slot.day.slice(0, 3)} {slot.time.split('-')[0].trim()}
-                            {slot.room ? ` (${slot.room})` : ''}
-                          </Text>
-                        </View>
-                      ))}
-                      {subject.slots.length > 3 && (
-                        <View style={styles.slotChipMore}>
-                          <Text style={styles.slotChipMoreText}>+{subject.slots.length - 3} more</Text>
-                        </View>
-                      )}
-                    </View>
+                  {/* Click Hint / Footer */}
+                  <View style={styles.cardFooterRow}>
+                    <Text style={styles.viewDetailsText}>View Details</Text>
+                    <ChevronRight size={13} color={colors.textSecondary} />
                   </View>
-                )}
-              </TouchableOpacity>
-            );
-          })
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         )}
 
         <View style={{ height: 40 }} />
@@ -292,225 +359,238 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   scroll: { flex: 1 },
   content: { padding: spacing.md },
-  statsRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
+
+  /* Page Section Header */
+  pageHeaderSection: {
     marginBottom: spacing.md,
   },
-  statBox: {
-    flex: 1,
-    backgroundColor: colors.bgCard,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  statVal: {
-    ...typography.base,
-    ...typography.bold,
+  pageTitle: {
+    fontSize: 20,
+    fontWeight: '800',
     color: colors.textPrimary,
-    marginTop: 4,
+    marginBottom: 4,
   },
-  statLbl: {
-    fontSize: 10,
-    color: colors.textMuted,
-    fontWeight: '600',
-    marginTop: 2,
-    textTransform: 'uppercase',
+  pageSubtitle: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    lineHeight: 18,
   },
+
+  /* Search */
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
     backgroundColor: colors.bgCard,
-    borderWidth: 1,
-    borderColor: colors.border,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: 10,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
     marginBottom: spacing.md,
   },
   searchInput: {
     flex: 1,
-    ...typography.sm,
     color: colors.textPrimary,
+    fontSize: 13,
   },
-  courseCard: {
+
+  /* Card List */
+  cardList: {
+    gap: spacing.md,
+  },
+
+  /* Subject Card */
+  subjectCard: {
     backgroundColor: colors.bgCard,
-    borderRadius: radius.lg,
-    padding: spacing.md,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: spacing.sm,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    borderTopWidth: 4,
+    padding: spacing.md,
+    position: 'relative',
+    overflow: 'hidden',
     gap: spacing.sm,
   },
-  courseIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.md,
-    backgroundColor: colors.student + '22',
-    justifyContent: 'center',
-    alignItems: 'center',
+
+  /* Type Badge (Top Right) */
+  typeBadge: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 16,
   },
-  titleArea: {
-    flex: 1,
-  },
-  codeRow: {
-    flexDirection: 'row',
-    gap: 6,
-    marginBottom: 4,
-  },
-  codeBadge: {
-    backgroundColor: colors.student + '20',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: radius.xs,
-  },
-  codeBadgeText: {
-    fontSize: 10,
-    color: colors.student,
+  typeBadgeText: {
+    fontSize: 11,
     fontWeight: '700',
   },
-  creditsBadge: {
-    backgroundColor: colors.bgElevated,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: radius.xs,
+
+  /* Card Header: Icon & Subject Title */
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    paddingRight: 90, // Leave room for top-right type badge
   },
-  creditsBadgeText: {
-    fontSize: 10,
-    color: colors.textSecondary,
-    fontWeight: '600',
+  subjectIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
   },
-  courseName: {
-    ...typography.sm,
-    ...typography.bold,
+  cardTitleCol: {
+    flex: 1,
+  },
+  subjectTitle: {
+    fontSize: 17,
+    fontWeight: '800',
     color: colors.textPrimary,
+    lineHeight: 22,
   },
-  facultyRow: {
+  scheduleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginTop: spacing.sm,
-    paddingTop: spacing.xs,
+    marginTop: 4,
   },
-  facultyName: {
-    ...typography.xs,
-    color: colors.textSecondary,
+  scheduleText: {
+    fontSize: 11,
     fontWeight: '600',
+    color: '#818cf8',
+    flexShrink: 1,
   },
-  facultyEmail: {
-    ...typography.xs,
+
+  /* Recessed Taught By Box */
+  taughtByBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.bgPrimary,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    gap: spacing.sm,
+  },
+  taughtByIcon: {
+    opacity: 0.7,
+  },
+  taughtByCol: {
+    flex: 1,
+  },
+  taughtByLabel: {
+    fontSize: 9,
+    fontWeight: '800',
     color: colors.textMuted,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
-  attSection: {
-    marginTop: spacing.md,
-    paddingTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border + '55',
+  taughtByName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginTop: 2,
   },
-  attHeader: {
+
+  /* Recessed Subject Attendance Box */
+  attendanceBox: {
+    backgroundColor: colors.bgPrimary,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  attendanceHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
   },
-  attTitle: {
-    ...typography.xs,
-    color: colors.textMuted,
-    fontWeight: '600',
-  },
-  attCountBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  attPct: {
-    ...typography.xs,
-    ...typography.bold,
-  },
-  attCounts: {
+  attendanceLabel: {
     fontSize: 10,
+    fontWeight: '800',
     color: colors.textMuted,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
-  progressBg: {
+  attendancePct: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  progressBarTrack: {
     height: 6,
-    backgroundColor: colors.bgElevated,
-    borderRadius: 3,
+    backgroundColor: colors.border,
+    borderRadius: 999,
     overflow: 'hidden',
   },
-  progressFill: {
-    height: '100%',
-    borderRadius: 3,
+  progressBarFill: {
+    height: 6,
+    borderRadius: 999,
   },
-  slotsContainer: {
-    marginTop: spacing.sm,
-    paddingTop: spacing.xs,
-  },
-  slotsLabel: {
-    fontSize: 10,
-    color: colors.textMuted,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  slotsList: {
+  attendanceStatsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  slotChip: {
-    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.bgElevated,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: radius.xs,
-    borderWidth: 1,
-    borderColor: colors.border,
+    marginTop: 2,
   },
-  slotChipText: {
-    fontSize: 10,
+  statText: {
+    fontSize: 11,
     color: colors.textSecondary,
     fontWeight: '500',
   },
-  slotChipMore: {
-    backgroundColor: colors.student + '15',
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-    borderRadius: radius.xs,
+  boldGreen: {
+    fontWeight: '800',
+    color: '#16a34a',
   },
-  slotChipMoreText: {
-    fontSize: 10,
-    color: colors.student,
-    fontWeight: '600',
+  boldRed: {
+    fontWeight: '800',
+    color: '#ef4444',
   },
-  emptyCard: {
+  boldWhite: {
+    fontWeight: '800',
+    color: colors.textPrimary,
+  },
+
+  /* Card Footer (Click Hint) */
+  cardFooterRow: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.xxl,
+    gap: 4,
+    paddingTop: 2,
+    opacity: 0.7,
+  },
+  viewDetailsText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+
+  /* Empty State */
+  emptyCard: {
     backgroundColor: colors.bgCard,
     borderRadius: radius.lg,
+    padding: spacing.xl,
+    alignItems: 'center',
+    gap: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
-    gap: spacing.sm,
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
   emptyTitle: {
-    ...typography.base,
-    ...typography.bold,
+    fontSize: 16,
+    fontWeight: '700',
     color: colors.textPrimary,
   },
   emptySub: {
-    ...typography.xs,
-    color: colors.textMuted,
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });
 
 export default StudentSubjectsScreen;
-

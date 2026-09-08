@@ -56,11 +56,13 @@ const Header = ({
   const canSearch = user?.role === 'admin' || user?.role === 'teacher';
 
   const isDashboard = Boolean(
-    title && (
+    (nav?.getState && nav.getState()?.routes?.[nav.getState()?.index]?.name === 'Dashboard') ||
+    (title && (
       title.toLowerCase().includes('dashboard') ||
+      title.toLowerCase().includes('portal') ||
       title.toLowerCase().startsWith('hi,') ||
       title.toLowerCase().startsWith('hello,')
-    )
+    ))
   );
 
   const canGoBack = Boolean(nav?.canGoBack && nav.canGoBack());

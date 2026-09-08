@@ -871,16 +871,32 @@ export const replyParentMessage = async (req, res) => {
             return res.status(400).json({ message: 'Receiver ID and Message content are required' });
         }
 
+        const parentId = parseInt(receiverId, 10);
+        let targetStudentId = studentId ? parseInt(studentId, 10) : null;
+
+        // If studentId was not explicitly provided, infer it from recent message thread between teacher and parent
+        if (!targetStudentId) {
+            const lastMsgRes = await pool.query(`
+                SELECT student_id FROM parent_messages
+                WHERE ((sender_id = $1 AND receiver_id = $2) OR (sender_id = $2 AND receiver_id = $1))
+                  AND student_id IS NOT NULL
+                ORDER BY created_at DESC LIMIT 1
+            `, [teacherId, parentId]);
+            if (lastMsgRes.rows.length > 0) {
+                targetStudentId = lastMsgRes.rows[0].student_id;
+            }
+        }
+
         const newMsg = await pool.query(`
             INSERT INTO parent_messages (sender_id, receiver_id, student_id, subject, message)
             VALUES ($1, $2, $3, $4, $5)
             RETURNING *
-        `, [teacherId, parseInt(receiverId, 10), studentId || null, subject || 'Reply from Teacher', message]);
+        `, [teacherId, parentId, targetStudentId, subject || 'Reply from Teacher', message]);
 
         await pool.query(`
             INSERT INTO notifications (recipient_id, title, message, type, link)
             VALUES ($1, $2, $3, 'message', '/parent/messages')
-        `, [parseInt(receiverId, 10), '💬 Reply from Teacher', `${teacherName}: "${message.substring(0, 60)}..."`]);
+        `, [parentId, '💬 Reply from Teacher', `${teacherName}: "${message.substring(0, 60)}..."`]);
 
         res.status(201).json(newMsg.rows[0]);
     } catch (error) {
@@ -893,14 +909,23 @@ export const markTeacherMessagesRead = async (req, res) => {
     try {
         const teacherId = req.user.id || req.user._id;
         const { parentId } = req.params;
+        const studentId = req.query.studentId || req.body?.studentId;
 
         if (!parentId) return res.status(400).json({ message: 'parentId required' });
 
-        await pool.query(
-            `UPDATE parent_messages SET is_read = true
-             WHERE sender_id = $1 AND receiver_id = $2 AND is_read = false`,
-            [parentId, teacherId]
-        );
+        if (studentId) {
+            await pool.query(
+                `UPDATE parent_messages SET is_read = true
+                 WHERE sender_id = $1 AND receiver_id = $2 AND student_id = $3 AND is_read = false`,
+                [parseInt(parentId, 10), teacherId, parseInt(studentId, 10)]
+            );
+        } else {
+            await pool.query(
+                `UPDATE parent_messages SET is_read = true
+                 WHERE sender_id = $1 AND receiver_id = $2 AND is_read = false`,
+                [parseInt(parentId, 10), teacherId]
+            );
+        }
 
         res.json({ success: true });
     } catch (error) {
@@ -908,3 +933,4 @@ export const markTeacherMessagesRead = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 };
+

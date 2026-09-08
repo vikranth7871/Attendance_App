@@ -1,16 +1,8 @@
 import { pool } from '../config/db.js';
 
 export const getMyStreak = async (req, res) => {
-    try {
-        const userId = req.user.id || req.user._id;
-        const userRes = await pool.query(
-            'SELECT id, streak_count as "streakCount", best_streak as "bestStreak", last_attendance_date as "lastAttendanceDate" FROM users WHERE id = $1',
-            [userId]
-        );
-        res.json(userRes.rows[0] || { streakCount: 0, bestStreak: 0 });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
+    // Streak concept removed — return neutral response for backwards compatibility
+    res.json({ streakCount: 0, bestStreak: 0 });
 };
 
 export const getLeaderboard = async (req, res) => {
@@ -19,12 +11,19 @@ export const getLeaderboard = async (req, res) => {
 
         const result = await pool.query(`
             SELECT u.id as "_id", u.id, u.name, u.roll_number as "rollNumber",
-                   u.streak_count as "streakCount", u.best_streak as "bestStreak",
-                   u.section, c.name as "className"
+                   u.section, c.name as "className",
+                   COUNT(a.id) FILTER (WHERE a.status = 'present') as "presentCount",
+                   COUNT(a.id) as "totalCount",
+                   CASE WHEN COUNT(a.id) > 0 
+                        THEN ROUND((COUNT(a.id) FILTER (WHERE a.status = 'present')::decimal / COUNT(a.id)) * 100)
+                        ELSE 0 
+                   END as "attendanceRate"
             FROM users u
             LEFT JOIN classes c ON u.class_id = c.id
+            LEFT JOIN attendance a ON a.student_id = u.id
             WHERE u.role = 'student'
-            ORDER BY u.streak_count DESC, u.best_streak DESC, u.name ASC
+            GROUP BY u.id, c.name
+            ORDER BY "attendanceRate" DESC, "presentCount" DESC, u.name ASC
             LIMIT 25
         `);
 
@@ -44,16 +43,7 @@ export const getStudentOverview = async (req, res) => {
     try {
         const userId = req.user.id || req.user._id;
 
-        // 1. Fetch student user from PostgreSQL
-        const userRes = await pool.query(
-            'SELECT streak_count, best_streak FROM users WHERE id = $1',
-            [userId]
-        );
-
-        const streakCount = parseInt(userRes.rows[0]?.streak_count, 10) || 0;
-        const bestStreak = parseInt(userRes.rows[0]?.best_streak, 10) || 0;
-
-        // 2. Fetch attendance records for this student from PostgreSQL
+        // Fetch attendance records for this student from PostgreSQL
         const attRes = await pool.query(`
             SELECT DISTINCT ON (a.id)
                    a.id, a.status, a.date, a.time_slot, a.method, a.created_at, 
@@ -75,6 +65,7 @@ export const getStudentOverview = async (req, res) => {
         const totalAbsent = records.filter(r => r.status === 'absent').length;
         const totalLeave = records.filter(r => r.status === 'leave').length;
         const totalClasses = records.length;
+        const attendanceRate = totalClasses > 0 ? Math.round((totalPresent / totalClasses) * 100) : 0;
 
         const history = records.map(r => ({
             _id: String(r.id),
@@ -89,12 +80,17 @@ export const getStudentOverview = async (req, res) => {
         }));
 
         res.json({
-            streakCount,
-            bestStreak,
             totalPresent,
+            present_count: totalPresent,
+            presentCount: totalPresent,
             totalAbsent,
+            absent_count: totalAbsent,
             totalLeave,
+            leave_count: totalLeave,
             totalClasses,
+            total_classes: totalClasses,
+            attendanceRate,
+            attendance_rate: attendanceRate,
             history
         });
     } catch (error) {
@@ -223,7 +219,11 @@ export const getMyAssignments = async (req, res) => {
             SELECT a.id, a.title, a.description, a.due_date, a.attachment_url,
                    COALESCE(sub.name, 'General Subject') as subject_name, sub.code as subject_code,
                    t.name as teacher_name,
-                   COALESCE(s.status, 'pending') as status,
+                   CASE
+                     WHEN s.grade IS NOT NULL OR s.status = 'graded' THEN 'graded'
+                     WHEN s.status = 'completed' OR s.status = 'submitted' THEN 'submitted'
+                     ELSE COALESCE(s.status, 'pending')
+                   END as status,
                    s.submission_date, s.teacher_comments, s.grade
             FROM assignments a
             LEFT JOIN subjects sub ON a.subject_id = sub.id
@@ -252,19 +252,19 @@ export const submitAssignment = async (req, res) => {
         if (check.rows.length > 0) {
             await pool.query(
                 `UPDATE assignment_submissions 
-                 SET status = 'completed', submission_date = CURRENT_TIMESTAMP 
+                 SET status = 'submitted', submission_date = CURRENT_TIMESTAMP 
                  WHERE id = $1`,
                 [check.rows[0].id]
             );
         } else {
             await pool.query(
                 `INSERT INTO assignment_submissions (assignment_id, student_id, status, submission_date)
-                 VALUES ($1, $2, 'completed', CURRENT_TIMESTAMP)`,
+                 VALUES ($1, $2, 'submitted', CURRENT_TIMESTAMP)`,
                 [assignmentId, userId]
             );
         }
 
-        res.json({ message: 'Assignment submitted successfully!', status: 'completed' });
+        res.json({ message: 'Assignment submitted successfully!', status: 'submitted' });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -386,7 +386,11 @@ export const getSubjectDetails = async (req, res) => {
         const assignRes = await pool.query(`
             SELECT a.id, a.title, a.description, a.due_date, a.attachment_url,
                    t.name as teacher_name,
-                   COALESCE(sub.status, 'pending') as status,
+                   CASE
+                     WHEN sub.grade IS NOT NULL OR sub.status = 'graded' THEN 'graded'
+                     WHEN sub.status = 'completed' OR sub.status = 'submitted' THEN 'submitted'
+                     ELSE COALESCE(sub.status, 'pending')
+                   END as status,
                    sub.submission_date, sub.grade, sub.teacher_comments
             FROM assignments a
             LEFT JOIN users t ON a.teacher_id = t.id

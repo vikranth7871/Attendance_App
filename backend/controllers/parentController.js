@@ -440,7 +440,11 @@ export const getStudentAssignments = async (req, res) => {
             SELECT a.id, a.title, a.description, a.due_date, a.attachment_url,
                    COALESCE(sub.name, 'General Subject') as subject_name, sub.code as subject_code,
                    t.name as teacher_name,
-                   COALESCE(s.status, 'pending') as status,
+                   CASE 
+                     WHEN s.grade IS NOT NULL OR s.status = 'graded' THEN 'graded'
+                     WHEN s.status = 'completed' OR s.status = 'submitted' THEN 'submitted'
+                     ELSE COALESCE(s.status, 'pending')
+                   END as status,
                    s.submission_date, s.teacher_comments, s.grade
             FROM assignments a
             LEFT JOIN subjects sub ON a.subject_id = sub.id
@@ -551,26 +555,48 @@ export const getStudentFees = async (req, res) => {
 export const getParentMessages = async (req, res) => {
     try {
         const parentId = req.user.id || req.user._id;
+        const parentEmail = req.user.email;
         const { studentId } = req.query;
 
-        // Fetch messages
-        const msgsRes = await pool.query(`
-            SELECT m.*, u_sender.name as sender_name, u_receiver.name as receiver_name
-            FROM parent_messages m
-            JOIN users u_sender ON m.sender_id = u_sender.id
-            JOIN users u_receiver ON m.receiver_id = u_receiver.id
-            WHERE m.sender_id = $1 OR m.receiver_id = $1
-            ORDER BY m.created_at ASC
-        `, [parentId]);
+        // Determine active student ID (fallback to first linked child if not explicitly passed)
+        let activeStudentId = studentId ? parseInt(studentId, 10) : null;
+        if (!activeStudentId) {
+            const linked = await getLinkedStudents(parentId, parentEmail);
+            if (linked && linked.length > 0) {
+                activeStudentId = linked[0].id;
+            }
+        }
 
-        // Determine target student's class_id
+        // Fetch messages filtered by the specific child
+        let msgsRes;
+        if (activeStudentId) {
+            msgsRes = await pool.query(`
+                SELECT m.*, u_sender.name as sender_name, u_receiver.name as receiver_name
+                FROM parent_messages m
+                JOIN users u_sender ON m.sender_id = u_sender.id
+                JOIN users u_receiver ON m.receiver_id = u_receiver.id
+                WHERE (m.sender_id = $1 OR m.receiver_id = $1)
+                  AND m.student_id = $2
+                ORDER BY m.created_at ASC
+            `, [parentId, activeStudentId]);
+        } else {
+            msgsRes = await pool.query(`
+                SELECT m.*, u_sender.name as sender_name, u_receiver.name as receiver_name
+                FROM parent_messages m
+                JOIN users u_sender ON m.sender_id = u_sender.id
+                JOIN users u_receiver ON m.receiver_id = u_receiver.id
+                WHERE m.sender_id = $1 OR m.receiver_id = $1
+                ORDER BY m.created_at ASC
+            `, [parentId]);
+        }
+
+        // Determine target student's class_id to show only their relevant subject teachers
         let targetClassId = null;
 
-        if (studentId) {
-            // Use the provided studentId to get their class
+        if (activeStudentId) {
             const studentRes = await pool.query(
                 `SELECT class_id FROM users WHERE id = $1 AND role = 'student'`,
-                [parseInt(studentId, 10)]
+                [activeStudentId]
             );
             if (studentRes.rows.length > 0) {
                 targetClassId = studentRes.rows[0].class_id;
@@ -578,7 +604,7 @@ export const getParentMessages = async (req, res) => {
         }
 
         if (!targetClassId) {
-            // Fall back to first child of this parent (parent_id = parentId in users table)
+            // Fall back to first child of this parent
             const childRes = await pool.query(
                 `SELECT class_id FROM users WHERE parent_id = $1 AND role = 'student' ORDER BY id ASC LIMIT 1`,
                 [parentId]
@@ -626,9 +652,6 @@ export const getParentMessages = async (req, res) => {
     }
 };
 
-
-
-
 export const sendParentMessage = async (req, res) => {
     try {
         const parentId = req.user.id || req.user._id;
@@ -643,11 +666,23 @@ export const sendParentMessage = async (req, res) => {
 
         const targetTeacherId = parseInt(receiverId, 10) || 2; // Default to Jane Teacher
 
+        // Determine student_id if not provided
+        let targetStudentId = studentId ? parseInt(studentId, 10) : null;
+        if (!targetStudentId) {
+            const childRes = await pool.query(
+                `SELECT id FROM users WHERE parent_id = $1 AND role = 'student' ORDER BY id ASC LIMIT 1`,
+                [parentId]
+            );
+            if (childRes.rows.length > 0) {
+                targetStudentId = childRes.rows[0].id;
+            }
+        }
+
         const newMsg = await pool.query(`
             INSERT INTO parent_messages (sender_id, receiver_id, student_id, subject, message)
             VALUES ($1, $2, $3, $4, $5)
             RETURNING *
-        `, [parentId, targetTeacherId, studentId || null, subject || 'General Inquiry', message]);
+        `, [parentId, targetTeacherId, targetStudentId, subject || 'Parent Inquiry', message]);
 
         // Real-time Notification for Teacher
         await pool.query(`
@@ -667,15 +702,25 @@ export const markMessagesRead = async (req, res) => {
     try {
         const parentId = req.user.id || req.user._id;
         const teacherId = parseInt(req.params.teacherId, 10);
+        const studentId = req.query.studentId || req.body?.studentId;
 
         if (!teacherId) return res.status(400).json({ message: 'teacherId required' });
 
-        // Mark all messages FROM this teacher TO this parent as read
-        await pool.query(
-            `UPDATE parent_messages SET is_read = true
-             WHERE sender_id = $1 AND receiver_id = $2 AND is_read = false`,
-            [teacherId, parentId]
-        );
+        if (studentId) {
+            // Mark all messages FROM this teacher TO this parent for this specific student as read
+            await pool.query(
+                `UPDATE parent_messages SET is_read = true
+                 WHERE sender_id = $1 AND receiver_id = $2 AND student_id = $3 AND is_read = false`,
+                [teacherId, parentId, parseInt(studentId, 10)]
+            );
+        } else {
+            // Mark all messages FROM this teacher TO this parent as read
+            await pool.query(
+                `UPDATE parent_messages SET is_read = true
+                 WHERE sender_id = $1 AND receiver_id = $2 AND is_read = false`,
+                [teacherId, parentId]
+            );
+        }
 
         res.json({ success: true });
     } catch (error) {

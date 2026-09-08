@@ -82,7 +82,7 @@ const TeacherMessagesScreen = ({ navigation }) => {
 
   const teacherId = user?.id || user?._id;
 
-  // Group conversations by Parent ID and calculate unread counts dynamically
+  // Group conversations by Parent ID + Child ID and calculate unread counts dynamically
   const parentMap = useMemo(() => {
     const map = {};
     messages.forEach((m) => {
@@ -91,34 +91,38 @@ const TeacherMessagesScreen = ({ navigation }) => {
       const parentName = isParentSender ? m.sender_name : m.receiver_name;
       if (!parentId) return;
 
-      if (!map[parentId]) {
-        map[parentId] = {
+      const studentId = m.student_id || null;
+      const convKey = `${parentId}_${studentId || 'all'}`;
+
+      if (!map[convKey]) {
+        map[convKey] = {
+          key: convKey,
           parentId,
           parentName: parentName || 'Parent',
           studentName: m.student_name || 'Student',
-          studentId: m.student_id || null,
+          studentId: studentId,
           messages: [],
           lastMessage: m.message,
           lastDate: m.created_at,
           unreadCount: 0,
         };
       }
-      map[parentId].messages.push(m);
-      map[parentId].lastMessage = m.message;
-      map[parentId].lastDate = m.created_at;
+      map[convKey].messages.push(m);
+      map[convKey].lastMessage = m.message;
+      map[convKey].lastDate = m.created_at;
 
-      if (m.student_name && map[parentId].studentName === 'Student') {
-        map[parentId].studentName = m.student_name;
+      if (m.student_name && map[convKey].studentName === 'Student') {
+        map[convKey].studentName = m.student_name;
       }
-      if (m.student_id && !map[parentId].studentId) {
-        map[parentId].studentId = m.student_id;
+      if (m.student_id && !map[convKey].studentId) {
+        map[convKey].studentId = m.student_id;
       }
 
       // Check if this message is unread for the teacher
       const isIncoming = m.sender_role === 'parent' || (teacherId && String(m.receiver_id) === String(teacherId));
       const isUnread = isIncoming && (m.is_read === false || m.is_read === 0 || m.is_read === 'false' || !m.is_read);
       if (isUnread) {
-        map[parentId].unreadCount += 1;
+        map[convKey].unreadCount += 1;
       }
     });
     return map;
@@ -132,7 +136,7 @@ const TeacherMessagesScreen = ({ navigation }) => {
   }, [conversationList]);
 
   // Mark messages from parent as read locally and persist to backend
-  const markConversationAsRead = useCallback(async (parentId) => {
+  const markConversationAsRead = useCallback(async (parentId, studentId) => {
     if (!parentId) return;
 
     // 1. Instantly update local state so badge responds with 0 delay
@@ -141,7 +145,8 @@ const TeacherMessagesScreen = ({ navigation }) => {
         const isFromThisParent =
           (m.sender_role === 'parent' && String(m.sender_id) === String(parentId)) ||
           (String(m.receiver_id) === String(teacherId) && String(m.sender_id) === String(parentId));
-        if (isFromThisParent && !m.is_read) {
+        const matchesChild = !studentId || String(m.student_id) === String(studentId);
+        if (isFromThisParent && matchesChild && !m.is_read) {
           return { ...m, is_read: true };
         }
         return m;
@@ -150,27 +155,34 @@ const TeacherMessagesScreen = ({ navigation }) => {
 
     // 2. Persist to backend
     try {
-      await api.put(`/teacher/messages/read/${parentId}`);
+      const url = studentId
+        ? `/teacher/messages/read/${parentId}?studentId=${studentId}`
+        : `/teacher/messages/read/${parentId}`;
+      await api.put(url);
     } catch (e) {
       console.warn('Failed to mark messages as read on server:', e);
     }
   }, [teacherId]);
 
-  const handleSelectParent = (parentId) => {
-    setSelectedParentId(parentId);
-    markConversationAsRead(parentId);
+  const handleSelectParent = (convKey) => {
+    setSelectedParentId(convKey);
+    const conv = parentMap[convKey];
+    if (conv) {
+      markConversationAsRead(conv.parentId, conv.studentId);
+    }
   };
 
   // Auto-select first conversation on wide screens if none selected
   useEffect(() => {
     if (isWide && conversationList.length > 0 && !selectedParentId) {
-      setSelectedParentId(conversationList[0].parentId);
-      markConversationAsRead(conversationList[0].parentId);
+      const first = conversationList[0];
+      setSelectedParentId(first.key);
+      markConversationAsRead(first.parentId, first.studentId);
     }
   }, [isWide, conversationList, selectedParentId, markConversationAsRead]);
 
   const activeConversation = selectedParentId
-    ? parentMap[selectedParentId]
+    ? (parentMap[selectedParentId] || conversationList.find(c => c.key === selectedParentId || String(c.parentId) === String(selectedParentId)))
     : isWide && conversationList.length > 0
     ? conversationList[0]
     : null;
@@ -264,21 +276,21 @@ const TeacherMessagesScreen = ({ navigation }) => {
       ) : (
         <FlatList
           data={filteredConversations}
-          keyExtractor={(item) => String(item.parentId)}
+          keyExtractor={(item) => String(item.key || item.parentId)}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#8b5cf6" />
           }
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: spacing.lg }}
           renderItem={({ item }) => {
-            const isSelected = String(activeConversation?.parentId) === String(item.parentId);
+            const isSelected = activeConversation && (activeConversation.key === item.key || String(activeConversation.parentId) === String(item.parentId));
             return (
               <TouchableOpacity
                 style={[
                   styles.inquiryCard,
                   isSelected && styles.inquiryCardActive,
                 ]}
-                onPress={() => handleSelectParent(item.parentId)}
+                onPress={() => handleSelectParent(item.key || item.parentId)}
                 activeOpacity={0.75}
               >
                 <View style={styles.inquiryCardHeader}>

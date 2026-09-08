@@ -146,7 +146,7 @@ typography = {
   md:   { fontSize: 17, lineHeight: 24 },   // primary text, avatar initials
   lg:   { fontSize: 20, lineHeight: 28 },   // section titles
   xl:   { fontSize: 24, lineHeight: 32 },   // stat card values
-  xxl:  { fontSize: 30, lineHeight: 38 },   // streak count, large numbers
+  xxl:  { fontSize: 30, lineHeight: 38 },   // session count, large numbers
   bold:     { fontWeight: '700' },
   semibold: { fontWeight: '600' },
   medium:   { fontWeight: '500' },

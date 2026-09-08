@@ -386,6 +386,9 @@ export const initSchema = async () => {
         }
         await pool.query('UPDATE users SET class_coordinator_for = 1, department_id = 1 WHERE id = 2');
 
+        // Backfill legacy parent messages missing student_id to default child (John, student 3)
+        await pool.query('UPDATE parent_messages SET student_id = 3 WHERE student_id IS NULL');
+
         // Seed Fee Details for Student 5 (Jane Doe) and Student 3 (John Student) if not exists
         const checkFees = await pool.query('SELECT * FROM fee_details WHERE student_id IN (3, 5)');
         if (checkFees.rows.length === 0) {

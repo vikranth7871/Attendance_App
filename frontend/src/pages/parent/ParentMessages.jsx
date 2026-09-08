@@ -22,16 +22,21 @@ const ParentMessages = ({ selectedChildId }) => {
             setMessages(data.messages || []);
             const fetchedTeachers = data.teachers || [];
             setTeachers(fetchedTeachers);
-            // Auto-select first teacher if none selected or previous selection not in list
+
+            // Auto-select first teacher if none selected or previous selection not in this child's teacher list
             if (fetchedTeachers.length > 0) {
                 const stillValid = fetchedTeachers.find(t => String(t.id) === String(selectedTeacherId));
                 const autoTeacherId = stillValid ? String(selectedTeacherId) : String(fetchedTeachers[0].id);
-                if (!stillValid) {
-                    setSelectedTeacherId(autoTeacherId);
-                    // Auto-mark first teacher's messages as read
-                    axios.put(`/parent/messages/read/${autoTeacherId}`).catch(() => {});
-                }
+                setSelectedTeacherId(autoTeacherId);
+                // Auto-mark first teacher's messages for this child as read
+                const readUrl = selectedChildId
+                    ? `/parent/messages/read/${autoTeacherId}?studentId=${selectedChildId}`
+                    : `/parent/messages/read/${autoTeacherId}`;
+                axios.put(readUrl).catch(() => {});
+            } else {
+                setSelectedTeacherId('');
             }
+
             // Determine parent's own id from messages
             if (data.messages && data.messages.length > 0) {
                 const ownMsg = data.messages.find(m =>
@@ -54,14 +59,18 @@ const ParentMessages = ({ selectedChildId }) => {
         const id = String(teacherId);
         setSelectedTeacherId(id);
 
-        // Optimistically clear unread badge in local state
-        setMessages(prev => prev.map(m =>
-            String(m.sender_id) === id ? { ...m, is_read: true } : m
-        ));
+        // Optimistically clear unread badge in local state for this child
+        setMessages(prev => prev.map(m => {
+            const isForChild = !selectedChildId || !m.student_id || String(m.student_id) === String(selectedChildId);
+            return (String(m.sender_id) === id && isForChild) ? { ...m, is_read: true } : m;
+        }));
 
-        // Persist read status on backend
+        // Persist read status on backend for this specific child
         try {
-            await axios.put(`/parent/messages/read/${id}`);
+            const url = selectedChildId
+                ? `/parent/messages/read/${id}?studentId=${selectedChildId}`
+                : `/parent/messages/read/${id}`;
+            await axios.put(url);
         } catch (err) {
             console.error('Failed to mark messages as read:', err);
         }
@@ -87,7 +96,6 @@ const ParentMessages = ({ selectedChildId }) => {
         }
     };
 
-
     if (loading) return (
         <div style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
             <div style={{ width: '36px', height: '36px', border: '3px solid var(--border-color)', borderTopColor: 'var(--brand-primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 1rem' }} />
@@ -95,10 +103,12 @@ const ParentMessages = ({ selectedChildId }) => {
         </div>
     );
 
-    // Filter chat for the selected teacher
-    const filteredMessages = messages.filter(
-        m => String(m.sender_id) === String(selectedTeacherId) || String(m.receiver_id) === String(selectedTeacherId)
-    );
+    // Filter chat for the selected teacher AND the currently selected child
+    const filteredMessages = messages.filter(m => {
+        const matchesTeacher = String(m.sender_id) === String(selectedTeacherId) || String(m.receiver_id) === String(selectedTeacherId);
+        const matchesChild = !selectedChildId || !m.student_id || String(m.student_id) === String(selectedChildId);
+        return matchesTeacher && matchesChild;
+    });
 
     const activeTeacher = teachers.find(t => String(t.id) === String(selectedTeacherId));
 
@@ -134,7 +144,9 @@ const ParentMessages = ({ selectedChildId }) => {
                             const isActive = String(t.id) === String(selectedTeacherId);
                             const subjectCount = t.subjects ? t.subjects.split(',').length : 0;
                             const unreadCount = messages.filter(
-                                m => String(m.sender_id) === String(t.id) && !m.is_read
+                                m => String(m.sender_id) === String(t.id) &&
+                                     !m.is_read &&
+                                     (!selectedChildId || !m.student_id || String(m.student_id) === String(selectedChildId))
                             ).length;
                             return (
                                 <motion.button
@@ -188,20 +200,39 @@ const ParentMessages = ({ selectedChildId }) => {
                     {/* Chat Panel */}
                     <div className="glass-panel" style={{ padding: '1.75rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                         {/* Chat Header */}
-                        <div style={{ paddingBottom: '1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                            <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(99,102,241,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--brand-primary)', fontWeight: '800', fontSize: '1rem' }}>
-                                {activeTeacher?.name?.[0] || 'T'}
-                            </div>
-                            <div>
-                                <div style={{ fontWeight: '800', fontSize: '0.95rem', color: 'var(--text-primary)' }}>
-                                    {activeTeacher?.name || 'Teacher'}
+                        <div style={{ paddingBottom: '1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(99,102,241,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--brand-primary)', fontWeight: '800', fontSize: '1rem' }}>
+                                    {activeTeacher?.name?.[0] || 'T'}
                                 </div>
-                                {activeTeacher?.subjects && (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem', color: 'var(--brand-secondary)' }}>
-                                        <BookOpen size={11} /> {activeTeacher.subjects}
+                                <div>
+                                    <div style={{ fontWeight: '800', fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                                        {activeTeacher?.name || 'Teacher'}
                                     </div>
-                                )}
+                                    {activeTeacher?.subjects && (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem', color: 'var(--brand-secondary)' }}>
+                                            <BookOpen size={11} /> {activeTeacher.subjects}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
+                            {selectedChildId && (
+                                <div style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.35rem',
+                                    padding: '0.35rem 0.8rem',
+                                    borderRadius: '999px',
+                                    background: 'rgba(99,102,241,0.1)',
+                                    border: '1px solid rgba(99,102,241,0.25)',
+                                    color: 'var(--brand-primary)',
+                                    fontSize: '0.75rem',
+                                    fontWeight: '700'
+                                }}>
+                                    <UserCheck size={13} />
+                                    Child Conversation
+                                </div>
+                            )}
                         </div>
 
                         {/* Messages */}
@@ -210,7 +241,7 @@ const ParentMessages = ({ selectedChildId }) => {
                                 {filteredMessages.length === 0 ? (
                                     <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-secondary)' }}>
                                         <MessageSquare size={36} style={{ opacity: 0.12, margin: '0 auto 0.75rem' }} />
-                                        <p>No messages yet with {activeTeacher?.name || 'this teacher'}.</p>
+                                        <p>No messages yet with {activeTeacher?.name || 'this teacher'} for this child.</p>
                                         <p style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>Send a message to start the conversation!</p>
                                     </div>
                                 ) : (

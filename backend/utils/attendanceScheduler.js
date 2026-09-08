@@ -73,7 +73,7 @@ export const autoMarkAbsentAndLeave = async (gracePeriodMinutes = 15) => {
 
             // 2. Fetch all active students in this class
             const studentsRes = await pool.query(
-                `SELECT id, name, parent_id, streak_count 
+                `SELECT id, name, parent_id 
                  FROM users 
                  WHERE role = 'student' AND (class_id = $1 OR $1 IS NULL)`,
                 [class_id]
@@ -133,9 +133,6 @@ export const autoMarkAbsentAndLeave = async (gracePeriodMinutes = 15) => {
                          VALUES ($1, $2, $3, $4, 'auto_absent', 'absent', $5, $6)`,
                         [student.id, subject_id, class_id, teacher_id || null, todayStr, slotStr]
                     );
-
-                    // Reset student streak count to 0
-                    await pool.query('UPDATE users SET streak_count = 0 WHERE id = $1', [student.id]);
 
                     // Notify parent of absence
                     if (student.parent_id) {

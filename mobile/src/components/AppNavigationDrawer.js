@@ -106,8 +106,8 @@ const AppNavigationDrawer = ({ visible, onClose, navigation, currentRoute }) => 
           {
             title: 'Academics & Records',
             items: [
-              { name: 'My Subjects & Faculty', route: 'StudentSubjects', icon: BookOpen, color: '#3b82f6' },
-              { name: 'Exam Results & Grades', route: 'StudentResults', icon: Award, color: '#10b981' },
+              { name: 'My Subjects', route: 'StudentSubjects', icon: BookOpen, color: '#3b82f6' },
+              { name: 'Exam Results', route: 'StudentResults', icon: Award, color: '#10b981' },
               { name: 'Attendance History', route: 'StudentAttendanceHistory', icon: ClipboardList, color: '#8b5cf6' },
               { name: 'Leave Application', route: 'Leave', icon: CalendarOff, color: '#f59e0b' },
             ],

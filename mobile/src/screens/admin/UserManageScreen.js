@@ -881,16 +881,16 @@ const UserManageScreen = ({ navigation }) => {
                       <Text style={styles.statBoxLabel}>Attendance</Text>
                     </View>
                     <View style={styles.statBox}>
-                      <Text style={[styles.statBoxValue, { color: colors.warning }]}>
-                        {dossierUser.streakCount ?? dossierUser.streak_count ?? 0} 🔥
+                      <Text style={[styles.statBoxValue, { color: colors.primary }]}>
+                        {dossierUser.section || 'A'}
                       </Text>
-                      <Text style={styles.statBoxLabel}>Streak</Text>
+                      <Text style={styles.statBoxLabel}>Section</Text>
                     </View>
                     <View style={styles.statBox}>
-                      <Text style={[styles.statBoxValue, { color: colors.secondary }]}>
-                        {dossierUser.bestStreak ?? dossierUser.best_streak ?? 0} ⚡
+                      <Text style={[styles.statBoxValue, { color: colors.success }]}>
+                        {dossierUser.status || 'Active'}
                       </Text>
-                      <Text style={styles.statBoxLabel}>Best</Text>
+                      <Text style={styles.statBoxLabel}>Status</Text>
                     </View>
                   </View>
                 )}

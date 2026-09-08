@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 const TeacherMessages = () => {
     const [messages, setMessages] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [selectedParentId, setSelectedParentId] = useState(null);
+    const [selectedKey, setSelectedKey] = useState('');
     const [replyText, setReplyText] = useState('');
     const [sending, setSending] = useState(false);
 
@@ -16,10 +16,11 @@ const TeacherMessages = () => {
             const { data } = await axios.get('/teacher/messages');
             setMessages(data || []);
 
-            // Auto select first parent conversation if not selected
-            const parents = data ? Array.from(new Set(data.map(m => m.sender_role === 'parent' ? m.sender_id : m.receiver_id))) : [];
-            if (parents.length > 0 && !selectedParentId) {
-                setSelectedParentId(parents[0]);
+            // Auto select first conversation key if not selected
+            if (data && data.length > 0 && !selectedKey) {
+                const first = data[0];
+                const pId = first.sender_role === 'parent' ? first.sender_id : first.receiver_id;
+                setSelectedKey(`${pId}_${first.student_id || 'all'}`);
             }
         } catch (err) {
             console.error('Failed to fetch parent messages for teacher', err);
@@ -32,13 +33,43 @@ const TeacherMessages = () => {
         fetchMessages();
     }, []);
 
+    // Group conversations by Parent ID + Child ID so each child has their own inquiry thread
+    const conversationMap = {};
+    messages.forEach(m => {
+        const parentId = m.sender_role === 'parent' ? m.sender_id : m.receiver_id;
+        const parentName = m.sender_role === 'parent' ? m.sender_name : m.receiver_name;
+        const studentId = m.student_id || null;
+        const convKey = `${parentId}_${studentId || 'all'}`;
+
+        if (!conversationMap[convKey]) {
+            conversationMap[convKey] = {
+                key: convKey,
+                parentId,
+                parentName,
+                studentId,
+                studentName: m.student_name || 'Student',
+                messages: []
+            };
+        }
+        conversationMap[convKey].messages.push(m);
+        if (m.student_name && conversationMap[convKey].studentName === 'Student') {
+            conversationMap[convKey].studentName = m.student_name;
+        }
+    });
+
+    const conversationList = Object.values(conversationMap);
+    const activeConversation = selectedKey
+        ? (conversationMap[selectedKey] || conversationList[0])
+        : conversationList[0];
+
     const handleSendReply = async (e) => {
         e.preventDefault();
-        if (!replyText.trim() || !selectedParentId) return;
+        if (!replyText.trim() || !activeConversation) return;
         setSending(true);
         try {
             await axios.post('/teacher/messages/reply', {
-                receiverId: selectedParentId,
+                receiverId: activeConversation.parentId,
+                studentId: activeConversation.studentId || null,
                 subject: 'Teacher Response',
                 message: replyText
             });
@@ -52,20 +83,6 @@ const TeacherMessages = () => {
     };
 
     if (loading) return <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>Loading parent messages...</div>;
-
-    // Group conversations by Parent ID
-    const parentMap = {};
-    messages.forEach(m => {
-        const parentId = m.sender_role === 'parent' ? m.sender_id : m.receiver_id;
-        const parentName = m.sender_role === 'parent' ? m.sender_name : m.receiver_name;
-        if (!parentMap[parentId]) {
-            parentMap[parentId] = { parentId, parentName, studentName: m.student_name || 'Student', messages: [] };
-        }
-        parentMap[parentId].messages.push(m);
-    });
-
-    const conversationList = Object.values(parentMap);
-    const activeConversation = selectedParentId ? parentMap[selectedParentId] : conversationList[0];
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -93,12 +110,12 @@ const TeacherMessages = () => {
                     ) : (
                         conversationList.map(c => (
                             <button
-                                key={c.parentId}
-                                onClick={() => setSelectedParentId(c.parentId)}
+                                key={c.key}
+                                onClick={() => setSelectedKey(c.key)}
                                 style={{
                                     textAlign: 'left', padding: '0.85rem 1rem', borderRadius: '0.75rem', border: '1px solid var(--border-color)',
-                                    background: String(selectedParentId) === String(c.parentId) ? 'rgba(139,92,246,0.15)' : 'var(--bg-secondary)',
-                                    borderColor: String(selectedParentId) === String(c.parentId) ? 'var(--brand-secondary)' : 'var(--border-color)',
+                                    background: String(selectedKey) === String(c.key) ? 'rgba(139,92,246,0.15)' : 'var(--bg-secondary)',
+                                    borderColor: String(selectedKey) === String(c.key) ? 'var(--brand-secondary)' : 'var(--border-color)',
                                     cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '0.2rem', transition: 'all 0.2s'
                                 }}
                             >

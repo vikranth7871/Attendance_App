@@ -11,7 +11,29 @@ import { FullPageLoader } from '../../components/LoadingSkeleton';
 import api from '../../api/client';
 import { colors, spacing, radius, typography, shadows } from '../../styles/theme';
 
-const STATUS_COLORS = { pending: colors.warning, submitted: colors.primary, graded: colors.success, overdue: colors.danger };
+const STATUS_COLORS = {
+  pending: colors.warning,
+  submitted: colors.primary,
+  completed: colors.primary,
+  graded: colors.success,
+  overdue: colors.danger,
+};
+
+const isGraded = (item) => {
+  const s = (item?.status || '').toLowerCase();
+  return s === 'graded' || Boolean(item?.grade);
+};
+
+const isSubmitted = (item) => {
+  const s = (item?.status || '').toLowerCase();
+  return s === 'submitted' || s === 'completed' || isGraded(item) || Boolean(item?.submission_date);
+};
+
+const isOverdueItem = (item) => {
+  if (isSubmitted(item)) return false;
+  const dueDate = item?.due_date ? new Date(item.due_date) : null;
+  return Boolean(dueDate && dueDate < new Date());
+};
 
 const StudentAssignmentsScreen = ({ navigation }) => {
   const [assignments, setAssignments] = useState([]);
@@ -70,7 +92,13 @@ const StudentAssignmentsScreen = ({ navigation }) => {
   };
 
   const FILTERS = ['all', 'pending', 'submitted', 'graded'];
-  const filtered = filter === 'all' ? assignments : assignments.filter(a => a.status === filter);
+  const filtered = assignments.filter((a) => {
+    if (filter === 'all') return true;
+    if (filter === 'pending') return !isSubmitted(a);
+    if (filter === 'submitted') return isSubmitted(a);
+    if (filter === 'graded') return isGraded(a);
+    return true;
+  });
 
   if (loading) return <FullPageLoader message="Loading assignments..." />;
 
@@ -96,19 +124,34 @@ const StudentAssignmentsScreen = ({ navigation }) => {
         data={filtered}
         keyExtractor={(item) => item.id?.toString()}
         renderItem={({ item }) => {
-          const statusColor = STATUS_COLORS[item.status] || colors.textMuted;
+          const isGradedAssignment = isGraded(item);
+          const isSubmittedAssignment = isSubmitted(item);
+          const isOverdue = isOverdueItem(item);
+          const canSubmit = !isSubmittedAssignment;
+
+          let displayStatus = 'pending';
+          let statusColor = colors.warning;
+          if (isOverdue) {
+            displayStatus = 'overdue';
+            statusColor = colors.danger;
+          } else if (isGradedAssignment) {
+            displayStatus = 'graded';
+            statusColor = colors.success;
+          } else if (isSubmittedAssignment) {
+            displayStatus = 'submitted';
+            statusColor = colors.primary;
+          }
+
           const dueDate = item.due_date ? new Date(item.due_date) : null;
-          const isOverdue = dueDate && dueDate < new Date() && item.status !== 'submitted' && item.status !== 'graded';
-          const canSubmit = item.status === 'pending' || isOverdue;
 
           return (
             <View style={[styles.card, shadows.sm, isOverdue && styles.overdueCard]}>
               <View style={styles.cardHeader}>
                 <BookOpen size={18} color={isOverdue ? colors.danger : colors.student} />
                 <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
-                <View style={[styles.statusBadge, { backgroundColor: (isOverdue ? colors.danger : statusColor) + '22' }]}>
-                  <Text style={[styles.statusText, { color: isOverdue ? colors.danger : statusColor }]}>
-                    {isOverdue ? 'overdue' : (item.status || 'pending')}
+                <View style={[styles.statusBadge, { backgroundColor: statusColor + '22' }]}>
+                  <Text style={[styles.statusText, { color: statusColor }]}>
+                    {displayStatus}
                   </Text>
                 </View>
               </View>

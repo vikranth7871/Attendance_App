@@ -19,7 +19,7 @@ Access all role portals using pre-configured test accounts:
 | :--- | :--- | :--- | :--- | :--- |
 | **System Admin** | `/admin` | `admin@example.com` | `admin123` | Institutional Setup, Leaves Approval, User Roles & Permissions |
 | **Educator / Teacher** | `/teacher` | `teacher@example.com` | `teacher123` | Active Slot Attendance, Assignments, Exams & Parent Communication |
-| **Student** | `/student` | `student@example.com` | `student123` | Gamified Attendance Streaks, Assignments, Exams & Quiz Arena |
+| **Student** | `/student` | `student@example.com` | `student123` | Attendance Analytics, Assignments, Exams & Quiz Arena |
 | **Parent** | `/parent` | `parent.doe@example.com` | `parent123` | Multi-Child Switcher, Fee Invoices, Attendance Analytics & Teacher Inbox |
 
 ---
@@ -66,8 +66,8 @@ Access all role portals using pre-configured test accounts:
 ---
 
 ### 🎓 3. Student Portal (`/student/*`)
-* **Gamified Attendance Streaks**:
-  * Visual streak counters, attendance percentage progress rings, and historical check-in logs.
+* **Attendance Performance & Metrics**:
+  * Attendance percentage progress rings, session metrics breakdown, smart insights, and historical check-in logs.
 * **Homework & Submissions Hub**:
   * View pending assignments, submit completed homework, and inspect educator feedback and remarks.
 * **Academic Performance & Report Cards**:
@@ -215,7 +215,7 @@ iAttend/
 │   │   ├── adminController.js     # User, leave, department & academic management
 │   │   ├── authController.js      # Auth, login, tokens, password hashing
 │   │   ├── parentController.js    # Child switching, fees, messages & results
-│   │   ├── studentController.js   # Streaks, homework submissions, schedule
+│   │   ├── studentController.js   # Overview, homework submissions, schedule
 │   │   └── teacherController.js   # Slot attendance, grade book & exams
 │   ├── middleware/
 │   │   └── authMiddleware.js      # JWT verification & role authorization

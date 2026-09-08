@@ -9,6 +9,7 @@ import {
   Grid, List
 } from 'lucide-react-native';
 import Header from '../../components/Header';
+import ChildSwitcher from '../../components/ChildSwitcher';
 import { CardSkeleton } from '../../components/LoadingSkeleton';
 import api from '../../api/client';
 import { colors, spacing, radius, typography, shadows } from '../../styles/theme';
@@ -47,7 +48,7 @@ const parseTimeMinutes = (timeStr) => {
   return hh * 60 + mm;
 };
 
-const ParentTimetableScreen = ({ navigation }) => {
+const ParentTimetableScreen = ({ route, navigation }) => {
   const [children, setChildren] = useState([]);
   const [selectedChild, setSelectedChild] = useState(null);
   const [academicData, setAcademicData] = useState(null);
@@ -58,13 +59,20 @@ const ParentTimetableScreen = ({ navigation }) => {
     DAYS[new Date().getDay() === 0 ? 0 : Math.min(new Date().getDay() - 1, 5)]
   );
 
+  const targetStudentId = route?.params?.studentId;
+
   const fetchChildren = async () => {
     try {
       const { data } = await api.get('/parent/children');
       const kids = Array.isArray(data) ? data : [];
       setChildren(kids);
-      if (kids.length > 0 && !selectedChild) {
-        setSelectedChild(kids[0]);
+      if (kids.length > 0) {
+        if (targetStudentId) {
+          const match = kids.find(k => String(k.id || k.studentId) === String(targetStudentId));
+          setSelectedChild(match || kids[0]);
+        } else if (!selectedChild) {
+          setSelectedChild(kids[0]);
+        }
       }
     } catch (err) {
       console.error('Fetch children error:', err);
@@ -163,34 +171,27 @@ const ParentTimetableScreen = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <Header
-        title="Class Timetable"
-        subtitle={selectedChild ? `${selectedChild.name}'s Schedule` : 'Weekly schedule'}
+        title="Weekly Class Timetable"
+        subtitle={selectedChild ? `Official schedule for ${selectedChild.name}` : 'Official weekly class schedule'}
         navigation={navigation}
         rightAction={
           <TouchableOpacity style={styles.exportBtn} onPress={handleExportTimetable} activeOpacity={0.8}>
-            <Download size={16} color={colors.parent} />
+            <Download size={16} color={colors.primaryLight} />
+            <Text style={styles.exportBtnText}>Export</Text>
           </TouchableOpacity>
         }
       />
 
-      {/* Multi-Child selector */}
-      {children.length > 1 && (
-        <View style={styles.childrenBar}>
-          <Text style={styles.childrenBarLabel}>Child:</Text>
-          {children.map((child) => (
-            <TouchableOpacity
-              key={child.id}
-              style={[styles.childChip, selectedChild?.id === child.id && styles.childChipActive]}
-              onPress={() => setSelectedChild(child)}
-            >
-              <User size={13} color={selectedChild?.id === child.id ? '#fff' : colors.textSecondary} />
-              <Text style={[styles.childChipText, selectedChild?.id === child.id && styles.childChipTextActive]}>
-                {child.name.split(' ')[0]}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
+      <View style={{ paddingHorizontal: spacing.md, paddingTop: spacing.xs }}>
+        {/* Unified Child Switcher Component */}
+        {children.length > 0 && (
+          <ChildSwitcher
+            childrenList={children}
+            selectedChildId={selectedChild?.id || selectedChild?.studentId}
+            onSelectChild={(id, child) => setSelectedChild(child)}
+          />
+        )}
+      </View>
 
       {/* Metrics Strip */}
       <View style={styles.metricsBar}>
@@ -410,11 +411,20 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   scroll: { flex: 1 },
   exportBtn: {
-    padding: spacing.sm,
-    backgroundColor: colors.parent + '22',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(99, 102, 241, 0.15)',
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.parent + '44',
+    borderColor: 'rgba(99, 102, 241, 0.3)',
+  },
+  exportBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primaryLight,
   },
   childrenBar: {
     flexDirection: 'row',

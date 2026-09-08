@@ -405,6 +405,7 @@ export const getQuizzes = async (req, res) => {
                 title: q.title,
                 description: q.description || '',
                 type: q.type || 'practice',
+                difficulty: q.difficulty || 'mixed',
                 subjectId: q.subject_id ? { _id: String(q.subject_id), id: q.subject_id, subjectName: q.subject_name } : null,
                 createdBy: { _id: String(q.creator_id), name: q.creator_name },
                 timeLimit: q.time_limit || 30,
